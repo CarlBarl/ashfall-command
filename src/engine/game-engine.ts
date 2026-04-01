@@ -9,6 +9,7 @@ import { processCombat, launchMissile, launchSAM } from './systems/combat'
 import { processAI } from './systems/ai'
 import { processEconomy } from './systems/economy'
 import { processOrders } from './systems/orders'
+import { processFriendlyAI } from './systems/friendly-ai'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
 const SCENARIO_START = new Date('2026-06-15T06:00:00Z').getTime()
@@ -89,9 +90,11 @@ export class GameEngine {
     processCombat(state, this.rng)
     processEconomy(state)
 
-    // AI generates commands, then we execute them
+    // Autonomous offensive fire for weapons_free units (any nation)
+    const friendlyCmds = processFriendlyAI(state, this.rng)
+    // Enemy AI generates commands
     const aiCommands = processAI(state, this.rng)
-    for (const cmd of aiCommands) {
+    for (const cmd of [...friendlyCmds, ...aiCommands]) {
       this.executeCommand(cmd)
     }
   }

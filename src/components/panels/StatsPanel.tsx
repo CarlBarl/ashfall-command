@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import {} from 'react'
 import Panel from '@/components/common/Panel'
 import StatBar from '@/components/common/StatBar'
 import { useGameStore } from '@/store/game-store'
@@ -168,21 +168,8 @@ function ExchangeRatio({ launched, intercepted }: { launched: number; intercepte
 }
 
 export default function StatsPanel() {
-  const viewState = useGameStore(s => s.viewState)
-  // Accumulate one-shot events across polls
-  const [eventLog, setEventLog] = useState<GameEvent[]>([])
-  const prevTickRef = useRef<number>(-1)
-
-  useEffect(() => {
-    const { events, time } = viewState
-    // Only append when the tick has advanced (new poll delivery)
-    if (time.tick !== prevTickRef.current && events.length > 0) {
-      prevTickRef.current = time.tick
-      setEventLog(prev => [...prev, ...events])
-    }
-  }, [viewState])
-
-  const { units } = viewState
+  const units = useGameStore(s => s.viewState.units)
+  const eventLog = useGameStore(s => s.eventLog)
 
   return (
     <Panel

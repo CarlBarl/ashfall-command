@@ -5,6 +5,7 @@ import { adSystems } from '@/data/weapons/air-defense'
 import { haversine, bearing, destination } from '../utils/geo'
 import { greatCirclePath, machToKmh } from '../utils/geo'
 import { detectThreats } from './detection'
+import { isSuppressedForTight } from './orders'
 
 let missileCounter = 0
 let interceptorCounter = 0
@@ -298,6 +299,8 @@ function runADEngagement(state: GameState, _rng: SeededRNG): void {
         if (engaged.has(threat.missile.id)) continue
         // Skip interceptor missiles - don't shoot at our own interceptors
         if (threat.missile.is_interceptor) continue
+        // Weapons tight: only engage threats targeting this unit or nearby friendlies
+        if (isSuppressedForTight(threat.missile.id, unit)) continue
 
         // Already engaged by another system on this unit?
         if (isAlreadyEngagedByUnit(unit.id, threat.missile.id)) continue
