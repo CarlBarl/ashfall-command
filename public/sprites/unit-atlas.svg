@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- 4x4 grid, 64x64 each. NATO-style simplified silhouettes. White fill for tinting. -->
+
+  <!-- Row 0: airbase, naval_base, sam_site, missile_battery -->
+  <!-- Airbase (0,0) - runway X -->
+  <g transform="translate(0,0)">
+    <circle cx="32" cy="32" r="24" fill="none" stroke="white" stroke-width="2"/>
+    <line x1="14" y1="14" x2="50" y2="50" stroke="white" stroke-width="3"/>
+    <line x1="50" y1="14" x2="14" y2="50" stroke="white" stroke-width="3"/>
+  </g>
+
+  <!-- Naval Base (64,0) - anchor -->
+  <g transform="translate(64,0)">
+    <circle cx="32" cy="32" r="24" fill="none" stroke="white" stroke-width="2"/>
+    <line x1="32" y1="12" x2="32" y2="52" stroke="white" stroke-width="3"/>
+    <path d="M18,40 Q32,52 46,40" fill="none" stroke="white" stroke-width="3"/>
+    <line x1="22" y1="28" x2="42" y2="28" stroke="white" stroke-width="2"/>
+  </g>
+
+  <!-- SAM Site (128,0) - triangle with dot -->
+  <g transform="translate(128,0)">
+    <circle cx="32" cy="32" r="24" fill="none" stroke="white" stroke-width="2"/>
+    <polygon points="32,12 48,48 16,48" fill="none" stroke="white" stroke-width="2.5"/>
+    <circle cx="32" cy="36" r="4" fill="white"/>
+  </g>
+
+  <!-- Missile Battery (192,0) - arrow up -->
+  <g transform="translate(192,0)">
+    <circle cx="32" cy="32" r="24" fill="none" stroke="white" stroke-width="2"/>
+    <line x1="32" y1="14" x2="32" y2="50" stroke="white" stroke-width="3"/>
+    <polyline points="22,26 32,14 42,26" fill="none" stroke="white" stroke-width="2.5"/>
+  </g>
+
+  <!-- Row 1: aircraft, ship, submarine, carrier_group -->
+  <!-- Aircraft (0,64) - jet silhouette -->
+  <g transform="translate(0,64)">
+    <polygon points="32,12 38,30 52,38 38,36 40,52 32,46 24,52 26,36 12,38 26,30" fill="white"/>
+  </g>
+
+  <!-- Ship (64,64) - side view -->
+  <g transform="translate(64,64)">
+    <path d="M12,36 L18,24 L46,24 L52,30 L52,36 Z" fill="white"/>
+    <rect x="28" y="18" width="4" height="6" fill="white"/>
+    <rect x="36" y="20" width="3" height="4" fill="white"/>
+  </g>
+
+  <!-- Submarine (128,64) - sub shape -->
+  <g transform="translate(128,64)">
+    <ellipse cx="32" cy="36" rx="20" ry="8" fill="white"/>
+    <rect x="30" y="24" width="4" height="12" fill="white"/>
+    <line x1="26" y1="24" x2="34" y2="24" stroke="white" stroke-width="2"/>
+  </g>
+
+  <!-- Carrier Group (192,64) - large ship + planes -->
+  <g transform="translate(192,64)">
+    <path d="M10,38 L16,22 L48,22 L54,32 L54,38 Z" fill="white"/>
+    <polygon points="24,16 26,20 22,20" fill="white"/>
+    <polygon points="36,16 38,20 34,20" fill="white"/>
+    <polygon points="46,18 48,22 44,22" fill="white"/>
+  </g>
+
+  <!-- Row 2: destroyed, damaged, moving, reloading (status overlays) -->
+  <!-- Destroyed (0,128) - X -->
+  <g transform="translate(0,128)">
+    <line x1="16" y1="16" x2="48" y2="48" stroke="white" stroke-width="4"/>
+    <line x1="48" y1="16" x2="16" y2="48" stroke="white" stroke-width="4"/>
+  </g>
+
+  <!-- Damaged (64,128) - warning triangle -->
+  <g transform="translate(64,128)">
+    <polygon points="32,14 50,50 14,50" fill="none" stroke="white" stroke-width="3"/>
+    <line x1="32" y1="26" x2="32" y2="38" stroke="white" stroke-width="3"/>
+    <circle cx="32" cy="44" r="2" fill="white"/>
+  </g>
+
+  <!-- Moving (128,128) - arrow right -->
+  <g transform="translate(128,128)">
+    <line x1="12" y1="32" x2="48" y2="32" stroke="white" stroke-width="3"/>
+    <polyline points="38,22 48,32 38,42" fill="none" stroke="white" stroke-width="3"/>
+  </g>
+
+  <!-- Reloading (192,128) - circular arrows -->
+  <g transform="translate(192,128)">
+    <path d="M32,14 A18,18 0 1,1 14,32" fill="none" stroke="white" stroke-width="3"/>
+    <polyline points="14,22 14,32 24,32" fill="none" stroke="white" stroke-width="2"/>
+  </g>
+
+  <!-- Row 3: reserved for future -->
+  <g transform="translate(0,192)">
+    <circle cx="32" cy="32" r="4" fill="white" opacity="0.3"/>
+  </g>
+  <g transform="translate(64,192)">
+    <circle cx="32" cy="32" r="4" fill="white" opacity="0.3"/>
+  </g>
+  <g transform="translate(128,192)">
+    <circle cx="32" cy="32" r="4" fill="white" opacity="0.3"/>
+  </g>
+  <g transform="translate(192,192)">
+    <circle cx="32" cy="32" r="4" fill="white" opacity="0.3"/>
+  </g>
+</svg>

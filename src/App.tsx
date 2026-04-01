@@ -1,18 +1,21 @@
+import { useEffect } from 'react'
+import GameMap from '@/components/map/GameMap'
+import TimeControls from '@/components/hud/TimeControls'
+import AlertFeed from '@/components/hud/AlertFeed'
+import LaunchPanel from '@/components/panels/LaunchPanel'
+import { initBridge } from '@/store/bridge'
+
 export default function App() {
+  useEffect(() => {
+    initBridge()
+  }, [])
+
   return (
-    <div style={{ width: '100%', height: '100%' }}>
-      {/* GameMap will go here in Phase 1 */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100%',
-        color: 'var(--text-secondary)',
-        fontFamily: 'var(--font-mono)',
-        fontSize: 'var(--font-size-lg)',
-      }}>
-        REALPOLITIK — initializing...
-      </div>
+    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <GameMap />
+      <TimeControls />
+      <AlertFeed />
+      <LaunchPanel />
     </div>
   )
 }
