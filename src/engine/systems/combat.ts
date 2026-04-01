@@ -1,4 +1,4 @@
-import type { GameState, GameEvent, Missile, Position, Unit, WeaponSpec } from '@/types/game'
+import type { GameState, GameEvent, Missile, Unit, WeaponSpec, ADSystemSpec } from '@/types/game'
 import type { SeededRNG } from '../utils/rng'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import { adSystems } from '@/data/weapons/air-defense'
@@ -8,12 +8,12 @@ import { detectThreats } from './detection'
 
 let missileCounter = 0
 
-// Track active fire channels: unitId → Set of engaged missileIds
+// Track active fire channels per AD system per unit: `${unitId}:${adSystemId}` → Set<missileId>
 const activeEngagements = new Map<string, Set<string>>()
 
-/** Process all combat: launches, flight, AD engagement, interception, impacts */
 export function processCombat(state: GameState, rng: SeededRNG): void {
   updateMissilePositions(state)
+  updateMissileAltitudes(state)
   runADEngagement(state, rng)
   resolveImpacts(state)
   updateReloads(state)
@@ -52,7 +52,7 @@ export function launchMissile(
 
   const flightTimeMs = computeFlightTime(dist, spec)
   const numSegments = Math.max(20, Math.ceil(dist / 10))
-  const path = generateMissilePath(launcher.position, target.position, spec, numSegments)
+  const path = greatCirclePath(launcher.position, target.position, numSegments)
   const timestamps = generateTimestamps(state.time.timestamp, flightTimeMs, numSegments)
 
   const id = `m_${++missileCounter}`
@@ -67,6 +67,8 @@ export function launchMissile(
     status: 'inflight',
     launchTime: state.time.timestamp,
     eta: state.time.timestamp + flightTimeMs,
+    altitude_km: spec.type === 'ballistic_missile' ? 0 : spec.flight_altitude_ft * 0.0003048,
+    phase: spec.type === 'ballistic_missile' ? 'boost' : 'cruise',
   }
 
   state.missiles.set(id, missile)
@@ -81,8 +83,93 @@ export function launchMissile(
   }
 }
 
+/** Manually fire a SAM at a specific missile */
+export function launchSAM(
+  state: GameState,
+  launcherId: string,
+  weaponId: string,
+  missileId: string,
+  rng: SeededRNG,
+): GameEvent | null {
+  const launcher = state.units.get(launcherId)
+  if (!launcher) return null
+
+  const loadout = launcher.weapons.find(w => w.weaponId === weaponId)
+  if (!loadout || loadout.count <= 0) return null
+
+  const interceptorSpec = weaponSpecs[weaponId]
+  if (!interceptorSpec || interceptorSpec.type !== 'sam') return null
+
+  const missile = state.missiles.get(missileId)
+  if (!missile || missile.status !== 'inflight') return null
+
+  // Check altitude envelope
+  const adSpec = findADSpecForWeapon(weaponId)
+  if (adSpec && missile.altitude_km > adSpec.max_altitude_km) return null // can't reach
+
+  loadout.count--
+
+  const targetSpec = weaponSpecs[missile.weaponId]
+  const pKill = computePKill(interceptorSpec, targetSpec, launcher, missile, adSpec?.fire_channels ?? 6, 0)
+
+  if (rng.chance(pKill)) {
+    missile.status = 'intercepted'
+    state.missiles.delete(missileId)
+    const event: GameEvent = {
+      type: 'MISSILE_INTERCEPTED',
+      missileId,
+      interceptorId: launcherId,
+      tick: state.time.tick,
+    }
+    emitEvents(state, [event])
+    return event
+  }
+
+  return null // missed
+}
+
 // ═══════════════════════════════════════════════
-//  AD ENGAGEMENT
+//  ALTITUDE MODEL
+// ═══════════════════════════════════════════════
+
+function updateMissileAltitudes(state: GameState): void {
+  for (const missile of state.missiles.values()) {
+    if (missile.status !== 'inflight') continue
+
+    const spec = weaponSpecs[missile.weaponId]
+    if (!spec) continue
+
+    if (spec.type === 'ballistic_missile') {
+      const flightDuration = missile.eta - missile.launchTime
+      const elapsed = state.time.timestamp - missile.launchTime
+      const progress = Math.max(0, Math.min(1, elapsed / flightDuration))
+
+      // Ballistic profile: boost (0-0.15), midcourse (0.15-0.7), terminal (0.7-1.0)
+      const peakAltKm = spec.flight_altitude_ft * 0.0003048 // convert ft to km
+
+      if (progress < 0.15) {
+        missile.phase = 'boost'
+        missile.altitude_km = (progress / 0.15) * peakAltKm * 0.5
+      } else if (progress < 0.7) {
+        missile.phase = 'midcourse'
+        // Parabolic arc peaking at midpoint
+        const midProgress = (progress - 0.15) / 0.55
+        missile.altitude_km = peakAltKm * (1 - 4 * (midProgress - 0.5) ** 2)
+      } else {
+        missile.phase = 'terminal'
+        const termProgress = (progress - 0.7) / 0.3
+        missile.altitude_km = peakAltKm * (1 - termProgress) * 0.5
+      }
+    } else {
+      // Cruise missiles fly at constant low altitude
+      missile.phase = 'cruise'
+      missile.altitude_km = spec.flight_altitude_ft * 0.0003048
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  AD ENGAGEMENT — multi-system, altitude-aware
 // ═══════════════════════════════════════════════
 
 function runADEngagement(state: GameState, rng: SeededRNG): void {
@@ -92,90 +179,79 @@ function runADEngagement(state: GameState, rng: SeededRNG): void {
     if (unit.status === 'destroyed') continue
     if (unit.roe === 'hold_fire') continue
 
-    // Find SAM weapons on this unit
-    const samLoadouts = unit.weapons.filter(w => {
-      const spec = weaponSpecs[w.weaponId]
-      return spec?.type === 'sam' && w.count > 0 && !w.reloadingUntil
-    })
+    // Find ALL AD systems this unit can use (one per SAM weapon type)
+    const unitADSystems = findAllADSystems(unit)
+    if (unitADSystems.length === 0) continue
 
-    if (samLoadouts.length === 0) continue
-
-    // Get AD system spec for this unit
-    const adSpec = findADSpec(unit)
-    if (!adSpec) continue
-
-    // Detect threats
     const threats = detectThreats(state, unit)
     if (threats.length === 0) continue
 
-    // Check available fire channels
-    let engaged = activeEngagements.get(unit.id)
-    if (!engaged) {
-      engaged = new Set()
-      activeEngagements.set(unit.id, engaged)
-    }
+    for (const { adSpec, loadout } of unitADSystems) {
+      if (loadout.count <= 0) continue
+      if (loadout.reloadingUntil) continue
 
-    // Clean up resolved engagements
-    for (const mId of engaged) {
-      if (!state.missiles.has(mId)) engaged.delete(mId)
-    }
-
-    const availableChannels = adSpec.fire_channels - engaged.size
-
-    // Engage threats up to available channels
-    let channelsUsed = 0
-    for (const threat of threats) {
-      if (channelsUsed >= availableChannels) break
-      if (engaged.has(threat.missile.id)) continue
-
-      // Find best interceptor for this threat
-      const loadout = samLoadouts.find(w => w.count > 0)
-      if (!loadout) break
-
-      const interceptorSpec = weaponSpecs[loadout.weaponId]
-      if (!interceptorSpec) continue
-
-      // Check engagement range
-      if (threat.distKm > adSpec.engagement_range_km) continue
-
-      // Weapons tight = only engage if target is heading toward us or friendly units
-      // For simplicity, weapons_tight still engages incoming missiles
-      // (it would restrict offensive launches, which we handle elsewhere)
-
-      // Compute pKill
-      const targetSpec = weaponSpecs[threat.missile.weaponId]
-      const pKill = computePKill(interceptorSpec, targetSpec, unit, adSpec, engaged.size)
-
-      // Fire!
-      loadout.count--
-      engaged.add(threat.missile.id)
-      channelsUsed++
-
-      if (loadout.count === 0) {
-        events.push({
-          type: 'AMMO_DEPLETED',
-          unitId: unit.id,
-          weaponId: loadout.weaponId,
-          tick: state.time.tick,
-        })
-        // Start reload
-        loadout.reloadingUntil = state.time.timestamp + adSpec.reload_time_sec * 1000
+      const engKey = `${unit.id}:${adSpec.id}`
+      let engaged = activeEngagements.get(engKey)
+      if (!engaged) {
+        engaged = new Set()
+        activeEngagements.set(engKey, engaged)
       }
 
-      // Roll for kill
-      if (rng.chance(pKill)) {
-        // Intercept!
-        threat.missile.status = 'intercepted'
-        events.push({
-          type: 'MISSILE_INTERCEPTED',
-          missileId: threat.missile.id,
-          interceptorId: unit.id,
-          tick: state.time.tick,
-        })
-        state.missiles.delete(threat.missile.id)
-        engaged.delete(threat.missile.id)
+      // Clean stale engagements
+      for (const mId of engaged) {
+        if (!state.missiles.has(mId)) engaged.delete(mId)
       }
-      // If miss, missile continues — channel stays occupied until missile resolves
+
+      const availableChannels = adSpec.fire_channels - engaged.size
+      let channelsUsed = 0
+
+      for (const threat of threats) {
+        if (channelsUsed >= availableChannels) break
+        if (loadout.count <= 0) break
+        if (engaged.has(threat.missile.id)) continue
+
+        // Already engaged by another system on this unit?
+        if (isAlreadyEngagedByUnit(unit.id, threat.missile.id)) continue
+
+        // ALTITUDE CHECK — can this system reach the missile?
+        if (threat.missile.altitude_km > adSpec.max_altitude_km) continue
+
+        // RANGE CHECK
+        if (threat.distKm > adSpec.engagement_range_km) continue
+
+        const interceptorSpec = weaponSpecs[loadout.weaponId]
+        if (!interceptorSpec) continue
+
+        const targetSpec = weaponSpecs[threat.missile.weaponId]
+        const pKill = computePKill(interceptorSpec, targetSpec, unit, threat.missile, adSpec.fire_channels, engaged.size)
+
+        // Fire!
+        loadout.count--
+        engaged.add(threat.missile.id)
+        channelsUsed++
+
+        if (loadout.count === 0) {
+          events.push({
+            type: 'AMMO_DEPLETED',
+            unitId: unit.id,
+            weaponId: loadout.weaponId,
+            tick: state.time.tick,
+          })
+          loadout.reloadingUntil = state.time.timestamp + adSpec.reload_time_sec * 1000
+        }
+
+        if (rng.chance(pKill)) {
+          threat.missile.status = 'intercepted'
+          events.push({
+            type: 'MISSILE_INTERCEPTED',
+            missileId: threat.missile.id,
+            interceptorId: unit.id,
+            tick: state.time.tick,
+          })
+          state.missiles.delete(threat.missile.id)
+          engaged.delete(threat.missile.id)
+        }
+      }
     }
   }
 
@@ -186,54 +262,79 @@ function computePKill(
   interceptor: WeaponSpec,
   target: WeaponSpec | undefined,
   adUnit: Unit,
-  _adSpec: { fire_channels: number },
+  missile: Missile,
+  totalChannels: number,
   activeChannels: number,
 ): number {
-  // Base pKill from interceptor spec
   const targetType = target?.type ?? 'cruise_missile'
   let pKill = interceptor.pk[targetType] ?? 0.5
 
-  // Speed factor: min(1, interceptor_mach / target_mach)
+  // Speed factor
   if (target) {
     const speedFactor = Math.min(1, interceptor.speed_mach / target.speed_mach)
     pKill *= speedFactor
   }
 
-  // Saturation factor: 1.0 if load < 0.8, linear decay to 0.3 at 1.0
-  const load = activeChannels / _adSpec.fire_channels
+  // Saturation factor
+  const load = activeChannels / totalChannels
   if (load > 0.8) {
-    const satFactor = 1.0 - (load - 0.8) * (0.7 / 0.2) // 1.0→0.3 over 0.8→1.0
-    pKill *= Math.max(0.3, satFactor)
+    pKill *= Math.max(0.3, 1.0 - (load - 0.8) * 3.5)
   }
 
   // Health factor
   pKill *= adUnit.health / 100
 
-  // Terminal phase penalty for ballistic reentry
+  // Altitude penalty — harder to hit at extremes of envelope
   if (target?.type === 'ballistic_missile') {
-    pKill *= 0.85
+    // Terminal phase is harder (fast reentry)
+    if (missile.phase === 'terminal') pKill *= 0.75
+    // Midcourse at very high altitude — only BMD interceptors good here
+    if (missile.phase === 'midcourse' && missile.altitude_km > 100) pKill *= 0.85
+    // Boost phase — difficult but possible for forward-deployed BMD
+    if (missile.phase === 'boost') pKill *= 0.7
   }
 
-  // Low-RCS bonus for cruise missiles at low altitude
+  // Low-altitude cruise missiles harder to detect/track
   if (target?.flight_altitude_ft && target.flight_altitude_ft < 500) {
     pKill *= 0.8
   }
 
-  return Math.max(0.05, Math.min(0.99, pKill))
+  return Math.max(0.05, Math.min(0.95, pKill))
 }
 
-function findADSpec(unit: Unit): typeof adSystems[string] | null {
-  // Match unit to AD system by its interceptor weapon
+/** Find all AD systems matching this unit's SAM weapons */
+function findAllADSystems(unit: Unit): { adSpec: ADSystemSpec; loadout: typeof unit.weapons[0] }[] {
+  const results: { adSpec: ADSystemSpec; loadout: typeof unit.weapons[0] }[] = []
+
   for (const loadout of unit.weapons) {
     const spec = weaponSpecs[loadout.weaponId]
-    if (spec?.type === 'sam') {
-      // Find AD system that uses this interceptor
-      for (const ad of Object.values(adSystems)) {
-        if (ad.interceptorId === loadout.weaponId) return ad
+    if (spec?.type !== 'sam') continue
+
+    for (const ad of Object.values(adSystems)) {
+      if (ad.interceptorId === loadout.weaponId) {
+        results.push({ adSpec: ad, loadout })
+        break
       }
     }
   }
+
+  // Sort: longest-range systems first (engage at maximum distance)
+  results.sort((a, b) => b.adSpec.engagement_range_km - a.adSpec.engagement_range_km)
+  return results
+}
+
+function findADSpecForWeapon(weaponId: string): ADSystemSpec | null {
+  for (const ad of Object.values(adSystems)) {
+    if (ad.interceptorId === weaponId) return ad
+  }
   return null
+}
+
+function isAlreadyEngagedByUnit(unitId: string, missileId: string): boolean {
+  for (const [key, engaged] of activeEngagements) {
+    if (key.startsWith(`${unitId}:`) && engaged.has(missileId)) return true
+  }
+  return false
 }
 
 // ═══════════════════════════════════════════════
@@ -293,7 +394,6 @@ function updateReloads(state: GameState): void {
     for (const loadout of unit.weapons) {
       if (loadout.reloadingUntil && state.time.timestamp >= loadout.reloadingUntil) {
         loadout.reloadingUntil = undefined
-        // Reload some ammo (partial reload for SAMs)
         const spec = weaponSpecs[loadout.weaponId]
         if (spec?.type === 'sam') {
           loadout.count = Math.min(loadout.maxCount, loadout.count + Math.ceil(loadout.maxCount * 0.25))
@@ -326,15 +426,6 @@ function computeDamage(spec: WeaponSpec, targetHardness: number): number {
 
   const raw = (spec.warhead_kg / targetHardness) * cepFactor * 100
   return Math.min(100, Math.max(1, Math.round(raw)))
-}
-
-function generateMissilePath(
-  from: Position,
-  to: Position,
-  _spec: WeaponSpec,
-  numSegments: number,
-): [number, number][] {
-  return greatCirclePath(from, to, numSegments)
 }
 
 function generateTimestamps(

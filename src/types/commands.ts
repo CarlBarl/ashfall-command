@@ -7,3 +7,4 @@ export type Command =
   | { type: 'SET_SPEED'; speed: GameTime['speed'] }
   | { type: 'DECLARE_WAR'; target: NationId }
   | { type: 'CEASE_FIRE'; target: NationId }
+  | { type: 'LAUNCH_SAM'; launcherId: UnitId; weaponId: WeaponId; missileId: string }

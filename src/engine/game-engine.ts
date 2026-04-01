@@ -5,7 +5,7 @@ import { usaUnits } from '@/data/units/usa-orbat'
 import { iranUnits } from '@/data/units/iran-orbat'
 import { SeededRNG } from './utils/rng'
 import { processMovement } from './systems/movement'
-import { processCombat, launchMissile } from './systems/combat'
+import { processCombat, launchMissile, launchSAM } from './systems/combat'
 import { processAI } from './systems/ai'
 import { processEconomy } from './systems/economy'
 import { processOrders } from './systems/orders'
@@ -131,6 +131,10 @@ export class GameEngine {
       case 'LAUNCH_MISSILE': {
         const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId)
         if (event) this.emitEvent(event)
+        break
+      }
+      case 'LAUNCH_SAM': {
+        launchSAM(state, cmd.launcherId, cmd.weaponId, cmd.missileId, this.rng)
         break
       }
       case 'CEASE_FIRE': {
