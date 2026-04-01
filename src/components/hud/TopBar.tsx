@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
+import { useStrikeStore } from '@/store/strike-store'
 import { sendCommand } from '@/store/bridge'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import type { ROE } from '@/types/game'
@@ -120,6 +121,11 @@ export default function TopBar() {
             compact={isMobile}
           />
         ))}
+
+        <Sep />
+
+        {/* Strike planner shortcut */}
+        <StrikeBtn compact={isMobile} />
 
         <Sep />
 
@@ -339,6 +345,31 @@ function ToggleBtn({
       }}
     >
       {label}
+    </button>
+  )
+}
+
+function StrikeBtn({ compact }: { compact: boolean }) {
+  const { open, openStrike, closeStrike } = useStrikeStore()
+  return (
+    <button
+      onClick={() => open ? closeStrike() : openStrike('plan')}
+      style={{
+        background: open ? 'var(--iran-secondary)' : 'none',
+        border: `1px solid ${open ? 'var(--iran-primary)' : 'transparent'}`,
+        borderRadius: 3,
+        color: open ? '#fff' : 'var(--iran-primary)',
+        cursor: 'pointer',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--font-size-xs)',
+        padding: compact ? '2px 4px' : '2px 6px',
+        textTransform: 'uppercase',
+        fontWeight: 700,
+        letterSpacing: '0.03em',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {compact ? 'ATK' : 'STRIKE'}
     </button>
   )
 }
