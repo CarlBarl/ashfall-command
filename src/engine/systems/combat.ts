@@ -2,135 +2,116 @@ import type { GameState, GameEvent, Missile, Unit, WeaponSpec, ADSystemSpec } fr
 import type { SeededRNG } from '../utils/rng'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import { adSystems } from '@/data/weapons/air-defense'
-import { haversine } from '../utils/geo'
+import { haversine, bearing, destination } from '../utils/geo'
 import { greatCirclePath, machToKmh } from '../utils/geo'
 import { detectThreats } from './detection'
 
 let missileCounter = 0
+let interceptorCounter = 0
 
-// Track active fire channels per AD system per unit: `${unitId}:${adSystemId}` → Set<missileId>
+// Track active fire channels per AD system per unit: `${unitId}:${adSystemId}` -> Set<missileId>
 const activeEngagements = new Map<string, Set<string>>()
 
 export function processCombat(state: GameState, rng: SeededRNG): void {
-  updateMissilePositions(state)
+  updateMissileFuel(state)
+  updateMissileSpeed(state)
   updateMissileAltitudes(state)
+  updateMissilePositions(state)
   runADEngagement(state, rng)
+  updateInterceptors(state, rng)
   resolveImpacts(state)
   updateReloads(state)
 }
 
-/** Launch a missile — called from executeCommand */
-export function launchMissile(
-  state: GameState,
-  launcherId: string,
-  weaponId: string,
-  targetId: string,
-): GameEvent | null {
-  const launcher = state.units.get(launcherId)
-  const target = state.units.get(targetId)
-  if (!launcher || !target) return null
+// ===============================================
+//  FUEL MODEL
+// ===============================================
 
-  const loadout = launcher.weapons.find(w => w.weaponId === weaponId)
-  if (!loadout || loadout.count <= 0) return null
+function updateMissileFuel(state: GameState): void {
+  const toRemove: string[] = []
 
-  const spec = weaponSpecs[weaponId]
-  if (!spec) return null
+  for (const missile of state.missiles.values()) {
+    if (missile.status !== 'inflight') continue
 
-  const dist = haversine(launcher.position, target.position)
-  if (dist > spec.range_km) return null
+    const spec = weaponSpecs[missile.weaponId]
+    if (!spec) continue
 
-  loadout.count--
-
-  if (loadout.count === 0) {
-    emitEvents(state, [{
-      type: 'AMMO_DEPLETED',
-      unitId: launcherId,
-      weaponId,
-      tick: state.time.tick,
-    }])
-  }
-
-  const flightTimeMs = computeFlightTime(dist, spec)
-  const numSegments = Math.max(20, Math.ceil(dist / 10))
-  const path = greatCirclePath(launcher.position, target.position, numSegments)
-  const timestamps = generateTimestamps(state.time.timestamp, flightTimeMs, numSegments)
-
-  const id = `m_${++missileCounter}`
-  const missile: Missile = {
-    id,
-    weaponId,
-    launcherId,
-    targetId,
-    nation: launcher.nation,
-    path,
-    timestamps,
-    status: 'inflight',
-    launchTime: state.time.timestamp,
-    eta: state.time.timestamp + flightTimeMs,
-    altitude_km: spec.type === 'ballistic_missile' ? 0 : spec.flight_altitude_ft * 0.0003048,
-    phase: spec.type === 'ballistic_missile' ? 'boost' : 'cruise',
-  }
-
-  state.missiles.set(id, missile)
-
-  return {
-    type: 'MISSILE_LAUNCHED',
-    missileId: id,
-    launcherId,
-    targetId,
-    weaponName: spec.name,
-    tick: state.time.tick,
-  }
-}
-
-/** Manually fire a SAM at a specific missile */
-export function launchSAM(
-  state: GameState,
-  launcherId: string,
-  weaponId: string,
-  missileId: string,
-  rng: SeededRNG,
-): GameEvent | null {
-  const launcher = state.units.get(launcherId)
-  if (!launcher) return null
-
-  const loadout = launcher.weapons.find(w => w.weaponId === weaponId)
-  if (!loadout || loadout.count <= 0) return null
-
-  const interceptorSpec = weaponSpecs[weaponId]
-  if (!interceptorSpec || interceptorSpec.type !== 'sam') return null
-
-  const missile = state.missiles.get(missileId)
-  if (!missile || missile.status !== 'inflight') return null
-
-  // Check altitude envelope
-  const adSpec = findADSpecForWeapon(weaponId)
-  if (adSpec && missile.altitude_km > adSpec.max_altitude_km) return null // can't reach
-
-  loadout.count--
-
-  const targetSpec = weaponSpecs[missile.weaponId]
-  const pKill = computePKill(interceptorSpec, targetSpec, launcher, missile, adSpec?.fire_channels ?? 6, 0)
-
-  if (rng.chance(pKill)) {
-    missile.status = 'intercepted'
-    state.missiles.delete(missileId)
-    const event: GameEvent = {
-      type: 'MISSILE_INTERCEPTED',
-      missileId,
-      interceptorId: launcherId,
-      tick: state.time.tick,
+    if (missile.fuel_remaining_sec > 0) {
+      missile.fuel_remaining_sec = Math.max(0, missile.fuel_remaining_sec - 1)
     }
-    emitEvents(state, [event])
-    return event
+
+    if (missile.fuel_remaining_sec <= 0) {
+      if (missile.is_interceptor) {
+        // Interceptors with no fuel have missed their target
+        toRemove.push(missile.id)
+      } else if (spec.type === 'cruise_missile' || spec.type === 'ashm') {
+        // Cruise missiles: speed decays and altitude drops (handled in speed/altitude updates)
+        // If altitude has reached 0 or below, crash
+        if (missile.altitude_km <= 0) {
+          toRemove.push(missile.id)
+        }
+      }
+      // Ballistic missiles: fuel only matters in boost phase, midcourse/terminal are unpowered
+    }
   }
 
-  return null // missed
+  for (const id of toRemove) {
+    state.missiles.delete(id)
+  }
 }
 
-// ═══════════════════════════════════════════════
+// ===============================================
+//  SPEED MODEL
+// ===============================================
+
+function updateMissileSpeed(state: GameState): void {
+  for (const missile of state.missiles.values()) {
+    if (missile.status !== 'inflight') continue
+
+    const spec = weaponSpecs[missile.weaponId]
+    if (!spec) continue
+
+    if (missile.is_interceptor) {
+      // Interceptors fly at spec speed while they have fuel
+      if (missile.fuel_remaining_sec > 0) {
+        missile.speed_current_mach = spec.speed_mach
+      }
+      // If fuel is out, interceptor will be removed by updateMissileFuel
+      continue
+    }
+
+    if (spec.type === 'ballistic_missile') {
+      const flightDuration = missile.eta - missile.launchTime
+      const elapsed = state.time.timestamp - missile.launchTime
+      const progress = Math.max(0, Math.min(1, elapsed / flightDuration))
+
+      if (progress < 0.15) {
+        // Boost phase: ramp from 0 to spec speed
+        const boostProgress = progress / 0.15
+        missile.speed_current_mach = spec.speed_mach * boostProgress
+      } else if (progress < 0.7) {
+        // Midcourse: slight drag
+        missile.speed_current_mach *= 0.9999
+      } else {
+        // Terminal: speed increases due to gravity (reentry)
+        const terminalProgress = (progress - 0.7) / 0.3
+        missile.speed_current_mach *= (1 + 0.001 * terminalProgress)
+      }
+    } else {
+      // Cruise missiles and ASHMs
+      if (missile.fuel_remaining_sec > 0) {
+        missile.speed_current_mach = spec.speed_mach
+      } else {
+        // Out of fuel: speed decays 5% per second
+        missile.speed_current_mach *= 0.95
+      }
+    }
+  }
+}
+
+// ===============================================
 //  ALTITUDE MODEL
-// ═══════════════════════════════════════════════
+// ===============================================
 
 function updateMissileAltitudes(state: GameState): void {
   for (const missile of state.missiles.values()) {
@@ -138,6 +119,17 @@ function updateMissileAltitudes(state: GameState): void {
 
     const spec = weaponSpecs[missile.weaponId]
     if (!spec) continue
+
+    if (missile.is_interceptor) {
+      // Interceptors climb toward target altitude (simplified)
+      const target = state.missiles.get(missile.interceptTargetMissileId ?? '')
+      if (target) {
+        // Gradually approach target altitude
+        const diff = target.altitude_km - missile.altitude_km
+        missile.altitude_km += diff * 0.1
+      }
+      continue
+    }
 
     if (spec.type === 'ballistic_missile') {
       const flightDuration = missile.eta - missile.launchTime
@@ -161,18 +153,109 @@ function updateMissileAltitudes(state: GameState): void {
         missile.altitude_km = peakAltKm * (1 - termProgress) * 0.5
       }
     } else {
-      // Cruise missiles fly at constant low altitude
+      // Cruise missiles fly at constant low altitude while fueled
       missile.phase = 'cruise'
-      missile.altitude_km = spec.flight_altitude_ft * 0.0003048
+      if (missile.fuel_remaining_sec > 0) {
+        missile.altitude_km = spec.flight_altitude_ft * 0.0003048
+      } else {
+        // Fuel exhausted: altitude drops 0.01 km/sec
+        missile.altitude_km = Math.max(0, missile.altitude_km - 0.01)
+      }
     }
   }
 }
 
-// ═══════════════════════════════════════════════
-//  AD ENGAGEMENT — multi-system, altitude-aware
-// ═══════════════════════════════════════════════
+// ===============================================
+//  POSITION UPDATE — uses speed_current_mach
+// ===============================================
 
-function runADEngagement(state: GameState, rng: SeededRNG): void {
+function updateMissilePositions(state: GameState): void {
+  for (const missile of state.missiles.values()) {
+    if (missile.status !== 'inflight') continue
+    if (missile.is_interceptor) continue // interceptors are moved in updateInterceptors
+
+    const target = state.units.get(missile.targetId)
+    if (!target) {
+      // Target gone, impact at current position
+      if (state.time.timestamp >= missile.eta) {
+        missile.status = 'impact'
+      }
+      continue
+    }
+
+    // Compute km traveled this tick (1 tick = 1 second of game time)
+    const kmPerSec = machToKmh(missile.speed_current_mach) / 3600
+    const currentPos = getCurrentMissilePosition(missile, state.time.timestamp)
+    if (!currentPos) {
+      if (state.time.timestamp >= missile.eta) {
+        missile.status = 'impact'
+      }
+      continue
+    }
+
+    const distToTarget = haversine(
+      { lng: currentPos[0], lat: currentPos[1] },
+      target.position,
+    )
+
+    // If close enough or past ETA, mark as impact
+    if (distToTarget <= kmPerSec || state.time.timestamp >= missile.eta) {
+      missile.status = 'impact'
+      continue
+    }
+
+    // Update ETA based on current speed
+    if (missile.speed_current_mach > 0) {
+      const timeToTargetMs = (distToTarget / kmPerSec) * 1000
+      missile.eta = state.time.timestamp + timeToTargetMs
+    }
+
+    // Advance position along great circle toward target
+    const brng = bearing(
+      { lng: currentPos[0], lat: currentPos[1] },
+      target.position,
+    )
+    const newPos = destination(
+      { lng: currentPos[0], lat: currentPos[1] },
+      brng,
+      kmPerSec,
+    )
+
+    // Append to path + timestamps for TripsLayer visualization
+    missile.path.push([newPos.lng, newPos.lat])
+    missile.timestamps.push(state.time.timestamp + 1000)
+  }
+}
+
+/** Get current position of a missile by interpolating its path */
+function getCurrentMissilePosition(missile: Missile, currentTime: number): [number, number] | null {
+  const { timestamps, path } = missile
+  if (path.length === 0) return null
+
+  // Return the most recent path point (since we now append each tick)
+  if (timestamps.length > 0 && currentTime >= timestamps[timestamps.length - 1]) {
+    return path[path.length - 1]
+  }
+
+  // Interpolate between path segments
+  for (let i = 0; i < timestamps.length - 1; i++) {
+    if (currentTime >= timestamps[i] && currentTime < timestamps[i + 1]) {
+      const t = (currentTime - timestamps[i]) / (timestamps[i + 1] - timestamps[i])
+      return [
+        path[i][0] + (path[i + 1][0] - path[i][0]) * t,
+        path[i][1] + (path[i + 1][1] - path[i][1]) * t,
+      ]
+    }
+  }
+
+  return path[path.length - 1]
+}
+
+// ===============================================
+//  AD ENGAGEMENT — creates interceptor Missiles
+// ===============================================
+
+function runADEngagement(state: GameState, _rng: SeededRNG): void {
   const events: GameEvent[] = []
 
   for (const unit of state.units.values()) {
@@ -209,11 +292,13 @@ function runADEngagement(state: GameState, rng: SeededRNG): void {
         if (channelsUsed >= availableChannels) break
         if (loadout.count <= 0) break
         if (engaged.has(threat.missile.id)) continue
+        // Skip interceptor missiles - don't shoot at our own interceptors
+        if (threat.missile.is_interceptor) continue
 
         // Already engaged by another system on this unit?
         if (isAlreadyEngagedByUnit(unit.id, threat.missile.id)) continue
 
-        // ALTITUDE CHECK — can this system reach the missile?
+        // ALTITUDE CHECK -- can this system reach the missile?
         if (threat.missile.altitude_km > adSpec.max_altitude_km) continue
 
         // RANGE CHECK
@@ -222,10 +307,7 @@ function runADEngagement(state: GameState, rng: SeededRNG): void {
         const interceptorSpec = weaponSpecs[loadout.weaponId]
         if (!interceptorSpec) continue
 
-        const targetSpec = weaponSpecs[threat.missile.weaponId]
-        const pKill = computePKill(interceptorSpec, targetSpec, unit, threat.missile, adSpec.fire_channels, engaged.size)
-
-        // Fire!
+        // Fire! Decrement ammo and create an interceptor missile
         loadout.count--
         engaged.add(threat.missile.id)
         channelsUsed++
@@ -240,22 +322,168 @@ function runADEngagement(state: GameState, rng: SeededRNG): void {
           loadout.reloadingUntil = state.time.timestamp + adSpec.reload_time_sec * 1000
         }
 
-        if (rng.chance(pKill)) {
-          threat.missile.status = 'intercepted'
-          events.push({
-            type: 'MISSILE_INTERCEPTED',
-            missileId: threat.missile.id,
-            interceptorId: unit.id,
-            tick: state.time.tick,
-          })
-          state.missiles.delete(threat.missile.id)
-          engaged.delete(threat.missile.id)
+        // Compute interceptor flight parameters
+        const intSpeedKmh = machToKmh(interceptorSpec.speed_mach)
+        const fuelSec = adSpec.engagement_range_km / (intSpeedKmh / 3600)
+        const flightTimeMs = (threat.distKm / intSpeedKmh) * 3600 * 1000
+
+        // Predict intercept point: approximate where the threat will be
+        const threatPos = getCurrentMissilePosition(threat.missile, state.time.timestamp)
+        if (!threatPos) continue
+
+        const interceptPoint = { lng: threatPos[0], lat: threatPos[1] }
+        const numSegments = Math.max(5, Math.ceil(threat.distKm / 5))
+        const path = greatCirclePath(unit.position, interceptPoint, numSegments)
+        const timestamps = generateTimestamps(state.time.timestamp, flightTimeMs, numSegments)
+
+        const intId = `int_${++interceptorCounter}`
+        const interceptor: Missile = {
+          id: intId,
+          weaponId: loadout.weaponId,
+          launcherId: unit.id,
+          targetId: '', // not targeting a unit
+          nation: unit.nation,
+          path,
+          timestamps,
+          status: 'inflight',
+          launchTime: state.time.timestamp,
+          eta: state.time.timestamp + flightTimeMs,
+          altitude_km: 0,
+          phase: 'cruise',
+          speed_current_mach: interceptorSpec.speed_mach,
+          fuel_remaining_sec: fuelSec,
+          is_interceptor: true,
+          interceptTargetMissileId: threat.missile.id,
         }
+
+        state.missiles.set(intId, interceptor)
       }
     }
   }
 
   emitEvents(state, events)
+}
+
+// ===============================================
+//  INTERCEPTOR PURSUIT + RESOLUTION
+// ===============================================
+
+function updateInterceptors(state: GameState, rng: SeededRNG): void {
+  const events: GameEvent[] = []
+  const toRemove: string[] = []
+
+  for (const interceptor of state.missiles.values()) {
+    if (!interceptor.is_interceptor) continue
+    if (interceptor.status !== 'inflight') continue
+
+    const targetMissileId = interceptor.interceptTargetMissileId
+    if (!targetMissileId) {
+      toRemove.push(interceptor.id)
+      continue
+    }
+
+    const targetMissile = state.missiles.get(targetMissileId)
+
+    // If target is gone (destroyed/impacted), remove interceptor
+    if (!targetMissile || targetMissile.status !== 'inflight') {
+      toRemove.push(interceptor.id)
+      continue
+    }
+
+    // If fuel exhausted, remove (missed)
+    if (interceptor.fuel_remaining_sec <= 0) {
+      toRemove.push(interceptor.id)
+      continue
+    }
+
+    // Compute distance between interceptor and target
+    const intPos = getCurrentMissilePosition(interceptor, state.time.timestamp)
+    const targetPos = getCurrentMissilePosition(targetMissile, state.time.timestamp)
+
+    if (!intPos || !targetPos) {
+      toRemove.push(interceptor.id)
+      continue
+    }
+
+    const dist = haversine(
+      { lng: intPos[0], lat: intPos[1] },
+      { lng: targetPos[0], lat: targetPos[1] },
+    )
+
+    // Close enough for engagement: within 2km
+    if (dist < 2) {
+      const interceptorSpec = weaponSpecs[interceptor.weaponId]
+      const targetSpec = weaponSpecs[targetMissile.weaponId]
+
+      // Find the launching unit for pKill calculation
+      const adUnit = state.units.get(interceptor.launcherId)
+      if (!adUnit || !interceptorSpec) {
+        toRemove.push(interceptor.id)
+        continue
+      }
+
+      const adSpec = findADSpecForWeapon(interceptor.weaponId)
+      const pKill = computePKill(
+        interceptorSpec,
+        targetSpec,
+        adUnit,
+        targetMissile,
+        adSpec?.fire_channels ?? 6,
+        0,
+      )
+
+      if (rng.chance(pKill)) {
+        // Hit! Destroy both
+        targetMissile.status = 'intercepted'
+        events.push({
+          type: 'MISSILE_INTERCEPTED',
+          missileId: targetMissileId,
+          interceptorId: interceptor.launcherId,
+          tick: state.time.tick,
+        })
+        state.missiles.delete(targetMissileId)
+        toRemove.push(interceptor.id)
+
+        // Clean up engagement tracking
+        cleanEngagement(interceptor.launcherId, targetMissileId)
+      } else {
+        // Missed! Remove interceptor
+        toRemove.push(interceptor.id)
+        cleanEngagement(interceptor.launcherId, targetMissileId)
+      }
+      continue
+    }
+
+    // Pursuit: update interceptor position toward target
+    const brng = bearing(
+      { lng: intPos[0], lat: intPos[1] },
+      { lng: targetPos[0], lat: targetPos[1] },
+    )
+    const kmPerSec = machToKmh(interceptor.speed_current_mach) / 3600
+    const newPos = destination(
+      { lng: intPos[0], lat: intPos[1] },
+      brng,
+      kmPerSec,
+    )
+
+    interceptor.path.push([newPos.lng, newPos.lat])
+    interceptor.timestamps.push(state.time.timestamp + 1000)
+  }
+
+  for (const id of toRemove) {
+    state.missiles.delete(id)
+  }
+
+  emitEvents(state, events)
+}
+
+/** Remove a missile from engagement tracking */
+function cleanEngagement(unitId: string, missileId: string): void {
+  for (const [key, engaged] of activeEngagements) {
+    if (key.startsWith(`${unitId}:`)) {
+      engaged.delete(missileId)
+    }
+  }
 }
 
 function computePKill(
@@ -269,9 +497,12 @@ function computePKill(
   const targetType = target?.type ?? 'cruise_missile'
   let pKill = interceptor.pk[targetType] ?? 0.5
 
-  // Speed factor
+  // Speed factor -- use actual current speed, not spec speed
   if (target) {
-    const speedFactor = Math.min(1, interceptor.speed_mach / target.speed_mach)
+    const effectiveTargetSpeed = missile.speed_current_mach > 0
+      ? missile.speed_current_mach
+      : target.speed_mach
+    const speedFactor = Math.min(1, interceptor.speed_mach / effectiveTargetSpeed)
     pKill *= speedFactor
   }
 
@@ -284,13 +515,13 @@ function computePKill(
   // Health factor
   pKill *= adUnit.health / 100
 
-  // Altitude penalty — harder to hit at extremes of envelope
+  // Altitude penalty -- harder to hit at extremes of envelope
   if (target?.type === 'ballistic_missile') {
     // Terminal phase is harder (fast reentry)
     if (missile.phase === 'terminal') pKill *= 0.75
-    // Midcourse at very high altitude — only BMD interceptors good here
+    // Midcourse at very high altitude -- only BMD interceptors good here
     if (missile.phase === 'midcourse' && missile.altitude_km > 100) pKill *= 0.85
-    // Boost phase — difficult but possible for forward-deployed BMD
+    // Boost phase -- difficult but possible for forward-deployed BMD
     if (missile.phase === 'boost') pKill *= 0.7
   }
 
@@ -301,6 +532,161 @@ function computePKill(
 
   return Math.max(0.05, Math.min(0.95, pKill))
 }
+
+// ===============================================
+//  LAUNCH FUNCTIONS
+// ===============================================
+
+/** Launch a missile -- called from executeCommand */
+export function launchMissile(
+  state: GameState,
+  launcherId: string,
+  weaponId: string,
+  targetId: string,
+): GameEvent | null {
+  const launcher = state.units.get(launcherId)
+  const target = state.units.get(targetId)
+  if (!launcher || !target) return null
+
+  const loadout = launcher.weapons.find(w => w.weaponId === weaponId)
+  if (!loadout || loadout.count <= 0) return null
+
+  const spec = weaponSpecs[weaponId]
+  if (!spec) return null
+
+  const dist = haversine(launcher.position, target.position)
+  if (dist > spec.range_km) return null
+
+  loadout.count--
+
+  if (loadout.count === 0) {
+    emitEvents(state, [{
+      type: 'AMMO_DEPLETED',
+      unitId: launcherId,
+      weaponId,
+      tick: state.time.tick,
+    }])
+  }
+
+  const flightTimeMs = computeFlightTime(dist, spec)
+  const numSegments = Math.max(20, Math.ceil(dist / 10))
+  const path = greatCirclePath(launcher.position, target.position, numSegments)
+  const timestamps = generateTimestamps(state.time.timestamp, flightTimeMs, numSegments)
+
+  // Fuel duration: range_km / (speed_kmh / 3600) = seconds of burn
+  const speedKmPerSec = machToKmh(spec.speed_mach) / 3600
+  const fuelSec = spec.range_km / speedKmPerSec
+
+  const id = `m_${++missileCounter}`
+  const missile: Missile = {
+    id,
+    weaponId,
+    launcherId,
+    targetId,
+    nation: launcher.nation,
+    path,
+    timestamps,
+    status: 'inflight',
+    launchTime: state.time.timestamp,
+    eta: state.time.timestamp + flightTimeMs,
+    altitude_km: spec.type === 'ballistic_missile' ? 0 : spec.flight_altitude_ft * 0.0003048,
+    phase: spec.type === 'ballistic_missile' ? 'boost' : 'cruise',
+    speed_current_mach: spec.type === 'ballistic_missile' ? 0 : spec.speed_mach,
+    fuel_remaining_sec: fuelSec,
+    is_interceptor: false,
+  }
+
+  state.missiles.set(id, missile)
+
+  return {
+    type: 'MISSILE_LAUNCHED',
+    missileId: id,
+    launcherId,
+    targetId,
+    weaponName: spec.name,
+    tick: state.time.tick,
+  }
+}
+
+/** Manually fire a SAM at a specific missile */
+export function launchSAM(
+  state: GameState,
+  launcherId: string,
+  weaponId: string,
+  missileId: string,
+  _rng: SeededRNG,
+): GameEvent | null {
+  const launcher = state.units.get(launcherId)
+  if (!launcher) return null
+
+  const loadout = launcher.weapons.find(w => w.weaponId === weaponId)
+  if (!loadout || loadout.count <= 0) return null
+
+  const interceptorSpec = weaponSpecs[weaponId]
+  if (!interceptorSpec || interceptorSpec.type !== 'sam') return null
+
+  const targetMissile = state.missiles.get(missileId)
+  if (!targetMissile || targetMissile.status !== 'inflight') return null
+
+  // Check altitude envelope
+  const adSpec = findADSpecForWeapon(weaponId)
+  if (adSpec && targetMissile.altitude_km > adSpec.max_altitude_km) return null // can't reach
+
+  loadout.count--
+
+  if (loadout.count === 0) {
+    emitEvents(state, [{
+      type: 'AMMO_DEPLETED',
+      unitId: launcherId,
+      weaponId,
+      tick: state.time.tick,
+    }])
+  }
+
+  // Create an interceptor missile instead of instant resolution
+  const intSpeedKmh = machToKmh(interceptorSpec.speed_mach)
+  const fuelSec = adSpec
+    ? adSpec.engagement_range_km / (intSpeedKmh / 3600)
+    : interceptorSpec.range_km / (intSpeedKmh / 3600)
+
+  const threatPos = getCurrentMissilePosition(targetMissile, state.time.timestamp)
+  if (!threatPos) return null
+
+  const interceptPoint = { lng: threatPos[0], lat: threatPos[1] }
+  const dist = haversine(launcher.position, interceptPoint)
+  const flightTimeMs = (dist / intSpeedKmh) * 3600 * 1000
+  const numSegments = Math.max(5, Math.ceil(dist / 5))
+  const path = greatCirclePath(launcher.position, interceptPoint, numSegments)
+  const timestamps = generateTimestamps(state.time.timestamp, flightTimeMs, numSegments)
+
+  const intId = `int_${++interceptorCounter}`
+  const interceptor: Missile = {
+    id: intId,
+    weaponId,
+    launcherId,
+    targetId: '', // not targeting a unit
+    nation: launcher.nation,
+    path,
+    timestamps,
+    status: 'inflight',
+    launchTime: state.time.timestamp,
+    eta: state.time.timestamp + flightTimeMs,
+    altitude_km: 0,
+    phase: 'cruise',
+    speed_current_mach: interceptorSpec.speed_mach,
+    fuel_remaining_sec: fuelSec,
+    is_interceptor: true,
+    interceptTargetMissileId: missileId,
+  }
+
+  state.missiles.set(intId, interceptor)
+
+  return null // no immediate event; events fire when intercept resolves
+}
+
+// ===============================================
+//  AD SYSTEM HELPERS
+// ===============================================
 
 /** Find all AD systems matching this unit's SAM weapons */
 function findAllADSystems(unit: Unit): { adSpec: ADSystemSpec; loadout: typeof unit.weapons[0] }[] {
@@ -337,24 +723,21 @@ function isAlreadyEngagedByUnit(unitId: string, missileId: string): boolean {
   return false
 }
 
-// ═══════════════════════════════════════════════
-//  MISSILE FLIGHT + IMPACT
-// ═══════════════════════════════════════════════
-
-function updateMissilePositions(state: GameState): void {
-  for (const missile of state.missiles.values()) {
-    if (missile.status !== 'inflight') continue
-    if (state.time.timestamp >= missile.eta) {
-      missile.status = 'impact'
-    }
-  }
-}
+// ===============================================
+//  IMPACT RESOLUTION
+// ===============================================
 
 function resolveImpacts(state: GameState): void {
   const events: GameEvent[] = []
 
   for (const missile of state.missiles.values()) {
     if (missile.status !== 'impact') continue
+
+    // Interceptors don't cause damage on impact
+    if (missile.is_interceptor) {
+      state.missiles.delete(missile.id)
+      continue
+    }
 
     const target = state.units.get(missile.targetId)
     const spec = weaponSpecs[missile.weaponId]
@@ -403,9 +786,9 @@ function updateReloads(state: GameState): void {
   }
 }
 
-// ═══════════════════════════════════════════════
+// ===============================================
 //  HELPERS
-// ═══════════════════════════════════════════════
+// ===============================================
 
 function emitEvents(state: GameState, events: GameEvent[]): void {
   state.events.push(...events)

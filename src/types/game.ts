@@ -146,6 +146,14 @@ export interface Missile {
   altitude_km: number
   /** Flight phase for ballistic missiles */
   phase: 'boost' | 'midcourse' | 'terminal' | 'cruise'
+  /** Actual current speed in Mach (varies with fuel, phase, gravity) */
+  speed_current_mach: number
+  /** Seconds of fuel remaining */
+  fuel_remaining_sec: number
+  /** True for SAM interceptor missiles */
+  is_interceptor: boolean
+  /** Which missile this interceptor is chasing */
+  interceptTargetMissileId?: string
 }
 
 export interface Engagement {
