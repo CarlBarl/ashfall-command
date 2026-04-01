@@ -34,14 +34,7 @@ interface UIState {
   setLeftPanel: (panel: LeftPanel) => void
   toggleLeftPanel: (panel: 'orbat' | 'stats' | 'economy') => void
 
-  // COMPAT — these delegate to strike-store but exist here for migration
-  targetUnitId: UnitId | null
-  targetingMode: boolean
-  showCommand: boolean
-  showAttackPlan: boolean
-  setTarget: (id: UnitId | null) => void
-  enterTargetingMode: () => void
-  exitTargetingMode: () => void
+  // Legacy compat — togglePanel still used by TopBar for left panels
   togglePanel: (panel: string) => void
 }
 
@@ -84,24 +77,12 @@ export const useUIStore = create<UIState>((set) => ({
   // Map
   toggleRangeRings: () => set((s) => ({ showRangeRings: !s.showRangeRings })),
 
-  // COMPAT shims — will be removed when old panels are deleted
-  targetUnitId: null,
-  targetingMode: false,
-  showCommand: false,
-  showAttackPlan: false,
-  setTarget: (id) => set({ targetUnitId: id, targetingMode: false }),
-  enterTargetingMode: () => set({ targetingMode: true }),
-  exitTargetingMode: () => set({ targetingMode: false }),
   togglePanel: (panel) => {
     if (panel === 'orbat' || panel === 'stats' || panel === 'economy') {
       set((s) => {
         const next = s.leftPanel === panel ? null : panel
         return { leftPanel: next, showOrbat: next === 'orbat', showStats: next === 'stats', showEconomy: next === 'economy' }
       })
-    } else if (panel === 'attackPlan') {
-      set((s) => ({ showAttackPlan: !s.showAttackPlan }))
-    } else if (panel === 'command') {
-      set((s) => ({ showCommand: !s.showCommand }))
     }
   },
 

@@ -221,9 +221,13 @@ function updateMissilePositions(state: GameState): void {
       kmPerSec,
     )
 
-    // Append to path + timestamps for TripsLayer visualization
+    // Append to path + timestamps for TripsLayer visualization (cap at 500 points)
     missile.path.push([newPos.lng, newPos.lat])
     missile.timestamps.push(state.time.timestamp + 1000)
+    if (missile.path.length > 500) {
+      missile.path.splice(0, missile.path.length - 500)
+      missile.timestamps.splice(0, missile.timestamps.length - 500)
+    }
   }
 }
 

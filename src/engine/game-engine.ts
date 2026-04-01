@@ -105,8 +105,12 @@ export class GameEngine {
         break
       case 'DECLARE_WAR': {
         const player: NationId = 'usa'
-        state.nations[player].atWar.push(cmd.target)
-        state.nations[cmd.target].atWar.push(player)
+        if (!state.nations[player].atWar.includes(cmd.target)) {
+          state.nations[player].atWar.push(cmd.target)
+        }
+        if (!state.nations[cmd.target].atWar.includes(player)) {
+          state.nations[cmd.target].atWar.push(player)
+        }
         this.emitEvent({
           type: 'WAR_DECLARED',
           attacker: player,
@@ -164,6 +168,10 @@ export class GameEngine {
 
   private emitEvent(event: GameEvent): void {
     this.state.events.push(event)
+    // Cap event history to prevent unbounded memory growth
+    if (this.state.events.length > 2000) {
+      this.state.events.splice(0, this.state.events.length - 2000)
+    }
     this.state.pendingEvents.push(event)
   }
 }

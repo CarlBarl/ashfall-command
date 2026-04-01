@@ -88,8 +88,7 @@ export function createUnitLayer(
     if (isCluster(item)) clusterMap.set(item.id, item)
   }
 
-  // Export cluster map for GameMap to use
-  ;(createUnitLayer as any)._lastClusterMap = clusterMap
+  _lastClusterMap = clusterMap
 
   const iconLayer = new IconLayer<RenderUnit>({
     id: 'unit-layer',
@@ -222,9 +221,11 @@ export function createUnitLayer(
   return [pickLayer, iconLayer, labelLayer, badgeLayer]
 }
 
+let _lastClusterMap = new Map<string, UnitCluster>()
+
 /** Get the cluster map from the last render (used by GameMap for click handling) */
 export function getLastClusterMap(): Map<string, UnitCluster> {
-  return (createUnitLayer as any)._lastClusterMap ?? new Map()
+  return _lastClusterMap
 }
 
 function clusterLabel(c: UnitCluster): string {

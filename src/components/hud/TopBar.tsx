@@ -27,10 +27,10 @@ export default function TopBar() {
   const showOrbat = useUIStore((s) => s.showOrbat)
   const showStats = useUIStore((s) => s.showStats)
   const showEconomy = useUIStore((s) => s.showEconomy)
-  const togglePanel = useUIStore((s) => s.togglePanel)
+  // togglePanel replaced by handlePanelToggle using toggleLeftPanel
 
-  const viewState = useGameStore((s) => s.viewState)
-  const { units, nations } = viewState
+  const units = useGameStore((s) => s.viewState.units)
+  const nations = useGameStore((s) => s.viewState.nations)
 
   const usaNation = nations.find((n) => n.id === 'usa')
   const atWarWithIran = usaNation?.atWar.includes('iran') ?? false
@@ -47,12 +47,7 @@ export default function TopBar() {
 
   // Radio-group toggle: close others, toggle clicked
   const handlePanelToggle = (key: PanelKey) => {
-    for (const p of LEFT_PANELS) {
-      if (p.key !== key && panelStates[p.key]) {
-        togglePanel(p.key)
-      }
-    }
-    togglePanel(key)
+    useUIStore.getState().toggleLeftPanel(key)
   }
 
   // Determine the "dominant" theater ROE by checking what most USA units have
