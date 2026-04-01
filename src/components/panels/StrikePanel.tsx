@@ -446,6 +446,8 @@ function ConfigureTab() {
   const executing = useStrikeStore((s) => s.executing)
   const executionProgress = useStrikeStore((s) => s.executionProgress)
   const units = useGameStore((s) => s.viewState.units)
+  // Track manual edits — skip auto-allocation when user has overridden
+  const [manualOverride, setManualOverride] = useState(false)
   const [expandedLauncher, setExpandedLauncher] = useState<string | null>(null)
 
   const friendlyUnits = useMemo(
@@ -457,9 +459,9 @@ function ConfigureTab() {
     [units],
   )
 
-  // Auto-allocate when severity/cluster/targets change
+  // Auto-allocate when severity/cluster/targets change (unless manually overridden)
   useEffect(() => {
-    if (!strikeCluster) return
+    if (!strikeCluster || manualOverride) return
     const checkedTargets = targets.filter((t) => t.checked)
     if (checkedTargets.length === 0) {
       setAllocations([])
@@ -516,7 +518,12 @@ function ConfigureTab() {
     }
 
     setAllocations(allocs)
-  }, [strikeCluster, targets, severity, friendlyUnits, enemyUnits, setAllocations])
+  }, [strikeCluster, targets, severity, friendlyUnits, enemyUnits, setAllocations, manualOverride])
+
+  // Reset manual override when severity changes (user wants new auto-calculation)
+  useEffect(() => {
+    setManualOverride(false)
+  }, [severity])
 
   if (!strikeCluster) {
     return <EmptyState text='Click TARGET GROUP on an enemy cluster to configure a strike.' />
@@ -735,7 +742,7 @@ function ConfigureTab() {
                     background: 'var(--bg-tertiary)', border: '1px solid var(--border-default)',
                     borderRadius: 3, overflow: 'hidden',
                   }}>
-                    <QtyButton label="-" onClick={() => updateAllocation(a.unitId, a.weaponId, a.count - 1)} />
+                    <QtyButton label="-" onClick={() => { setManualOverride(true); updateAllocation(a.unitId, a.weaponId, a.count - 1) }} />
                     <span style={{
                       padding: '1px 4px', fontFamily: 'var(--font-mono)',
                       fontSize: '0.55rem', color: 'var(--text-primary)',
@@ -743,7 +750,7 @@ function ConfigureTab() {
                     }}>
                       {a.count}
                     </span>
-                    <QtyButton label="+" onClick={() => updateAllocation(a.unitId, a.weaponId, a.count + 1)} />
+                    <QtyButton label="+" onClick={() => { setManualOverride(true); updateAllocation(a.unitId, a.weaponId, a.count + 1) }} />
                   </div>
                 </div>
               ))}
