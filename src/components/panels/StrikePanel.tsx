@@ -139,13 +139,11 @@ export default function StrikePanel() {
     [selectedUnits],
   )
 
-  // Visibility logic per mode
-  const shouldShow =
-    (mode === 'direct' && selectedUnitIds.size > 0 && hasOffensiveWeapons) ||
-    (mode === 'configure' && strikeCluster !== null) ||
-    (mode === 'plan' && open)
-
-  if (!shouldShow && !open) return null
+  // Visibility: show when
+  // - explicitly opened (TARGET GROUP, STRIKE button)
+  // - in direct mode with offensive units selected (auto-show like old LaunchPanel)
+  const autoShowDirect = mode === 'direct' && selectedUnitIds.size > 0 && hasOffensiveWeapons
+  if (!open && !autoShowDirect) return null
 
   // Title per mode
   const title =
