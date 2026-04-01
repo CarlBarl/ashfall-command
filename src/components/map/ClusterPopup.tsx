@@ -137,56 +137,74 @@ export default function ClusterPopup({ cluster, x, y, onClose }: ClusterPopupPro
         )
       })}
 
-      {/* Action buttons */}
-      <div style={{ marginTop: 6, display: 'flex', gap: 4 }}>
-        {/* SELECT ALL — friendly units only */}
-        {!targetingMode && friendlyUnits.length > 1 && (
+      {/* Action buttons — always visible */}
+      <div style={{ marginTop: 6, display: 'flex', gap: 4, flexDirection: 'column' }}>
+        {/* SELECT ALL — for friendly clusters */}
+        {friendlyUnits.length > 1 && (
           <button
             onClick={() => {
               selectMultipleUnits(friendlyUnits.map(u => u.id))
               onClose()
             }}
             style={{
-              flex: 1,
-              padding: '5px 8px',
+              ...actionBtnStyle,
               background: 'var(--bg-hover)',
               border: '1px solid var(--border-accent)',
-              borderRadius: 4,
               color: 'var(--text-accent)',
-              cursor: 'pointer',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--font-size-xs)',
-              fontWeight: 600,
             }}
           >
-            SELECT ALL ({friendlyUnits.length})
+            SELECT ALL FRIENDLY ({friendlyUnits.length})
           </button>
         )}
 
-        {/* TARGET GROUP — in targeting mode */}
-        {targetingMode && cluster.units.length > 1 && (
+        {/* SELECT ALL in cluster (any nation — for inspection) */}
+        {cluster.units.length > 1 && friendlyUnits.length === 0 && (
+          <button
+            onClick={() => {
+              // Select first enemy to show its info
+              selectUnit(cluster.units[0].id)
+              onClose()
+            }}
+            style={{
+              ...actionBtnStyle,
+              background: 'var(--bg-hover)',
+              border: '1px solid var(--border-default)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            INSPECT ({cluster.count} units)
+          </button>
+        )}
+
+        {/* TARGET ALL — targets the primary, shown when a friendly unit is already selected */}
+        {cluster.units.length > 0 && cluster.units[0].nation !== 'usa' && (
           <button
             onClick={() => {
               setTarget(cluster.primary.id)
               onClose()
             }}
             style={{
-              flex: 1,
-              padding: '5px 8px',
+              ...actionBtnStyle,
               background: 'var(--iran-secondary)',
-              border: '1px solid var(--border-default)',
-              borderRadius: 4,
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--font-size-xs)',
-              fontWeight: 600,
+              border: '1px solid var(--iran-primary)',
+              color: '#fff',
             }}
           >
-            TARGET GROUP ({cluster.count})
+            TARGET {cluster.count > 1 ? `GROUP (${cluster.count})` : cluster.primary.name}
           </button>
         )}
       </div>
     </div>
   )
+}
+
+const actionBtnStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '5px 8px',
+  borderRadius: 4,
+  cursor: 'pointer',
+  fontFamily: 'var(--font-mono)',
+  fontSize: 'var(--font-size-xs)',
+  fontWeight: 600,
+  textAlign: 'center',
 }
