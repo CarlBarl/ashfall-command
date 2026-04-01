@@ -1,5 +1,6 @@
 import type { UnitCluster } from './layers/cluster'
 import { useUIStore } from '@/store/ui-store'
+import type { MouseEvent } from 'react'
 
 interface ClusterPopupProps {
   cluster: UnitCluster
@@ -18,15 +19,37 @@ const STATUS_DOT: Record<string, string> = {
 
 export default function ClusterPopup({ cluster, x, y, onClose }: ClusterPopupProps) {
   const selectUnit = useUIStore((s) => s.selectUnit)
+  const toggleUnitSelection = useUIStore((s) => s.toggleUnitSelection)
+  const selectMultipleUnits = useUIStore((s) => s.selectMultipleUnits)
+  const selectedUnitIds = useUIStore((s) => s.selectedUnitIds)
   const targetingMode = useUIStore((s) => s.targetingMode)
   const setTarget = useUIStore((s) => s.setTarget)
+
+  const friendlyUnits = cluster.units.filter(u => u.nation === 'usa')
+
+  const handleUnitClick = (unitId: string, e: MouseEvent) => {
+    if (targetingMode) {
+      setTarget(unitId)
+      onClose()
+      return
+    }
+
+    if (e.metaKey || e.ctrlKey) {
+      // Multi-select: toggle this unit, keep popup open
+      toggleUnitSelection(unitId)
+    } else {
+      // Single select: replace selection, close popup
+      selectUnit(unitId)
+      onClose()
+    }
+  }
 
   return (
     <div
       style={{
         position: 'fixed',
-        left: Math.min(x, window.innerWidth - 260),
-        top: Math.min(y, window.innerHeight - 300),
+        left: Math.min(x, window.innerWidth - 280),
+        top: Math.min(y, window.innerHeight - 350),
         background: 'var(--bg-panel)',
         border: '1px solid var(--border-default)',
         borderRadius: 'var(--panel-radius)',
@@ -34,13 +57,14 @@ export default function ClusterPopup({ cluster, x, y, onClose }: ClusterPopupPro
         zIndex: 50,
         fontFamily: 'var(--font-mono)',
         fontSize: 'var(--font-size-xs)',
-        minWidth: 220,
-        maxHeight: 300,
+        minWidth: 240,
+        maxHeight: 350,
         overflowY: 'auto',
         boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
       }}
       onMouseLeave={onClose}
     >
+      {/* Header */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -61,19 +85,19 @@ export default function ClusterPopup({ cluster, x, y, onClose }: ClusterPopupPro
         >x</button>
       </div>
 
+      {/* Hint */}
+      <div style={{ color: 'var(--text-muted)', fontSize: '0.55rem', marginBottom: 4, fontStyle: 'italic' }}>
+        {targetingMode ? 'Click to target' : 'Click to select / Cmd+click for multi-select'}
+      </div>
+
+      {/* Unit list */}
       {cluster.units.map(u => {
         const totalWeapons = u.weapons.reduce((s, w) => s + w.count, 0)
+        const isSelected = selectedUnitIds.has(u.id)
         return (
           <div
             key={u.id}
-            onClick={() => {
-              if (targetingMode) {
-                setTarget(u.id)
-              } else {
-                selectUnit(u.id)
-              }
-              onClose()
-            }}
+            onClick={(e) => handleUnitClick(u.id, e)}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -82,17 +106,17 @@ export default function ClusterPopup({ cluster, x, y, onClose }: ClusterPopupPro
               borderRadius: 3,
               cursor: 'pointer',
               marginBottom: 2,
+              borderLeft: isSelected ? '3px solid var(--border-accent)' : '3px solid transparent',
+              background: isSelected ? 'var(--bg-hover)' : 'transparent',
             }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)' }}
+            onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
           >
-            {/* Status dot */}
             <div style={{
               width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
               background: STATUS_DOT[u.status] ?? 'var(--text-muted)',
             }} />
 
-            {/* Name + category */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {u.name}
@@ -103,41 +127,66 @@ export default function ClusterPopup({ cluster, x, y, onClose }: ClusterPopupPro
               </div>
             </div>
 
-            {/* Targeting indicator */}
             {targetingMode && (
-              <span style={{ color: 'var(--iran-primary)', fontSize: '0.6rem', fontWeight: 600 }}>
-                TGT
-              </span>
+              <span style={{ color: 'var(--iran-primary)', fontSize: '0.6rem', fontWeight: 600 }}>TGT</span>
+            )}
+            {isSelected && !targetingMode && (
+              <span style={{ color: 'var(--text-accent)', fontSize: '0.6rem', fontWeight: 600 }}>SEL</span>
             )}
           </div>
         )
       })}
 
-      {/* Target all button in targeting mode */}
-      {targetingMode && cluster.units.length > 1 && (
-        <button
-          onClick={() => {
-            // Target the primary — user can fire salvo which hits the group
-            setTarget(cluster.primary.id)
-            onClose()
-          }}
-          style={{
-            width: '100%',
-            marginTop: 4,
-            padding: '5px 8px',
-            background: 'var(--iran-secondary)',
-            border: '1px solid var(--border-default)',
-            borderRadius: 4,
-            color: 'var(--text-primary)',
-            cursor: 'pointer',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--font-size-xs)',
-            fontWeight: 600,
-          }}
-        >
-          TARGET GROUP ({cluster.count} units)
-        </button>
-      )}
+      {/* Action buttons */}
+      <div style={{ marginTop: 6, display: 'flex', gap: 4 }}>
+        {/* SELECT ALL — friendly units only */}
+        {!targetingMode && friendlyUnits.length > 1 && (
+          <button
+            onClick={() => {
+              selectMultipleUnits(friendlyUnits.map(u => u.id))
+              onClose()
+            }}
+            style={{
+              flex: 1,
+              padding: '5px 8px',
+              background: 'var(--bg-hover)',
+              border: '1px solid var(--border-accent)',
+              borderRadius: 4,
+              color: 'var(--text-accent)',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--font-size-xs)',
+              fontWeight: 600,
+            }}
+          >
+            SELECT ALL ({friendlyUnits.length})
+          </button>
+        )}
+
+        {/* TARGET GROUP — in targeting mode */}
+        {targetingMode && cluster.units.length > 1 && (
+          <button
+            onClick={() => {
+              setTarget(cluster.primary.id)
+              onClose()
+            }}
+            style={{
+              flex: 1,
+              padding: '5px 8px',
+              background: 'var(--iran-secondary)',
+              border: '1px solid var(--border-default)',
+              borderRadius: 4,
+              color: 'var(--text-primary)',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--font-size-xs)',
+              fontWeight: 600,
+            }}
+          >
+            TARGET GROUP ({cluster.count})
+          </button>
+        )}
+      </div>
     </div>
   )
 }

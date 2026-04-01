@@ -2,6 +2,17 @@
 
 Browser-based geopolitical/military strategy simulator. PoC: USA vs Iran, 2026.
 
+## Design Philosophy
+
+**Realism is the #1 priority.** Every mechanic must be physically plausible:
+- Weapon specs must match real-world data (CSIS, FAS, IISS, GlobalFirepower)
+- Missile flight profiles must model fuel, speed, altitude realistically
+- AD engagement envelopes must respect altitude limits (SM-2 can't reach exo-atmospheric)
+- Interceptors are real flying objects, not instant dice rolls
+- Ballistic missiles accelerate during terminal reentry
+- Cruise missiles slow and crash when fuel depletes
+- Use the realism-checker agent after any engine change
+
 ## Architecture
 
 - **Game engine**: Web Worker (simulation) ↔ Comlink RPC ↔ Main thread (React UI)
