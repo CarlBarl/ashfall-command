@@ -1,5 +1,6 @@
 import type { UnitCluster } from './layers/cluster'
 import { useUIStore } from '@/store/ui-store'
+import { useStrikeStore } from '@/store/strike-store'
 import type { MouseEvent } from 'react'
 
 interface ClusterPopupProps {
@@ -24,6 +25,7 @@ export default function ClusterPopup({ cluster, x, y, onClose }: ClusterPopupPro
   const selectedUnitIds = useUIStore((s) => s.selectedUnitIds)
   const targetingMode = useUIStore((s) => s.targetingMode)
   const setTarget = useUIStore((s) => s.setTarget)
+  const setStrikeCluster = useStrikeStore((s) => s.setStrikeCluster)
 
   const friendlyUnits = cluster.units.filter(u => u.nation === 'usa')
 
@@ -176,11 +178,11 @@ export default function ClusterPopup({ cluster, x, y, onClose }: ClusterPopupPro
           </button>
         )}
 
-        {/* TARGET ALL — targets the primary, shown when a friendly unit is already selected */}
+        {/* TARGET GROUP — opens StrikePanel in CONFIGURE mode with this cluster */}
         {cluster.units.length > 0 && cluster.units[0].nation !== 'usa' && (
           <button
             onClick={() => {
-              setTarget(cluster.primary.id)
+              setStrikeCluster(cluster)
               onClose()
             }}
             style={{

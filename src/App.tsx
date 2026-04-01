@@ -3,19 +3,17 @@ import GameMap from '@/components/map/GameMap'
 import TimeControls from '@/components/hud/TimeControls'
 import TopBar from '@/components/hud/TopBar'
 import AlertFeed from '@/components/hud/AlertFeed'
-import LaunchPanel from '@/components/panels/LaunchPanel'
+import StrikePanel from '@/components/panels/StrikePanel'
 import UnitInfoPanel from '@/components/panels/UnitInfoPanel'
 import EconomyPanel from '@/components/panels/EconomyPanel'
 import OrbatPanel from '@/components/panels/OrbatPanel'
 import StatsPanel from '@/components/panels/StatsPanel'
-import CommandPanel from '@/components/panels/CommandPanel'
-import AttackPlanPanel from '@/components/panels/AttackPlanPanel'
 import { useGameStore } from '@/store/game-store'
 import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { initBridge } from '@/store/bridge'
 
-type MobilePanel = null | 'unit' | 'launch' | 'orbat' | 'stats' | 'econ' | 'cmd' | 'events'
+type MobilePanel = null | 'unit' | 'strike' | 'orbat' | 'stats' | 'econ' | 'events'
 
 export default function App() {
   const isMobile = useIsMobile()
@@ -30,10 +28,8 @@ export default function App() {
   const showOrbat = useUIStore((s) => s.showOrbat)
   const showStats = useUIStore((s) => s.showStats)
   const showEconomy = useUIStore((s) => s.showEconomy)
-  const showCommand = useUIStore((s) => s.showCommand)
-  const showAttackPlan = useUIStore((s) => s.showAttackPlan)
+  // StrikePanel manages its own visibility via useStrikeStore
 
-  // On mobile, auto-show unit panel when a unit is selected
   useEffect(() => {
     if (isMobile && selectedUnitId) {
       setMobilePanel('unit')
@@ -44,26 +40,18 @@ export default function App() {
     return (
       <div style={{ width: '100%', height: '100%', position: 'relative' }}>
         <GameMap />
-
-        {/* Compact top HUD */}
         <TimeControls />
-
-        {/* Mobile bottom sheet — only one at a time */}
         {mobilePanel === 'unit' && <UnitInfoPanel units={units} />}
-        {mobilePanel === 'launch' && <LaunchPanel />}
+        {mobilePanel === 'strike' && <StrikePanel />}
         {mobilePanel === 'orbat' && <OrbatPanel />}
         {mobilePanel === 'stats' && <StatsPanel />}
         {mobilePanel === 'econ' && <EconomyPanel />}
-        {mobilePanel === 'cmd' && <CommandPanel />}
         {mobilePanel === 'events' && <AlertFeed />}
-
-        {/* Mobile bottom nav */}
         <MobileNav active={mobilePanel} onSelect={setMobilePanel} hasSelection={!!selectedUnitId} />
       </div>
     )
   }
 
-  // Desktop layout (unchanged)
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <GameMap />
@@ -71,12 +59,10 @@ export default function App() {
       <TopBar />
       <AlertFeed />
       <UnitInfoPanel units={units} />
-      <LaunchPanel />
+      <StrikePanel />
       {showOrbat && <OrbatPanel />}
       {showStats && <StatsPanel />}
       {showEconomy && <EconomyPanel />}
-      {showCommand && <CommandPanel />}
-      {showAttackPlan && <AttackPlanPanel />}
     </div>
   )
 }
@@ -93,8 +79,7 @@ function MobileNav({
   const tabs: { key: MobilePanel; label: string; show?: boolean }[] = [
     { key: 'orbat', label: 'OOB' },
     { key: 'unit', label: 'UNIT', show: hasSelection },
-    { key: 'launch', label: 'FIRE', show: hasSelection },
-    { key: 'cmd', label: 'CMD' },
+    { key: 'strike', label: 'FIRE', show: hasSelection },
     { key: 'econ', label: 'ECON' },
     { key: 'events', label: 'LOG' },
   ]
