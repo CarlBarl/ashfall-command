@@ -198,7 +198,7 @@ export function createUnitLayer(
     getPosition: (d) => [d.position.lng, d.position.lat],
     getRadius: 24,
     radiusUnits: 'pixels',
-    getFillColor: [0, 0, 0, 0], // invisible
+    getFillColor: [0, 0, 0, 1], // near-invisible but pickable (alpha=0 breaks deck.gl picking)
     stroked: false,
     onHover: (info) => {
       onHover(info.object?.id ?? null, info.x, info.y)
