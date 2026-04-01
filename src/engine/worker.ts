@@ -19,7 +19,6 @@ const api = {
 
   /** For save/load */
   getFullState(): string {
-    // Serialize Maps to JSON-compatible format
     const s = engine.state
     return JSON.stringify({
       time: s.time,
@@ -29,6 +28,10 @@ const api = {
       engagements: Array.from(s.engagements.entries()),
       events: s.events,
     })
+  },
+
+  loadState(json: string): void {
+    engine.loadState(json)
   },
 }
 

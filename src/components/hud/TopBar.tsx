@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
-import { sendCommand } from '@/store/bridge'
+import { sendCommand, getFullState, loadState } from '@/store/bridge'
+import { saveToSlot, loadFromSlot } from '@/store/save-load'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import type { ROE } from '@/types/game'
 
@@ -242,6 +243,11 @@ export default function TopBar() {
 
         {/* Help toggle */}
         <ToggleBtn active={showHelp} onClick={() => setShowHelp(!showHelp)} label="?" compact={isMobile} />
+
+        <Sep />
+
+        {/* Save/Load */}
+        <SaveLoadButtons compact={isMobile} />
       </div>
 
       {/* Close ROE dropdown on outside click */}
@@ -341,6 +347,46 @@ function ToggleBtn({
     >
       {label}
     </button>
+  )
+}
+
+function SaveLoadButtons({ compact }: { compact: boolean }) {
+  const [feedback, setFeedback] = useState<string | null>(null)
+
+  const handleSave = async () => {
+    try {
+      const json = await getFullState()
+      await saveToSlot('quicksave', json)
+      setFeedback('Saved!')
+      setTimeout(() => setFeedback(null), 2000)
+    } catch {
+      setFeedback('Error!')
+      setTimeout(() => setFeedback(null), 2000)
+    }
+  }
+
+  const handleLoad = async () => {
+    try {
+      const json = await loadFromSlot('quicksave')
+      if (!json) { setFeedback('No save'); setTimeout(() => setFeedback(null), 2000); return }
+      await loadState(json)
+      setFeedback('Loaded!')
+      setTimeout(() => setFeedback(null), 2000)
+    } catch {
+      setFeedback('Error!')
+      setTimeout(() => setFeedback(null), 2000)
+    }
+  }
+
+  if (feedback) {
+    return <span style={{ color: 'var(--status-ready)', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>{feedback}</span>
+  }
+
+  return (
+    <>
+      <ToggleBtn active={false} onClick={handleSave} label={compact ? 'SAV' : 'SAVE'} compact={compact} />
+      <ToggleBtn active={false} onClick={handleLoad} label={compact ? 'LD' : 'LOAD'} compact={compact} />
+    </>
   )
 }
 

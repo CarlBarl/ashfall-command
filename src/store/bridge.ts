@@ -47,3 +47,13 @@ export async function sendCommand(cmd: Command): Promise<void> {
   if (!api) throw new Error('Bridge not initialized')
   await api.executeCommand(cmd)
 }
+
+export async function getFullState(): Promise<string> {
+  if (!api) throw new Error('Bridge not initialized')
+  return api.getFullState()
+}
+
+export async function loadState(json: string): Promise<void> {
+  if (!api) throw new Error('Bridge not initialized')
+  await api.loadState(json)
+}

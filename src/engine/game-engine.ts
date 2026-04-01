@@ -169,6 +169,20 @@ export class GameEngine {
     }
   }
 
+  /** Load a previously saved state */
+  loadState(json: string): void {
+    const raw = JSON.parse(json)
+    this.state = {
+      time: raw.time,
+      nations: raw.nations,
+      units: new Map(raw.units),
+      missiles: new Map(raw.missiles),
+      engagements: new Map(raw.engagements),
+      events: raw.events ?? [],
+      pendingEvents: [],
+    }
+  }
+
   private emitEvent(event: GameEvent): void {
     this.state.events.push(event)
     // Cap event history to prevent unbounded memory growth
