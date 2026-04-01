@@ -36,6 +36,7 @@ export default function GameMap() {
   const [geoData, setGeoData] = useState<GeoJSON.FeatureCollection | null>(null)
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null)
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const hoverPosRef = useRef({ x: 0, y: 0 })
   const [clusterPopup, setClusterPopup] = useState<{ cluster: UnitCluster; x: number; y: number } | null>(null)
 
   const selectedUnitId = useUIStore((s) => s.selectedUnitId)
@@ -79,22 +80,23 @@ export default function GameMap() {
 
   const handleHover = useCallback((id: string | null, x?: number, y?: number) => {
     hoverUnit(id)
-    if (x !== undefined && y !== undefined) setHoverPos({ x, y })
+    if (x !== undefined && y !== undefined) {
+      setHoverPos({ x, y })
+      hoverPosRef.current = { x, y }
+    }
   }, [hoverUnit])
 
   const handleUnitClick = useCallback((id: string | null) => {
     if (!id) return
-    // Check if clicked item is a cluster
     const clusterMap = getLastClusterMap()
     const cluster = clusterMap.get(id)
     if (cluster) {
-      // Show cluster popup at the hover position
-      setClusterPopup({ cluster, x: hoverPos.x, y: hoverPos.y })
+      setClusterPopup({ cluster, x: hoverPosRef.current.x, y: hoverPosRef.current.y })
       return
     }
     setClusterPopup(null)
     selectUnit(id)
-  }, [selectUnit, hoverPos])
+  }, [selectUnit])
 
   const layers = useMemo(() => [
     ...createUnitLayer(units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation),
