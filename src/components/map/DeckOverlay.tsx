@@ -4,7 +4,10 @@ import type { MapboxOverlayProps } from '@deck.gl/mapbox'
 
 export default function DeckOverlay(props: MapboxOverlayProps) {
   const overlay = useControl<MapboxOverlay>(
-    () => new MapboxOverlay({ ...props, interleaved: true }),
+    () => new MapboxOverlay({
+      ...props,
+      interleaved: false, // overlay mode — reliable picking
+    }),
   )
   overlay.setProps(props)
   return null

@@ -1,4 +1,4 @@
-import { IconLayer } from '@deck.gl/layers'
+import { IconLayer, TextLayer } from '@deck.gl/layers'
 import type { ViewUnit } from '@/types/view'
 
 const ICON_MAPPING: Record<string, { x: number; y: number; width: number; height: number; mask: boolean }> = {
@@ -37,7 +37,7 @@ export function createUnitLayer(
   onTarget: (id: string | null) => void,
   selectedNation: string | null,
 ) {
-  return new IconLayer<ViewUnit>({
+  const iconLayer = new IconLayer<ViewUnit>({
     id: 'unit-layer',
     data: units.filter(u => u.status !== 'destroyed'),
     pickable: true,
@@ -87,4 +87,47 @@ export function createUnitLayer(
       getColor: [targetingMode, targetId, units.map(u => `${u.id}:${u.status}`).join(',')],
     },
   })
+
+  const visible = units.filter(u => u.status !== 'destroyed')
+
+  const labelLayer = new TextLayer<ViewUnit>({
+    id: 'unit-labels',
+    data: visible,
+    getPosition: (d) => [d.position.lng, d.position.lat],
+    getText: (d) => shortName(d.name),
+    getSize: 11,
+    getColor: (d) => {
+      const base = NATION_COLORS[d.nation] ?? [200, 200, 200]
+      return [...base, 200] as [number, number, number, number]
+    },
+    getPixelOffset: [0, 22],
+    fontFamily: 'JetBrains Mono, Fira Code, monospace',
+    fontWeight: 600,
+    outlineWidth: 2,
+    outlineColor: [13, 17, 23, 220],
+    sizeUnits: 'pixels',
+    sizeMinPixels: 9,
+    sizeMaxPixels: 13,
+    billboard: true,
+    pickable: false,
+  })
+
+  return [iconLayer, labelLayer]
+}
+
+function shortName(name: string): string {
+  // Shorten long names: "DDG-89 USS Mustin" → "DDG-89", "Patriot Battery (Qatar)" → "Patriot (QA)"
+  if (name.startsWith('DDG-') || name.startsWith('CVN-') || name.startsWith('SSN-')) {
+    return name.split(' ').slice(0, 2).join(' ')
+  }
+  if (name.includes('TEL')) return name.split(' (')[0]
+  if (name.includes('Battery')) {
+    const loc = name.match(/\(([^)]+)\)/)?.[1] ?? ''
+    const type = name.split(' ')[0]
+    return `${type} (${loc.substring(0, 3)})`
+  }
+  if (name.includes('Air Base')) {
+    return name.replace(' Air Base', ' AB').replace(/\s*\([^)]*\)/, '')
+  }
+  return name.length > 16 ? name.substring(0, 14) + '..' : name
 }

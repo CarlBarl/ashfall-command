@@ -43,6 +43,24 @@ export function processAI(state: GameState, rng: SeededRNG): Command[] {
 
     if (newAttacks.length > 0) {
       ai.attacksReceived += newAttacks.length
+
+      // Auto-declare war when attacked — no nation absorbs strikes without responding
+      if (!nation.atWar.includes(enemyNation)) {
+        nation.atWar.push(enemyNation)
+        state.nations[enemyNation].atWar.push(nation.id)
+        state.pendingEvents.push({
+          type: 'WAR_DECLARED',
+          attacker: nation.id,
+          defender: enemyNation,
+          tick: state.time.tick,
+        })
+        state.events.push({
+          type: 'WAR_DECLARED',
+          attacker: nation.id,
+          defender: enemyNation,
+          tick: state.time.tick,
+        })
+      }
     }
 
     // Phase transitions
