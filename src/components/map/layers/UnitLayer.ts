@@ -1,4 +1,4 @@
-import { IconLayer, TextLayer } from '@deck.gl/layers'
+import { IconLayer, TextLayer, ScatterplotLayer } from '@deck.gl/layers'
 import type { ViewUnit } from '@/types/view'
 import { clusterUnits, isCluster, type UnitCluster } from './cluster'
 
@@ -190,11 +190,36 @@ export function createUnitLayer(
     backgroundPadding: [3, 1],
   })
 
+  // Invisible pick layer — much larger hit area (24px radius) for easy clicking
+  const pickLayer = new ScatterplotLayer<RenderUnit>({
+    id: 'unit-pick-layer',
+    data: renderItems,
+    pickable: true,
+    getPosition: (d) => [d.position.lng, d.position.lat],
+    getRadius: 24,
+    radiusUnits: 'pixels',
+    getFillColor: [0, 0, 0, 0], // invisible
+    stroked: false,
+    onHover: (info) => {
+      onHover(info.object?.id ?? null, info.x, info.y)
+    },
+    onClick: (info) => {
+      const clicked = info.object
+      if (!clicked) return
+      if (targetingMode && selectedNation && clicked.nation !== selectedNation) {
+        const cluster = clusterMap.get(clicked.id)
+        onTarget(cluster ? cluster.primary.id : clicked.id)
+        return
+      }
+      onClick(clicked.id)
+    },
+  })
+
   if (typeof window !== 'undefined' && window.innerWidth < 768) {
-    return [iconLayer, badgeLayer]
+    return [pickLayer, iconLayer, badgeLayer]
   }
 
-  return [iconLayer, labelLayer, badgeLayer]
+  return [pickLayer, iconLayer, labelLayer, badgeLayer]
 }
 
 /** Get the cluster map from the last render (used by GameMap for click handling) */
