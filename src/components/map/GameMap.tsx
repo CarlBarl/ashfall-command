@@ -200,6 +200,34 @@ export default function GameMap() {
             </Source>
           )
         })()}
+        {/* Range rings for selected unit(s) — always visible, brighter */}
+        {selectedUnitId && (() => {
+          const selUnits = units.filter(u => u.id === selectedUnitId)
+          if (selUnits.length === 0) return null
+          const ringData = createRangeRingGeoJSON(selUnits)
+          if (ringData.features.length === 0) return null
+          return (
+            <Source id="selected-range-rings" type="geojson" data={ringData}>
+              <Layer
+                id="sel-ring-fill"
+                type="fill"
+                paint={{
+                  'fill-color': ['get', 'fill'],
+                  'fill-opacity': 0.15,
+                }}
+              />
+              <Layer
+                id="sel-ring-stroke"
+                type="line"
+                paint={{
+                  'line-color': ['get', 'stroke'],
+                  'line-width': 1.5,
+                  'line-opacity': 0.5,
+                }}
+              />
+            </Source>
+          )
+        })()}
       </MapGL>
 
       <InfoTooltip x={hoverPos.x} y={hoverPos.y} />
