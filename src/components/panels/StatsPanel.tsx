@@ -138,8 +138,8 @@ function NationStatsBlock({ nationId, units, events }: { nationId: NationId; uni
 
       {/* Exchange stats */}
       <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
-        <Stat label="Launched" value={stats.missilesLaunched} color="var(--text-secondary)" />
-        <Stat label="Intercepted" value={stats.missilesIntercepted} color="var(--status-ready)" />
+        <Stat label="Fired (offensive)" value={stats.missilesLaunched} color="var(--text-secondary)" />
+        <Stat label="Shot down (AD)" value={stats.missilesIntercepted} color="var(--status-ready)" />
         <ExchangeRatio launched={stats.missilesLaunched} intercepted={stats.missilesIntercepted} />
       </div>
     </div>

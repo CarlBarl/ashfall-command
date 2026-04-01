@@ -206,6 +206,7 @@ function toViewUnit(u: Unit): ViewUnit {
     health: u.health,
     weapons: u.weapons.map(w => ({ ...w })),
     roe: u.roe,
+    waypoints: u.waypoints.map(w => ({ ...w })),
     parentId: u.parentId,
     subordinateIds: [...u.subordinateIds],
   }

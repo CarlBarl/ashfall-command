@@ -9,6 +9,7 @@ import ClusterPopup from './ClusterPopup'
 import type { UnitCluster } from './layers/cluster'
 import { createMissileLayers } from './layers/MissileLayer'
 import { createImpactLayer } from './layers/ImpactLayer'
+import { createWaypointLayers } from './layers/WaypointLayer'
 import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
 import InfoTooltip from './InfoTooltip'
 import { useUIStore } from '@/store/ui-store'
@@ -30,6 +31,7 @@ interface CtxMenu {
   x: number
   y: number
   lngLat: { lng: number; lat: number }
+  shiftKey: boolean
 }
 
 export default function GameMap() {
@@ -41,6 +43,7 @@ export default function GameMap() {
   const [clusterPopup, setClusterPopup] = useState<{ cluster: UnitCluster; x: number; y: number } | null>(null)
 
   const selectedUnitId = useUIStore((s) => s.selectedUnitId)
+  const selectedUnitIds = useUIStore((s) => s.selectedUnitIds)
   const hoveredUnitId = useUIStore((s) => s.hoveredUnitId)
   const selectUnit = useUIStore((s) => s.selectUnit)
   const hoverUnit = useUIStore((s) => s.hoverUnit)
@@ -73,7 +76,7 @@ export default function GameMap() {
   const onContextMenu = useCallback((e: MapLayerMouseEvent) => {
     e.preventDefault()
     if (selectedUnitId) {
-      setCtxMenu({ x: e.point.x, y: e.point.y, lngLat: e.lngLat })
+      setCtxMenu({ x: e.point.x, y: e.point.y, lngLat: e.lngLat, shiftKey: !!(e.originalEvent as MouseEvent)?.shiftKey })
     }
   }, [selectedUnitId])
 
@@ -112,7 +115,8 @@ export default function GameMap() {
     ...createUnitLayer(units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation),
     ...createMissileLayers(missiles, currentTime, handleHover),
     createImpactLayer(allEvents, units, currentTick),
-  ], [units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation, missiles, currentTime, allEvents, currentTick])
+    ...createWaypointLayers(units, selectedUnitIds),
+  ], [units, selectedUnitId, selectedUnitIds, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation, missiles, currentTime, allEvents, currentTick])
 
   return (
     <>
@@ -258,6 +262,7 @@ export default function GameMap() {
           x={ctxMenu.x}
           y={ctxMenu.y}
           lngLat={ctxMenu.lngLat}
+          shiftKey={ctxMenu.shiftKey}
           onClose={() => setCtxMenu(null)}
         />
       )}

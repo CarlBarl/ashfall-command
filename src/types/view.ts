@@ -35,6 +35,7 @@ export interface ViewUnit {
   health: number
   weapons: WeaponLoadout[]
   roe: ROE
+  waypoints: Position[]
   parentId?: UnitId
   subordinateIds: UnitId[]
 }
