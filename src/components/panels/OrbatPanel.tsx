@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type MouseEvent } from 'react'
 import Panel from '@/components/common/Panel'
 import { useGameStore } from '@/store/game-store'
 import { useUIStore } from '@/store/ui-store'
@@ -51,7 +51,7 @@ function StatusDot({ status }: { status: string }) {
   )
 }
 
-function UnitRow({ unit, selected, onClick }: { unit: ViewUnit; selected: boolean; onClick: () => void }) {
+function UnitRow({ unit, selected, onClick }: { unit: ViewUnit; selected: boolean; onClick: (e: MouseEvent) => void }) {
   const destroyed = unit.status === 'destroyed'
   return (
     <div
@@ -81,6 +81,11 @@ function UnitRow({ unit, selected, onClick }: { unit: ViewUnit; selected: boolea
       }}>
         {unit.name}
       </span>
+      {selected && (
+        <span style={{ color: 'var(--text-accent)', fontSize: '0.55rem', fontWeight: 600, flexShrink: 0 }}>
+          SEL
+        </span>
+      )}
       <span style={{
         fontSize: 'var(--font-size-xs)',
         color: destroyed ? 'var(--status-destroyed)' : unit.health < 50 ? 'var(--status-damaged)' : 'var(--text-secondary)',
@@ -95,40 +100,75 @@ function UnitRow({ unit, selected, onClick }: { unit: ViewUnit; selected: boolea
 function CategorySection({
   label,
   units,
-  selectedUnitId,
-  onSelect,
+  selectedUnitIds,
+  onSelectUnit,
+  onSelectAll,
 }: {
   label: string
   units: ViewUnit[]
-  selectedUnitId: string | null
-  onSelect: (id: string) => void
+  selectedUnitIds: Set<string>
+  onSelectUnit: (id: string, e: MouseEvent) => void
+  onSelectAll: (ids: string[]) => void
 }) {
   const [collapsed, setCollapsed] = useState(false)
+  const aliveUnits = units.filter(u => u.status !== 'destroyed')
+  const allSelected = aliveUnits.length > 0 && aliveUnits.every(u => selectedUnitIds.has(u.id))
+
   return (
     <div style={{ marginBottom: 4 }}>
-      <div
-        onClick={() => setCollapsed(c => !c)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-          padding: '2px 4px',
-          cursor: 'pointer',
-          color: 'var(--text-secondary)',
-          fontSize: 'var(--font-size-xs)',
-          userSelect: 'none',
-        }}
-      >
-        <span style={{ fontSize: 8 }}>{collapsed ? '▶' : '▼'}</span>
-        <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
-        <span style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}>{units.length}</span>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
+        padding: '2px 4px',
+        userSelect: 'none',
+      }}>
+        <span
+          onClick={() => setCollapsed(c => !c)}
+          style={{ fontSize: 8, cursor: 'pointer', color: 'var(--text-muted)' }}
+        >
+          {collapsed ? '▶' : '▼'}
+        </span>
+        <span
+          onClick={() => setCollapsed(c => !c)}
+          style={{
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+            color: 'var(--text-secondary)',
+            fontSize: 'var(--font-size-xs)',
+            cursor: 'pointer',
+            flex: 1,
+          }}
+        >
+          {label}
+        </span>
+        <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)' }}>{units.length}</span>
+        {/* SELECT ALL button for this category */}
+        {aliveUnits.length > 1 && (
+          <button
+            onClick={() => onSelectAll(aliveUnits.map(u => u.id))}
+            style={{
+              background: allSelected ? 'var(--border-accent)' : 'none',
+              border: `1px solid ${allSelected ? 'var(--border-accent)' : 'var(--border-default)'}`,
+              borderRadius: 3,
+              color: allSelected ? '#fff' : 'var(--text-muted)',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.5rem',
+              padding: '1px 4px',
+              fontWeight: 600,
+            }}
+          >
+            ALL
+          </button>
+        )}
       </div>
       {!collapsed && units.map(unit => (
         <UnitRow
           key={unit.id}
           unit={unit}
-          selected={selectedUnitId === unit.id}
-          onClick={() => onSelect(unit.id)}
+          selected={selectedUnitIds.has(unit.id)}
+          onClick={(e) => onSelectUnit(unit.id, e)}
         />
       ))}
     </div>
@@ -138,17 +178,18 @@ function CategorySection({
 function NationSection({
   nationId,
   units,
-  selectedUnitId,
-  onSelect,
+  selectedUnitIds,
+  onSelectUnit,
+  onSelectAll,
 }: {
   nationId: NationId
   units: ViewUnit[]
-  selectedUnitId: string | null
-  onSelect: (id: string) => void
+  selectedUnitIds: Set<string>
+  onSelectUnit: (id: string, e: MouseEvent) => void
+  onSelectAll: (ids: string[]) => void
 }) {
   const [collapsed, setCollapsed] = useState(false)
 
-  // Group by category, only categories that have units
   const byCategory = new Map<UnitCategory, ViewUnit[]>()
   for (const unit of units) {
     if (!byCategory.has(unit.category)) byCategory.set(unit.category, [])
@@ -157,44 +198,71 @@ function NationSection({
 
   const aliveCount = units.filter(u => u.status !== 'destroyed').length
   const destroyedCount = units.filter(u => u.status === 'destroyed').length
+  const aliveUnits = units.filter(u => u.status !== 'destroyed')
 
   return (
     <div style={{ marginBottom: 8 }}>
-      <div
-        onClick={() => setCollapsed(c => !c)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '4px 4px',
-          cursor: 'pointer',
-          borderBottom: `1px solid ${NATION_COLORS[nationId]}44`,
-          marginBottom: 4,
-          userSelect: 'none',
-        }}
-      >
-        <span style={{ fontSize: 8, color: 'var(--text-muted)' }}>{collapsed ? '▶' : '▼'}</span>
-        <span style={{
-          color: NATION_COLORS[nationId],
-          fontWeight: 700,
-          fontSize: 'var(--font-size-sm)',
-          letterSpacing: '0.06em',
-          textTransform: 'uppercase',
-        }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '4px 4px',
+        borderBottom: `1px solid ${NATION_COLORS[nationId]}44`,
+        marginBottom: 4,
+        userSelect: 'none',
+      }}>
+        <span
+          onClick={() => setCollapsed(c => !c)}
+          style={{ fontSize: 8, color: 'var(--text-muted)', cursor: 'pointer' }}
+        >
+          {collapsed ? '▶' : '▼'}
+        </span>
+        <span
+          onClick={() => setCollapsed(c => !c)}
+          style={{
+            color: NATION_COLORS[nationId],
+            fontWeight: 700,
+            fontSize: 'var(--font-size-sm)',
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            cursor: 'pointer',
+            flex: 1,
+          }}
+        >
           {NATION_LABELS[nationId]}
         </span>
-        <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)' }}>
+        <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)' }}>
           {aliveCount} active
           {destroyedCount > 0 && ` / ${destroyedCount} lost`}
         </span>
+        {/* SELECT ALL for this nation */}
+        {nationId === 'usa' && aliveUnits.length > 1 && (
+          <button
+            onClick={() => onSelectAll(aliveUnits.map(u => u.id))}
+            style={{
+              background: 'none',
+              border: '1px solid var(--border-accent)',
+              borderRadius: 3,
+              color: 'var(--text-accent)',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.5rem',
+              padding: '1px 5px',
+              fontWeight: 700,
+            }}
+          >
+            SELECT ALL
+          </button>
+        )}
       </div>
       {!collapsed && Array.from(byCategory.entries()).map(([cat, catUnits]) => (
         <CategorySection
           key={cat}
           label={CATEGORY_LABELS[cat] ?? cat}
           units={catUnits}
-          selectedUnitId={selectedUnitId}
-          onSelect={onSelect}
+          selectedUnitIds={selectedUnitIds}
+          onSelectUnit={onSelectUnit}
+          onSelectAll={onSelectAll}
         />
       ))}
     </div>
@@ -203,14 +271,27 @@ function NationSection({
 
 export default function OrbatPanel() {
   const units = useGameStore(s => s.viewState.units)
-  const selectedUnitId = useUIStore(s => s.selectedUnitId)
+  const selectedUnitIds = useUIStore(s => s.selectedUnitIds)
   const selectUnit = useUIStore(s => s.selectUnit)
+  const toggleUnitSelection = useUIStore(s => s.toggleUnitSelection)
+  const selectMultipleUnits = useUIStore(s => s.selectMultipleUnits)
 
-  // Group units by nation
   const byNation = new Map<NationId, ViewUnit[]>()
   for (const nation of NATIONS) byNation.set(nation, [])
   for (const unit of units) {
     if (byNation.has(unit.nation)) byNation.get(unit.nation)!.push(unit)
+  }
+
+  const handleSelectUnit = (id: string, e: MouseEvent) => {
+    if (e.metaKey || e.ctrlKey) {
+      toggleUnitSelection(id)
+    } else {
+      selectUnit(id)
+    }
+  }
+
+  const handleSelectAll = (ids: string[]) => {
+    selectMultipleUnits(ids)
   }
 
   return (
@@ -225,13 +306,17 @@ export default function OrbatPanel() {
         overflowY: 'auto',
       }}
     >
-      {NATIONS.map(nationId => (
+      <div style={{ color: 'var(--text-muted)', fontSize: '0.5rem', fontStyle: 'italic', marginBottom: 4 }}>
+        Click to select / Cmd+click for multi-select
+      </div>
+      {NATIONS.map(nation => (
         <NationSection
-          key={nationId}
-          nationId={nationId}
-          units={byNation.get(nationId) ?? []}
-          selectedUnitId={selectedUnitId}
-          onSelect={selectUnit}
+          key={nation}
+          nationId={nation}
+          units={byNation.get(nation) ?? []}
+          selectedUnitIds={selectedUnitIds}
+          onSelectUnit={handleSelectUnit}
+          onSelectAll={handleSelectAll}
         />
       ))}
     </Panel>
