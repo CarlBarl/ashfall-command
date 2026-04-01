@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import Panel from '@/components/common/Panel'
 import StatBar from '@/components/common/StatBar'
 import { useUIStore } from '@/store/ui-store'
+import { sendCommand } from '@/store/bridge'
 import type { ViewUnit } from '@/types/view'
+import type { ROE } from '@/types/game'
 import { weaponSpecs } from '@/data/weapons/missiles'
 
 interface UnitInfoPanelProps {
@@ -17,12 +20,21 @@ const STATUS_COLORS: Record<string, string> = {
   reloading: 'var(--text-secondary)',
 }
 
+const ROE_OPTIONS: { value: ROE; label: string; color: string }[] = [
+  { value: 'weapons_free', label: 'WEAPONS FREE', color: 'var(--status-ready)' },
+  { value: 'weapons_tight', label: 'WEAPONS TIGHT', color: 'var(--status-engaged)' },
+  { value: 'hold_fire', label: 'HOLD FIRE', color: 'var(--status-damaged)' },
+]
+
 export default function UnitInfoPanel({ units }: UnitInfoPanelProps) {
   const selectedId = useUIStore((s) => s.selectedUnitId)
   const selectUnit = useUIStore((s) => s.selectUnit)
+  const [commandOpen, setCommandOpen] = useState(false)
 
   const unit = units.find((u) => u.id === selectedId)
   if (!unit) return null
+
+  const isFriendly = unit.nation === 'usa'
 
   return (
     <Panel
@@ -78,6 +90,92 @@ export default function UnitInfoPanel({ units }: UnitInfoPanelProps) {
               />
             )
           })}
+        </div>
+      )}
+
+      {/* COMMAND section — only for friendly units */}
+      {isFriendly && (
+        <div style={{
+          marginTop: 10,
+          borderTop: '1px solid var(--border-default)',
+          paddingTop: 8,
+        }}>
+          <button
+            onClick={() => setCommandOpen((prev) => !prev)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--text-accent)',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--font-size-xs)',
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              padding: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              width: '100%',
+            }}
+          >
+            <span style={{
+              display: 'inline-block',
+              transform: commandOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+              transition: 'transform 0.15s ease',
+              fontSize: 'var(--font-size-xs)',
+            }}>
+              {'\u25B6'}
+            </span>
+            COMMAND
+          </button>
+
+          {commandOpen && (
+            <div style={{ marginTop: 6 }}>
+              <div style={{
+                color: 'var(--text-muted)',
+                fontSize: 'var(--font-size-xs)',
+                marginBottom: 4,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}>
+                Rules of Engagement
+              </div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {ROE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => sendCommand({
+                      type: 'SET_ROE',
+                      unitId: unit.id,
+                      roe: opt.value,
+                    })}
+                    style={{
+                      flex: 1,
+                      padding: '5px 4px',
+                      background: unit.roe === opt.value
+                        ? opt.color
+                        : 'var(--bg-hover)',
+                      border: unit.roe === opt.value
+                        ? `1px solid ${opt.color}`
+                        : '1px solid var(--border-default)',
+                      borderRadius: 4,
+                      color: unit.roe === opt.value
+                        ? 'var(--bg-primary)'
+                        : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 'var(--font-size-xs)',
+                      fontWeight: unit.roe === opt.value ? 700 : 400,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </Panel>
