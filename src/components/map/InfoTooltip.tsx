@@ -12,31 +12,45 @@ interface InfoTooltipProps {
 export default function InfoTooltip({ x, y }: InfoTooltipProps) {
   const hoveredId = useUIStore((s) => s.hoveredUnitId)
   const units = useGameStore((s) => s.viewState.units)
+  const missiles = useGameStore((s) => s.viewState.missiles)
 
   if (!hoveredId) return null
 
+  // Check units first
   const unit = units.find(u => u.id === hoveredId)
   if (unit) return <UnitTooltip unit={unit} x={x} y={y} />
+
+  // Check missiles
+  const missile = missiles.find(m => m.id === hoveredId)
+  if (missile) return <MissileTooltipView missile={missile} x={x} y={y} />
 
   return null
 }
 
-export function MissileTooltip({ missile, x, y }: { missile: Missile; x: number; y: number; }) {
+function MissileTooltipView({ missile, x, y }: { missile: Missile; x: number; y: number }) {
   const spec = weaponSpecs[missile.weaponId]
   const time = useGameStore((s) => s.viewState.time)
   const remainingMs = missile.eta - time.timestamp
-  const remainingMin = Math.max(0, Math.round(remainingMs / 60_000))
+  const remainingSec = Math.max(0, Math.round(remainingMs / 1000))
+  const remainingStr = remainingSec > 60
+    ? `${Math.floor(remainingSec / 60)}m ${remainingSec % 60}s`
+    : `${remainingSec}s`
+
+  const speedKmh = spec ? spec.speed_mach * 1235 : 0
 
   return (
     <div style={tooltipStyle(x, y)}>
       <div style={headerStyle}>{spec?.name ?? missile.weaponId}</div>
       <Row label="Type" value={spec?.type.replace(/_/g, ' ') ?? '?'} />
-      <Row label="Speed" value={`Mach ${spec?.speed_mach ?? '?'}`} />
+      <Row label="Speed" value={`Mach ${spec?.speed_mach} (${Math.round(speedKmh)} km/h)`} />
+      <Row label="Altitude" value={`${missile.altitude_km.toFixed(1)} km`} highlight />
+      <Row label="Phase" value={missile.phase.toUpperCase()} highlight />
       <Row label="Warhead" value={`${spec?.warhead_kg ?? '?'} kg`} />
       <Row label="CEP" value={`${spec?.cep_m ?? '?'} m`} />
       <Row label="Guidance" value={spec?.guidance ?? '?'} />
-      <Row label="Status" value={missile.status} highlight />
-      <Row label="ETA" value={remainingMin > 0 ? `${remainingMin} min` : 'TERMINAL'} highlight />
+      <Row label="ETA" value={remainingSec > 0 ? remainingStr : 'IMPACT'} highlight />
+      <Row label="Launcher" value={missile.launcherId} />
+      <Row label="Target" value={missile.targetId} />
     </div>
   )
 }

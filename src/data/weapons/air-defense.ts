@@ -42,6 +42,16 @@ export const adSystems: Record<string, ADSystemSpec> = {
     reload_time_sec: 0,
     interceptorId: 'sm6',
   },
+  aegis_sm2: {
+    id: 'aegis_sm2',
+    name: 'Aegis (SM-2)',
+    radar_range_km: 370,
+    engagement_range_km: 167,
+    max_altitude_km: 24,
+    fire_channels: 12,
+    reload_time_sec: 0,
+    interceptorId: 'sm2_iiia',
+  },
 
   // Iranian Systems
   s300pmu2: {

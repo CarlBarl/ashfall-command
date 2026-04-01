@@ -19,9 +19,12 @@ const NATION_GLOW_COLORS: Record<string, [number, number, number, number]> = {
 }
 
 interface MissileHead {
+  id: string
   position: [number, number]
   nation: NationId
   isBallistic: boolean
+  altitude_km: number
+  phase: string
 }
 
 /** Interpolate missile position along its path at the given game time */
@@ -44,7 +47,11 @@ function getMissilePosition(m: Missile, currentTime: number): [number, number] |
   return null
 }
 
-export function createMissileLayers(missiles: Missile[], currentTime: number) {
+export function createMissileLayers(
+  missiles: Missile[],
+  currentTime: number,
+  onHover?: (id: string | null, x?: number, y?: number) => void,
+) {
   const inflight = missiles.filter(m => m.status === 'inflight')
 
   // Compute head positions
@@ -54,9 +61,12 @@ export function createMissileLayers(missiles: Missile[], currentTime: number) {
     if (!pos) continue
     const spec = weaponSpecs[m.weaponId]
     heads.push({
+      id: m.id,
       position: pos,
       nation: m.nation,
       isBallistic: spec?.type === 'ballistic_missile',
+      altitude_km: m.altitude_km,
+      phase: m.phase,
     })
   }
 
@@ -95,17 +105,21 @@ export function createMissileLayers(missiles: Missile[], currentTime: number) {
       opacity: 0.9,
     }),
 
-    // Layer 3: Missile head dot (bright marker at current position, like CMANO)
+    // Layer 3: Missile head dot (bright marker, pickable for tooltip)
     new ScatterplotLayer<MissileHead>({
       id: 'missile-head-dot',
       data: heads,
+      pickable: true,
       getPosition: (d) => d.position,
-      getRadius: (d) => d.isBallistic ? 6 : 4,
+      getRadius: (d) => d.isBallistic ? 8 : 5,
       getFillColor: (d) => NATION_HEAD_COLORS[d.nation] as [number, number, number] ?? [255, 255, 255],
       radiusUnits: 'pixels',
       filled: true,
       stroked: false,
       opacity: 1.0,
+      onHover: (info) => {
+        onHover?.(info.object?.id ?? null, info.x, info.y)
+      },
     }),
 
     // Layer 4: Glow around the head (larger, semi-transparent)

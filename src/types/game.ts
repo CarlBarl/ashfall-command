@@ -142,6 +142,10 @@ export interface Missile {
   status: 'inflight' | 'intercepted' | 'impact'
   launchTime: number
   eta: number
+  /** Current altitude in km — computed from flight phase */
+  altitude_km: number
+  /** Flight phase for ballistic missiles */
+  phase: 'boost' | 'midcourse' | 'terminal' | 'cruise'
 }
 
 export interface Engagement {
