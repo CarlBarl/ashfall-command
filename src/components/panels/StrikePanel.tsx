@@ -430,9 +430,24 @@ function DirectFireTab() {
 // ════════════════════════════════════════════════════════════════
 
 function ConfigureTab() {
-  const strike = useStrikeStore()
+  const strikeCluster = useStrikeStore((s) => s.strikeCluster)
+  const targets = useStrikeStore((s) => s.targets)
+  const severity = useStrikeStore((s) => s.severity)
+  const seadFirst = useStrikeStore((s) => s.seadFirst)
+  const distribution = useStrikeStore((s) => s.distribution)
+  const allocations = useStrikeStore((s) => s.allocations)
+  const setAllocations = useStrikeStore((s) => s.setAllocations)
+  const toggleTargetCheck = useStrikeStore((s) => s.toggleTargetCheck)
+  const setSeverity = useStrikeStore((s) => s.setSeverity)
+  const setSeadFirst = useStrikeStore((s) => s.setSeadFirst)
+  const setDistribution = useStrikeStore((s) => s.setDistribution)
+  const updateAllocation = useStrikeStore((s) => s.updateAllocation)
+  const startExecution = useStrikeStore((s) => s.startExecution)
+  const updateProgress = useStrikeStore((s) => s.updateProgress)
+  const finishExecution = useStrikeStore((s) => s.finishExecution)
+  const executing = useStrikeStore((s) => s.executing)
+  const executionProgress = useStrikeStore((s) => s.executionProgress)
   const units = useGameStore((s) => s.viewState.units)
-  const { strikeCluster, targets, severity, seadFirst, distribution, allocations } = strike
   const [expandedLauncher, setExpandedLauncher] = useState<string | null>(null)
 
   const friendlyUnits = useMemo(
@@ -449,7 +464,7 @@ function ConfigureTab() {
     if (!strikeCluster) return
     const checkedTargets = targets.filter((t) => t.checked)
     if (checkedTargets.length === 0) {
-      strike.setAllocations([])
+      setAllocations([])
       return
     }
 
@@ -502,8 +517,8 @@ function ConfigureTab() {
       }
     }
 
-    strike.setAllocations(allocs)
-  }, [strikeCluster, targets, severity, friendlyUnits, enemyUnits, units, strike])
+    setAllocations(allocs)
+  }, [strikeCluster, targets, severity, friendlyUnits, enemyUnits, units, setAllocations])
 
   if (!strikeCluster) {
     return <EmptyState text='Click TARGET GROUP on an enemy cluster to configure a strike.' />
@@ -545,13 +560,12 @@ function ConfigureTab() {
 
   const handleLaunchStrike = useCallback(async () => {
     if (allocations.length === 0) return
-    strike.startExecution()
+    startExecution()
 
     const checkedIds = new Set(targets.filter((t) => t.checked).map((t) => t.unitId))
     let fired = 0
 
     for (const alloc of allocations) {
-      // Round-robin across checked targets for this launcher
       const targetPool = [...checkedIds]
       for (let i = 0; i < alloc.count; i++) {
         const targetId = targetPool[i % targetPool.length]
@@ -562,12 +576,12 @@ function ConfigureTab() {
           targetId,
         })
         fired++
-        strike.updateProgress(fired / totalMissiles)
+        updateProgress(fired / totalMissiles)
       }
     }
 
-    strike.finishExecution()
-  }, [allocations, targets, totalMissiles, strike])
+    finishExecution()
+  }, [allocations, targets, totalMissiles, startExecution, updateProgress, finishExecution])
 
   return (
     <>
@@ -586,7 +600,7 @@ function ConfigureTab() {
             <input
               type="checkbox"
               checked={t.checked}
-              onChange={() => strike.toggleTargetCheck(t.unitId)}
+              onChange={() => toggleTargetCheck(t.unitId)}
               style={{ accentColor: 'var(--iran-primary)' }}
             />
             <span style={{
@@ -613,7 +627,7 @@ function ConfigureTab() {
           {SEVERITY_OPTIONS.map((s) => (
             <button
               key={s.value}
-              onClick={() => strike.setSeverity(s.value)}
+              onClick={() => setSeverity(s.value)}
               style={{
                 flex: 1, padding: '4px 6px',
                 background: severity === s.value ? 'var(--bg-hover)' : 'transparent',
@@ -634,7 +648,7 @@ function ConfigureTab() {
       {/* SEAD FIRST */}
       <Section title="SEAD FIRST">
         <button
-          onClick={() => strike.setSeadFirst(!seadFirst)}
+          onClick={() => setSeadFirst(!seadFirst)}
           style={{
             padding: '4px 10px',
             background: seadFirst ? 'var(--usa-secondary)' : 'transparent',
@@ -723,7 +737,7 @@ function ConfigureTab() {
                     background: 'var(--bg-tertiary)', border: '1px solid var(--border-default)',
                     borderRadius: 3, overflow: 'hidden',
                   }}>
-                    <QtyButton label="-" onClick={() => strike.updateAllocation(a.unitId, a.weaponId, a.count - 1)} />
+                    <QtyButton label="-" onClick={() => updateAllocation(a.unitId, a.weaponId, a.count - 1)} />
                     <span style={{
                       padding: '1px 4px', fontFamily: 'var(--font-mono)',
                       fontSize: '0.55rem', color: 'var(--text-primary)',
@@ -731,7 +745,7 @@ function ConfigureTab() {
                     }}>
                       {a.count}
                     </span>
-                    <QtyButton label="+" onClick={() => strike.updateAllocation(a.unitId, a.weaponId, a.count + 1)} />
+                    <QtyButton label="+" onClick={() => updateAllocation(a.unitId, a.weaponId, a.count + 1)} />
                   </div>
                 </div>
               ))}
@@ -765,7 +779,7 @@ function ConfigureTab() {
           {DISTRIBUTION_OPTIONS.map((d) => (
             <button
               key={d.value}
-              onClick={() => strike.setDistribution(d.value)}
+              onClick={() => setDistribution(d.value)}
               style={{
                 flex: 1, padding: '3px 6px',
                 background: distribution === d.value ? 'var(--bg-hover)' : 'transparent',
@@ -783,14 +797,14 @@ function ConfigureTab() {
       </Section>
 
       {/* Execution state */}
-      {strike.executing ? (
+      {executing ? (
         <div style={{ marginTop: 8, textAlign: 'center' }}>
           <div style={{ color: 'var(--status-engaged)', fontWeight: 600, fontSize: 'var(--font-size-xs)' }}>
-            EXECUTING... {Math.round(strike.executionProgress * 100)}%
+            EXECUTING... {Math.round(executionProgress * 100)}%
           </div>
           <div style={{ height: 4, background: 'var(--bg-hover)', borderRadius: 2, marginTop: 4 }}>
             <div style={{
-              width: `${strike.executionProgress * 100}%`, height: '100%',
+              width: `${executionProgress * 100}%`, height: '100%',
               background: 'var(--status-engaged)', borderRadius: 2,
             }} />
           </div>
