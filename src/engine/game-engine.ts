@@ -10,7 +10,7 @@ import { processAI } from './systems/ai'
 import { processEconomy } from './systems/economy'
 import { processOrders } from './systems/orders'
 
-const TICK_MS = 60_000 // 1 tick = 1 game minute
+const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
 const SCENARIO_START = new Date('2026-06-15T06:00:00Z').getTime()
 
 export class GameEngine {

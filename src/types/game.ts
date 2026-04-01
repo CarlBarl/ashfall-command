@@ -11,7 +11,7 @@ export interface GameTime {
   tick: number
   /** In-game epoch ms (maps to a real-world date) */
   timestamp: number
-  speed: 0 | 1 | 2 | 5 | 10
+  speed: number
   /** Real ms between ticks — always 100ms */
   tickIntervalMs: number
 }
