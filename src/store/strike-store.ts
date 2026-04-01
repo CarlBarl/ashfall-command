@@ -127,10 +127,11 @@ export const useStrikeStore = create<StrikeStore>((set) => ({
       health: u.health,
       checked: true,
     })),
+    targetUnitId: cluster.primary.id, // auto-set for DIRECT FIRE tab
     open: true,
     mode: 'configure',
   }),
-  setTargetUnitId: (id) => set({ targetUnitId: id, targetingMode: false }),
+  setTargetUnitId: (id) => set({ targetUnitId: id, targetingMode: false, open: id !== null }),
   setTargetingMode: (on) => set({ targetingMode: on }),
   toggleTargetCheck: (unitId) => set((s) => ({
     targets: s.targets.map(t => t.unitId === unitId ? { ...t, checked: !t.checked } : t),

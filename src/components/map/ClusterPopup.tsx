@@ -30,17 +30,19 @@ export default function ClusterPopup({ cluster, x, y, onClose }: ClusterPopupPro
   const friendlyUnits = cluster.units.filter(u => u.nation === 'usa')
 
   const handleUnitClick = (unitId: string, e: MouseEvent) => {
-    if (targetingMode) {
+    const clickedUnit = cluster.units.find(u => u.id === unitId)
+    const isEnemy = clickedUnit && clickedUnit.nation !== 'usa'
+
+    if (targetingMode || isEnemy) {
+      // Clicking any enemy unit sets it as target and opens strike panel
       setTargetUnitId(unitId)
       onClose()
       return
     }
 
     if (e.metaKey || e.ctrlKey) {
-      // Multi-select: toggle this unit, keep popup open
       toggleUnitSelection(unitId)
     } else {
-      // Single select: replace selection, close popup
       selectUnit(unitId)
       onClose()
     }

@@ -98,8 +98,15 @@ export default function GameMap() {
       return
     }
     setClusterPopup(null)
+
+    // Check if clicked unit is an enemy — set as target instead of selecting
+    const clickedUnit = units.find(u => u.id === id)
+    if (clickedUnit && clickedUnit.nation !== 'usa') {
+      setTarget(id)
+      return
+    }
     selectUnit(id)
-  }, [selectUnit])
+  }, [selectUnit, setTarget, units])
 
   const layers = useMemo(() => [
     ...createUnitLayer(units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation),
