@@ -9,6 +9,7 @@ import EconomyPanel from '@/components/panels/EconomyPanel'
 import OrbatPanel from '@/components/panels/OrbatPanel'
 import StatsPanel from '@/components/panels/StatsPanel'
 import CommandPanel from '@/components/panels/CommandPanel'
+import AttackPlanPanel from '@/components/panels/AttackPlanPanel'
 import { useGameStore } from '@/store/game-store'
 import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -30,6 +31,7 @@ export default function App() {
   const showStats = useUIStore((s) => s.showStats)
   const showEconomy = useUIStore((s) => s.showEconomy)
   const showCommand = useUIStore((s) => s.showCommand)
+  const showAttackPlan = useUIStore((s) => s.showAttackPlan)
 
   // On mobile, auto-show unit panel when a unit is selected
   useEffect(() => {
@@ -74,6 +76,7 @@ export default function App() {
       {showStats && <StatsPanel />}
       {showEconomy && <EconomyPanel />}
       {showCommand && <CommandPanel />}
+      {showAttackPlan && <AttackPlanPanel />}
     </div>
   )
 }

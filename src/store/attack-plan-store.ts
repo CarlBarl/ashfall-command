@@ -15,7 +15,7 @@ interface AttackPlanStore {
   reorderPriorities: (fromIdx: number, toIdx: number) => void
   setTiming: (t: TimingMode) => void
   setName: (n: string) => void
-  setComputedPlan: (plan: AttackPlan) => void
+  setComputedPlan: (plan: AttackPlan | null) => void
   startExecution: () => void
   updateProgress: (p: number) => void
   finishExecution: () => void
