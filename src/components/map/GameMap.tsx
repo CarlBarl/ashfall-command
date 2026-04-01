@@ -4,7 +4,9 @@ import type { MapRef, MapLayerMouseEvent } from 'react-map-gl/maplibre'
 import type { StyleSpecification } from 'maplibre-gl'
 import DeckOverlay from './DeckOverlay'
 import ContextMenu from './ContextMenu'
-import { createUnitLayer } from './layers/UnitLayer'
+import { createUnitLayer, getLastClusterMap } from './layers/UnitLayer'
+import ClusterPopup from './ClusterPopup'
+import type { UnitCluster } from './layers/cluster'
 import { createMissileLayers } from './layers/MissileLayer'
 import { createImpactLayer } from './layers/ImpactLayer'
 import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
@@ -34,6 +36,7 @@ export default function GameMap() {
   const [geoData, setGeoData] = useState<GeoJSON.FeatureCollection | null>(null)
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null)
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [clusterPopup, setClusterPopup] = useState<{ cluster: UnitCluster; x: number; y: number } | null>(null)
 
   const selectedUnitId = useUIStore((s) => s.selectedUnitId)
   const hoveredUnitId = useUIStore((s) => s.hoveredUnitId)
@@ -79,11 +82,25 @@ export default function GameMap() {
     if (x !== undefined && y !== undefined) setHoverPos({ x, y })
   }, [hoverUnit])
 
+  const handleUnitClick = useCallback((id: string | null) => {
+    if (!id) return
+    // Check if clicked item is a cluster
+    const clusterMap = getLastClusterMap()
+    const cluster = clusterMap.get(id)
+    if (cluster) {
+      // Show cluster popup at the hover position
+      setClusterPopup({ cluster, x: hoverPos.x, y: hoverPos.y })
+      return
+    }
+    setClusterPopup(null)
+    selectUnit(id)
+  }, [selectUnit, hoverPos])
+
   const layers = useMemo(() => [
-    ...createUnitLayer(units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, selectUnit, setTarget, selectedNation),
+    ...createUnitLayer(units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation),
     ...createMissileLayers(missiles, currentTime),
     createImpactLayer(allEvents, units, currentTick),
-  ], [units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, selectUnit, setTarget, selectedNation, missiles, currentTime, allEvents, currentTick])
+  ], [units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation, missiles, currentTime, allEvents, currentTick])
 
   return (
     <>
@@ -186,6 +203,15 @@ export default function GameMap() {
       </MapGL>
 
       <InfoTooltip x={hoverPos.x} y={hoverPos.y} />
+
+      {clusterPopup && (
+        <ClusterPopup
+          cluster={clusterPopup.cluster}
+          x={clusterPopup.x}
+          y={clusterPopup.y}
+          onClose={() => setClusterPopup(null)}
+        />
+      )}
 
       {ctxMenu && (
         <ContextMenu

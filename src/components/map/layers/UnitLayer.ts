@@ -1,5 +1,6 @@
 import { IconLayer, TextLayer } from '@deck.gl/layers'
 import type { ViewUnit } from '@/types/view'
+import { clusterUnits, isCluster, type UnitCluster } from './cluster'
 
 const ICON_MAPPING: Record<string, { x: number; y: number; width: number; height: number; mask: boolean }> = {
   airbase:         { x: 0,   y: 0,   width: 64, height: 64, mask: true },
@@ -26,6 +27,47 @@ const STATUS_ALPHA: Record<string, number> = {
   reloading: 200,
 }
 
+/** Flattened render item — either a solo unit or a cluster rendered as its primary */
+interface RenderUnit {
+  id: string
+  position: { lng: number; lat: number }
+  category: string
+  nation: string
+  status: string
+  name: string
+  isCluster: boolean
+  count: number
+  health: number
+}
+
+function toRenderUnit(item: ViewUnit | UnitCluster): RenderUnit {
+  if (isCluster(item)) {
+    const avgHealth = Math.round(item.units.reduce((s, u) => s + u.health, 0) / item.units.length)
+    return {
+      id: item.id,
+      position: item.position,
+      category: item.primary.category,
+      nation: item.nation,
+      status: item.primary.status,
+      name: clusterLabel(item),
+      isCluster: true,
+      count: item.count,
+      health: avgHealth,
+    }
+  }
+  return {
+    id: item.id,
+    position: item.position,
+    category: item.category,
+    nation: item.nation,
+    status: item.status,
+    name: shortName(item.name),
+    isCluster: false,
+    count: 1,
+    health: item.health,
+  }
+}
+
 export function createUnitLayer(
   units: ViewUnit[],
   selectedId: string | null,
@@ -37,9 +79,21 @@ export function createUnitLayer(
   onTarget: (id: string | null) => void,
   selectedNation: string | null,
 ) {
-  const iconLayer = new IconLayer<ViewUnit>({
+  const clustered = clusterUnits(units)
+  const renderItems = clustered.map(toRenderUnit)
+
+  // Build a lookup: clusterId → UnitCluster (for click handling)
+  const clusterMap = new Map<string, UnitCluster>()
+  for (const item of clustered) {
+    if (isCluster(item)) clusterMap.set(item.id, item)
+  }
+
+  // Export cluster map for GameMap to use
+  ;(createUnitLayer as any)._lastClusterMap = clusterMap
+
+  const iconLayer = new IconLayer<RenderUnit>({
     id: 'unit-layer',
-    data: units.filter(u => u.status !== 'destroyed'),
+    data: renderItems,
     pickable: true,
     iconAtlas: '/sprites/unit-atlas.svg',
     iconMapping: ICON_MAPPING,
@@ -49,10 +103,11 @@ export function createUnitLayer(
       if (d.id === targetId) return 48
       if (d.id === selectedId) return 44
       if (d.id === hoveredId) return 40
+      // Clusters are slightly larger
+      if (d.isCluster) return 38
       return 34
     },
     getColor: (d) => {
-      // In targeting mode, highlight enemies with a pulsing effect
       if (targetingMode && selectedNation && d.nation !== selectedNation) {
         return [255, 80, 80, 255] as [number, number, number, number]
       }
@@ -67,17 +122,16 @@ export function createUnitLayer(
     sizeUnits: 'pixels',
     sizeMinPixels: 22,
     sizeMaxPixels: 56,
-    // Larger pick radius makes hovering/clicking much easier
-    extensions: [],
     onHover: (info) => {
       onHover(info.object?.id ?? null, info.x, info.y)
     },
     onClick: (info) => {
       const clicked = info.object
       if (!clicked) return
-      // In targeting mode, clicking an enemy sets target
       if (targetingMode && selectedNation && clicked.nation !== selectedNation) {
-        onTarget(clicked.id)
+        // For clusters in targeting mode, target the primary unit
+        const cluster = clusterMap.get(clicked.id)
+        onTarget(cluster ? cluster.primary.id : clicked.id)
         return
       }
       onClick(clicked.id)
@@ -88,19 +142,18 @@ export function createUnitLayer(
     },
   })
 
-  const visible = units.filter(u => u.status !== 'destroyed')
-
-  const labelLayer = new TextLayer<ViewUnit>({
+  // Labels: show name + count badge for clusters
+  const labelLayer = new TextLayer<RenderUnit>({
     id: 'unit-labels',
-    data: visible,
+    data: renderItems,
     getPosition: (d) => [d.position.lng, d.position.lat],
-    getText: (d) => shortName(d.name),
+    getText: (d) => d.isCluster ? `${d.name} [${d.count}]` : d.name,
     getSize: 11,
     getColor: (d) => {
       const base = NATION_COLORS[d.nation] ?? [200, 200, 200]
       return [...base, 200] as [number, number, number, number]
     },
-    getPixelOffset: [0, 22],
+    getPixelOffset: [0, 24],
     fontFamily: 'JetBrains Mono, Fira Code, monospace',
     fontWeight: 600,
     outlineWidth: 2,
@@ -112,16 +165,51 @@ export function createUnitLayer(
     pickable: false,
   })
 
-  // Skip labels on mobile — too cluttered
+  // Count badge for clusters — a bright number above the icon
+  const clusterItems = renderItems.filter(d => d.isCluster)
+  const badgeLayer = new TextLayer<RenderUnit>({
+    id: 'cluster-badges',
+    data: clusterItems,
+    getPosition: (d) => [d.position.lng, d.position.lat],
+    getText: (d) => String(d.count),
+    getSize: 12,
+    getColor: [255, 255, 255, 240],
+    getPixelOffset: [16, -16],
+    fontFamily: 'JetBrains Mono, Fira Code, monospace',
+    fontWeight: 700,
+    outlineWidth: 3,
+    outlineColor: [13, 17, 23, 255],
+    sizeUnits: 'pixels',
+    billboard: true,
+    pickable: false,
+    background: true,
+    getBackgroundColor: (d) => {
+      const base = NATION_COLORS[d.nation] ?? [100, 100, 100]
+      return [...base, 200] as [number, number, number, number]
+    },
+    backgroundPadding: [3, 1],
+  })
+
   if (typeof window !== 'undefined' && window.innerWidth < 768) {
-    return [iconLayer]
+    return [iconLayer, badgeLayer]
   }
 
-  return [iconLayer, labelLayer]
+  return [iconLayer, labelLayer, badgeLayer]
+}
+
+/** Get the cluster map from the last render (used by GameMap for click handling) */
+export function getLastClusterMap(): Map<string, UnitCluster> {
+  return (createUnitLayer as any)._lastClusterMap ?? new Map()
+}
+
+function clusterLabel(c: UnitCluster): string {
+  // Show location name from primary unit
+  const loc = c.primary.name.match(/\(([^)]+)\)/)?.[1] ?? ''
+  if (loc) return loc
+  return shortName(c.primary.name)
 }
 
 function shortName(name: string): string {
-  // Shorten long names: "DDG-89 USS Mustin" → "DDG-89", "Patriot Battery (Qatar)" → "Patriot (QA)"
   if (name.startsWith('DDG-') || name.startsWith('CVN-') || name.startsWith('SSN-')) {
     return name.split(' ').slice(0, 2).join(' ')
   }
