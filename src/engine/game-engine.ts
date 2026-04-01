@@ -7,6 +7,8 @@ import { SeededRNG } from './utils/rng'
 import { processMovement } from './systems/movement'
 import { processCombat, launchMissile } from './systems/combat'
 import { processAI } from './systems/ai'
+import { processEconomy } from './systems/economy'
+import { processOrders } from './systems/orders'
 
 const TICK_MS = 60_000 // 1 tick = 1 game minute
 const SCENARIO_START = new Date('2026-06-15T06:00:00Z').getTime()
@@ -77,7 +79,15 @@ export class GameEngine {
     state.time.timestamp += TICK_MS
 
     processMovement(state)
+
+    // ROE enforcement + command queue before combat
+    const orderCmds = processOrders(state)
+    for (const cmd of orderCmds) {
+      this.executeCommand(cmd)
+    }
+
     processCombat(state, this.rng)
+    processEconomy(state)
 
     // AI generates commands, then we execute them
     const aiCommands = processAI(state, this.rng)

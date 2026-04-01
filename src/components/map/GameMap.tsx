@@ -7,7 +7,7 @@ import ContextMenu from './ContextMenu'
 import { createUnitLayer } from './layers/UnitLayer'
 import { createMissileLayer } from './layers/MissileLayer'
 import { createImpactLayer } from './layers/ImpactLayer'
-import UnitInfoPanel from '@/components/panels/UnitInfoPanel'
+import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import baseStyle from '@/styles/map-style.json'
@@ -37,6 +37,7 @@ export default function GameMap() {
   const hoveredUnitId = useUIStore((s) => s.hoveredUnitId)
   const selectUnit = useUIStore((s) => s.selectUnit)
   const hoverUnit = useUIStore((s) => s.hoverUnit)
+  const showRangeRings = useUIStore((s) => s.showRangeRings)
   const units = useGameStore((s) => s.viewState.units)
   const missiles = useGameStore((s) => s.viewState.missiles)
   const allEvents = useGameStore((s) => s.viewState.events)
@@ -132,9 +133,32 @@ export default function GameMap() {
             />
           </Source>
         )}
+        {showRangeRings && (() => {
+          const rangeData = createRangeRingGeoJSON(units)
+          return (
+            <Source id="range-rings" type="geojson" data={rangeData}>
+              <Layer
+                id="range-ring-fill"
+                type="fill"
+                paint={{
+                  'fill-color': ['get', 'fill'],
+                  'fill-opacity': 0.08,
+                }}
+              />
+              <Layer
+                id="range-ring-stroke"
+                type="line"
+                paint={{
+                  'line-color': ['get', 'stroke'],
+                  'line-width': 1,
+                  'line-opacity': 0.3,
+                  'line-dasharray': ['match', ['get', 'ringType'], 'missile', ['literal', [4, 4]], ['literal', [1, 0]]],
+                }}
+              />
+            </Source>
+          )
+        })()}
       </MapGL>
-
-      <UnitInfoPanel units={units} />
 
       {ctxMenu && (
         <ContextMenu

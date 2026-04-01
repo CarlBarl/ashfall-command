@@ -28,6 +28,52 @@ Browser-based geopolitical/military strategy simulator. PoC: USA vs Iran, 2026.
 - Seeded PRNG for deterministic replay
 - Comlink wraps worker API as async methods
 
+## Agent Team Development
+
+This project uses **agent teams** for parallel development. The team structure is permanent and should be used for all future feature work.
+
+### Team: `realpolitik-features`
+
+| Role | Model | Scope |
+|------|-------|-------|
+| **Team Lead** (main session) | Opus | Orchestration, integration, architecture, App.tsx, GameMap.tsx, game-engine.ts |
+| **UI agents** | Sonnet | Panels, HUD components, visualization layers — new files only |
+| **Engine agents** | Opus | Game systems (combat, AI, economy, orders) — new files only |
+| **Review agent** | Opus | Code review after each phase merge |
+
+### Workflow
+
+1. **Plan** — team lead breaks work into independent tasks with zero file overlap
+2. **Spawn** — launch agents in worktrees (isolation: "worktree"), one per task
+3. **Build** — agents create new files only, never modify existing ones
+4. **Merge** — team lead merges branches, wires new code into App/GameMap/engine
+5. **Review** — code-reviewer agent validates the integration
+6. **Iterate** — save learnings to auto-memory, update this CLAUDE.md
+
+### Rules for agents
+
+- **Read CLAUDE.md first** before any work
+- **New files only** — never modify files you don't own. Team lead handles integration.
+- **Verify** — run `npx tsc -b` and `npm run build` before committing
+- **Commit** — commit your work in the worktree when done
+- **Report** — message the team lead with what you created and any gotchas
+
+### File ownership
+
+| Owner | Files |
+|-------|-------|
+| Team lead (only) | `App.tsx`, `GameMap.tsx`, `game-engine.ts`, `worker.ts`, `bridge.ts` |
+| Any agent | New files in `components/`, `engine/systems/`, `data/`, `store/` |
+| Shared (read-only) | `types/*.ts`, `styles/globals.css`, `CLAUDE.md` |
+
+### Iteration philosophy
+
+- After each development cycle, save what worked and what didn't to auto-memory
+- Update this CLAUDE.md with new conventions discovered during development
+- Agent prompts should get better over time — more specific, fewer mistakes
+- Prefer small focused agents over large monolithic ones
+- Use Sonnet for UI, Opus for engine logic — matches cost/capability
+
 ## Commands
 
 - `npm run dev` — start dev server
