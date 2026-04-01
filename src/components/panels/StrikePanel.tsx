@@ -516,7 +516,7 @@ function ConfigureTab() {
     }
 
     setAllocations(allocs)
-  }, [strikeCluster, targets, severity, friendlyUnits, enemyUnits, units, setAllocations])
+  }, [strikeCluster, targets, severity, friendlyUnits, enemyUnits, setAllocations])
 
   if (!strikeCluster) {
     return <EmptyState text='Click TARGET GROUP on an enemy cluster to configure a strike.' />
@@ -832,6 +832,7 @@ function ConfigureTab() {
 
 function PlanAttackTab() {
   const strike = useStrikeStore()
+  const setComputedPlan = useStrikeStore((s) => s.setComputedPlan)
   const units = useGameStore((s) => s.viewState.units)
   const {
     planPriorities, planTiming, planName,
@@ -852,12 +853,12 @@ function PlanAttackTab() {
   // Recompute plan whenever draft changes
   useEffect(() => {
     if (planPriorities.length === 0) {
-      strike.setComputedPlan(null)
+      setComputedPlan(null)
       return
     }
     const plan = computeAttackPlan(planPriorities, planTiming, friendlyUnits, enemyUnits, planName)
-    strike.setComputedPlan(plan)
-  }, [planPriorities, planTiming, planName, friendlyUnits, enemyUnits, strike])
+    setComputedPlan(plan)
+  }, [planPriorities, planTiming, planName, friendlyUnits, enemyUnits, setComputedPlan])
 
   const handleAddPriority = useCallback((category: UnitCategory) => {
     strike.addPlanPriority({

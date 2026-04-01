@@ -13,6 +13,7 @@ import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
 import InfoTooltip from './InfoTooltip'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
+import { useStrikeStore } from '@/store/strike-store'
 import baseStyle from '@/styles/map-style.json'
 
 const INITIAL_VIEW = {
@@ -41,12 +42,14 @@ export default function GameMap() {
 
   const selectedUnitId = useUIStore((s) => s.selectedUnitId)
   const hoveredUnitId = useUIStore((s) => s.hoveredUnitId)
-  const targetUnitId = useUIStore((s) => s.targetUnitId)
-  const targetingMode = useUIStore((s) => s.targetingMode)
   const selectUnit = useUIStore((s) => s.selectUnit)
   const hoverUnit = useUIStore((s) => s.hoverUnit)
-  const setTarget = useUIStore((s) => s.setTarget)
   const showRangeRings = useUIStore((s) => s.showRangeRings)
+
+  // Targeting state from strike-store (not ui-store compat shims)
+  const targetUnitId = useStrikeStore((s) => s.targetUnitId)
+  const targetingMode = useStrikeStore((s) => s.targetingMode)
+  const setTarget = useStrikeStore((s) => s.setTargetUnitId)
 
   // Get selected unit's nation for targeting
   const units = useGameStore((s) => s.viewState.units)

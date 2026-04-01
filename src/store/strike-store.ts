@@ -115,7 +115,7 @@ export const useStrikeStore = create<StrikeStore>((set) => ({
   // Panel
   openStrike: (mode = 'direct') => set({ open: true, mode }),
   closeStrike: () => set({ open: false }),
-  setMode: (mode) => set({ mode }),
+  setMode: (mode) => set({ mode, open: true }),
 
   // Targeting
   setStrikeCluster: (cluster) => set({

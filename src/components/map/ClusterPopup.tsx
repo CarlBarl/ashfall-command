@@ -23,15 +23,15 @@ export default function ClusterPopup({ cluster, x, y, onClose }: ClusterPopupPro
   const toggleUnitSelection = useUIStore((s) => s.toggleUnitSelection)
   const selectMultipleUnits = useUIStore((s) => s.selectMultipleUnits)
   const selectedUnitIds = useUIStore((s) => s.selectedUnitIds)
-  const targetingMode = useUIStore((s) => s.targetingMode)
-  const setTarget = useUIStore((s) => s.setTarget)
+  const targetingMode = useStrikeStore((s) => s.targetingMode)
+  const setTargetUnitId = useStrikeStore((s) => s.setTargetUnitId)
   const setStrikeCluster = useStrikeStore((s) => s.setStrikeCluster)
 
   const friendlyUnits = cluster.units.filter(u => u.nation === 'usa')
 
   const handleUnitClick = (unitId: string, e: MouseEvent) => {
     if (targetingMode) {
-      setTarget(unitId)
+      setTargetUnitId(unitId)
       onClose()
       return
     }
