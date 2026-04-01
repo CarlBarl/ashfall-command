@@ -82,8 +82,8 @@ export function processAI(state: GameState, rng: SeededRNG): Command[] {
         break
 
       case 'DEFENSIVE':
-        // Ensure AD is weapons_free + retaliate if attacked recently
-        if (ai.attacksReceived > 0 && state.time.tick - ai.lastRetaliationTick > 5) {
+        // Retaliate within 5 minutes of being attacked
+        if (ai.attacksReceived > 0 && state.time.tick - ai.lastRetaliationTick > 300) {
           const salvoCommands = generateRetaliatorySalvo(state, nation.id, enemyNation, rng, 'defensive')
           commands.push(...salvoCommands)
           ai.lastRetaliationTick = state.time.tick
@@ -92,8 +92,8 @@ export function processAI(state: GameState, rng: SeededRNG): Command[] {
         break
 
       case 'OFFENSIVE':
-        // Launch periodic salvos against high-value targets
-        if (state.time.tick - ai.lastRetaliationTick > 10) {
+        // Launch salvos every 15 minutes
+        if (state.time.tick - ai.lastRetaliationTick > 900) {
           const salvoCommands = generateRetaliatorySalvo(state, nation.id, enemyNation, rng, 'offensive')
           commands.push(...salvoCommands)
           ai.lastRetaliationTick = state.time.tick
@@ -103,7 +103,7 @@ export function processAI(state: GameState, rng: SeededRNG): Command[] {
 
       case 'ATTRITION':
         // Conserve ammo — launch only when accumulating enough for saturation
-        if (state.time.tick - ai.lastRetaliationTick > 30) {
+        if (state.time.tick - ai.lastRetaliationTick > 3600) {
           const salvoCommands = generateRetaliatorySalvo(state, nation.id, enemyNation, rng, 'saturation')
           commands.push(...salvoCommands)
           ai.lastRetaliationTick = state.time.tick
