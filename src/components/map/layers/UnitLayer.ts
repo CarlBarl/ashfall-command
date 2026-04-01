@@ -112,6 +112,11 @@ export function createUnitLayer(
     pickable: false,
   })
 
+  // Skip labels on mobile — too cluttered
+  if (typeof window !== 'undefined' && window.innerWidth < 768) {
+    return [iconLayer]
+  }
+
   return [iconLayer, labelLayer]
 }
 

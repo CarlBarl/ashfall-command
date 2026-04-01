@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, type CSSProperties, type ReactNode, type PointerEvent } from 'react'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
 interface PanelProps {
   title: string
@@ -9,6 +10,7 @@ interface PanelProps {
 }
 
 export default function Panel({ title, children, style, onClose, defaultMinimized = false }: PanelProps) {
+  const isMobile = useIsMobile()
   const panelRef = useRef<HTMLDivElement>(null)
   const [offset, setOffset] = useState<{ x: number; y: number } | null>(null)
   const [minimized, setMinimized] = useState(defaultMinimized)
@@ -43,13 +45,14 @@ export default function Panel({ title, children, style, onClose, defaultMinimize
     dragState.current = null
   }, [])
 
-  const positionStyle: CSSProperties = offset
+  const positionStyle: CSSProperties = (!isMobile && offset)
     ? { position: 'fixed', left: offset.x, top: offset.y, right: 'auto', bottom: 'auto' }
     : {}
 
   return (
     <div
       ref={panelRef}
+      className={isMobile ? 'mobile-bottom-sheet' : ''}
       style={{
         background: 'var(--bg-panel)',
         border: '1px solid var(--border-default)',
@@ -64,7 +67,7 @@ export default function Panel({ title, children, style, onClose, defaultMinimize
         zIndex: 10,
         transition: 'min-width 0.15s ease',
         ...style,
-        ...positionStyle,
+        ...(isMobile ? {} : positionStyle),
       }}
     >
       <div
