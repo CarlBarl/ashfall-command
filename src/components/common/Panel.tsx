@@ -9,6 +9,13 @@ interface PanelProps {
   defaultMinimized?: boolean
 }
 
+/** Strip all positioning props from style on mobile */
+function stripPosition(s: CSSProperties | undefined): CSSProperties {
+  if (!s) return {}
+  const { position, top, right, bottom, left, width, minWidth, maxWidth, ...rest } = s
+  return rest
+}
+
 export default function Panel({ title, children, style, onClose, defaultMinimized = false }: PanelProps) {
   const isMobile = useIsMobile()
   const panelRef = useRef<HTMLDivElement>(null)
@@ -17,6 +24,7 @@ export default function Panel({ title, children, style, onClose, defaultMinimize
   const dragState = useRef<{ startX: number; startY: number; origLeft: number; origTop: number } | null>(null)
 
   const onPointerDown = useCallback((e: PointerEvent<HTMLDivElement>) => {
+    if (isMobile) return // no drag on mobile
     const panel = panelRef.current
     if (!panel) return
     e.preventDefault()
@@ -29,7 +37,7 @@ export default function Panel({ title, children, style, onClose, defaultMinimize
       origLeft: rect.left,
       origTop: rect.top,
     }
-  }, [])
+  }, [isMobile])
 
   const onPointerMove = useCallback((e: PointerEvent<HTMLDivElement>) => {
     if (!dragState.current) return
@@ -49,25 +57,38 @@ export default function Panel({ title, children, style, onClose, defaultMinimize
     ? { position: 'fixed', left: offset.x, top: offset.y, right: 'auto', bottom: 'auto' }
     : {}
 
+  const mobileStyle: CSSProperties = isMobile ? {
+    position: 'fixed',
+    bottom: 44, // above the nav bar
+    left: 0,
+    right: 0,
+    top: 'auto',
+    width: '100%',
+    maxHeight: '50vh',
+    minWidth: 'unset',
+    borderRadius: '12px 12px 0 0',
+    zIndex: 30,
+    overflowY: 'auto',
+    WebkitOverflowScrolling: 'touch',
+  } : {}
+
   return (
     <div
       ref={panelRef}
-      className={isMobile ? 'mobile-bottom-sheet' : ''}
       style={{
         background: 'var(--bg-panel)',
         border: '1px solid var(--border-default)',
         borderRadius: 'var(--panel-radius)',
         padding: minimized ? '4px 8px' : 'var(--panel-padding)',
         fontFamily: 'var(--font-mono)',
-        fontSize: 'var(--font-size-sm)',
+        fontSize: isMobile ? 'var(--font-size-xs)' : 'var(--font-size-sm)',
         color: 'var(--text-primary)',
         minWidth: minimized ? 120 : 260,
         maxHeight: minimized ? 'auto' : '80vh',
         overflowY: minimized ? 'hidden' : 'auto',
         zIndex: 10,
-        transition: 'min-width 0.15s ease',
-        ...style,
-        ...(isMobile ? {} : positionStyle),
+        ...(isMobile ? stripPosition(style) : style),
+        ...(isMobile ? mobileStyle : positionStyle),
       }}
     >
       <div
@@ -81,7 +102,7 @@ export default function Panel({ title, children, style, onClose, defaultMinimize
           marginBottom: minimized ? 0 : 8,
           paddingBottom: minimized ? 0 : 6,
           borderBottom: minimized ? 'none' : '1px solid var(--border-default)',
-          cursor: 'grab',
+          cursor: isMobile ? 'default' : 'grab',
           userSelect: 'none',
           gap: 8,
         }}
@@ -96,10 +117,12 @@ export default function Panel({ title, children, style, onClose, defaultMinimize
         }}>
           {title}
         </span>
-        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-          <TitleButton label={minimized ? '+' : '-'} onClick={() => setMinimized(!minimized)} />
-          {onClose && <TitleButton label="x" onClick={onClose} />}
-        </div>
+        {!isMobile && (
+          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+            <TitleButton label={minimized ? '+' : '-'} onClick={() => setMinimized(!minimized)} />
+            {onClose && <TitleButton label="x" onClick={onClose} />}
+          </div>
+        )}
       </div>
       {!minimized && children}
     </div>

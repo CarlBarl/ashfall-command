@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '@/store/game-store'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import type { GameEvent } from '@/types/game'
 
 export default function AlertFeed() {
+  const isMobile = useIsMobile()
   const [log, setLog] = useState<GameEvent[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   const events = useGameStore((s) => s.viewState.events)
@@ -22,7 +24,23 @@ export default function AlertFeed() {
   return (
     <div
       ref={scrollRef}
-      style={{
+      style={isMobile ? {
+        position: 'fixed',
+        bottom: 44,
+        left: 0,
+        right: 0,
+        width: '100%',
+        maxHeight: '50vh',
+        overflowY: 'auto',
+        background: 'var(--bg-panel)',
+        border: '1px solid var(--border-default)',
+        borderRadius: '12px 12px 0 0',
+        padding: 8,
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--font-size-xs)',
+        zIndex: 30,
+        WebkitOverflowScrolling: 'touch',
+      } : {
         position: 'absolute',
         bottom: 12,
         left: 12,
