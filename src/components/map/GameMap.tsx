@@ -80,7 +80,7 @@ export default function GameMap() {
   }, [hoverUnit])
 
   const layers = useMemo(() => [
-    createUnitLayer(units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, selectUnit, setTarget, selectedNation),
+    ...createUnitLayer(units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, selectUnit, setTarget, selectedNation),
     ...createMissileLayers(missiles, currentTime),
     createImpactLayer(allEvents, units, currentTick),
   ], [units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, selectUnit, setTarget, selectedNation, missiles, currentTime, allEvents, currentTick])
