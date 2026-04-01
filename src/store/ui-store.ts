@@ -4,6 +4,8 @@ import type { UnitId } from '@/types/game'
 interface UIState {
   selectedUnitId: UnitId | null
   hoveredUnitId: UnitId | null
+  targetUnitId: UnitId | null
+  targetingMode: boolean
   showRangeRings: boolean
   showUnitInfo: boolean
   showOrbat: boolean
@@ -13,6 +15,9 @@ interface UIState {
 
   selectUnit: (id: UnitId | null) => void
   hoverUnit: (id: UnitId | null) => void
+  setTarget: (id: UnitId | null) => void
+  enterTargetingMode: () => void
+  exitTargetingMode: () => void
   toggleRangeRings: () => void
   togglePanel: (panel: 'unitInfo' | 'orbat' | 'economy' | 'stats' | 'command') => void
 }
@@ -20,6 +25,8 @@ interface UIState {
 export const useUIStore = create<UIState>((set) => ({
   selectedUnitId: null,
   hoveredUnitId: null,
+  targetUnitId: null,
+  targetingMode: false,
   showRangeRings: false,
   showUnitInfo: true,
   showOrbat: false,
@@ -29,6 +36,9 @@ export const useUIStore = create<UIState>((set) => ({
 
   selectUnit: (id) => set({ selectedUnitId: id }),
   hoverUnit: (id) => set({ hoveredUnitId: id }),
+  setTarget: (id) => set({ targetUnitId: id, targetingMode: false }),
+  enterTargetingMode: () => set({ targetingMode: true }),
+  exitTargetingMode: () => set({ targetingMode: false }),
   toggleRangeRings: () => set((s) => ({ showRangeRings: !s.showRangeRings })),
   togglePanel: (panel) => {
     const key = `show${panel.charAt(0).toUpperCase() + panel.slice(1)}` as keyof UIState

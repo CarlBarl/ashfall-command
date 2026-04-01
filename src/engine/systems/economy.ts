@@ -1,6 +1,6 @@
 import type { GameState } from '@/types/game'
 
-const TICKS_PER_DAY = 1440 // 1 tick = 1 minute, 1440 minutes = 1 day
+const TICKS_PER_DAY = 86_400 // 1 tick = 1 second, 86400 seconds = 1 day
 
 export function processEconomy(state: GameState): void {
   if (state.time.tick % TICKS_PER_DAY !== 0) return

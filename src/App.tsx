@@ -10,6 +10,7 @@ import OrbatPanel from '@/components/panels/OrbatPanel'
 import StatsPanel from '@/components/panels/StatsPanel'
 import CommandPanel from '@/components/panels/CommandPanel'
 import { useGameStore } from '@/store/game-store'
+import { useUIStore } from '@/store/ui-store'
 import { initBridge } from '@/store/bridge'
 
 export default function App() {
@@ -18,6 +19,10 @@ export default function App() {
   }, [])
 
   const units = useGameStore((s) => s.viewState.units)
+  const showOrbat = useUIStore((s) => s.showOrbat)
+  const showStats = useUIStore((s) => s.showStats)
+  const showEconomy = useUIStore((s) => s.showEconomy)
+  const showCommand = useUIStore((s) => s.showCommand)
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -27,10 +32,10 @@ export default function App() {
       <AlertFeed />
       <UnitInfoPanel units={units} />
       <LaunchPanel />
-      <EconomyPanel />
-      <OrbatPanel />
-      <StatsPanel />
-      <CommandPanel />
+      {showOrbat && <OrbatPanel />}
+      {showStats && <StatsPanel />}
+      {showEconomy && <EconomyPanel />}
+      {showCommand && <CommandPanel />}
     </div>
   )
 }

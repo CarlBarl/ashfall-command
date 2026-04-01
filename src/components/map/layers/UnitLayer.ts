@@ -13,8 +13,8 @@ const ICON_MAPPING: Record<string, { x: number; y: number; width: number; height
 }
 
 const NATION_COLORS: Record<string, [number, number, number]> = {
-  usa: [68, 136, 204],   // --usa-primary
-  iran: [204, 68, 68],   // --iran-primary
+  usa: [68, 136, 204],
+  iran: [204, 68, 68],
 }
 
 const STATUS_ALPHA: Record<string, number> = {
@@ -30,8 +30,12 @@ export function createUnitLayer(
   units: ViewUnit[],
   selectedId: string | null,
   hoveredId: string | null,
-  onHover: (id: string | null) => void,
+  targetId: string | null,
+  targetingMode: boolean,
+  onHover: (id: string | null, x?: number, y?: number) => void,
   onClick: (id: string | null) => void,
+  onTarget: (id: string | null) => void,
+  selectedNation: string | null,
 ) {
   return new IconLayer<ViewUnit>({
     id: 'unit-layer',
@@ -42,28 +46,45 @@ export function createUnitLayer(
     getIcon: (d) => d.category,
     getPosition: (d) => [d.position.lng, d.position.lat],
     getSize: (d) => {
-      if (d.id === selectedId) return 40
-      if (d.id === hoveredId) return 34
-      return 28
+      if (d.id === targetId) return 48
+      if (d.id === selectedId) return 44
+      if (d.id === hoveredId) return 40
+      return 34
     },
     getColor: (d) => {
+      // In targeting mode, highlight enemies with a pulsing effect
+      if (targetingMode && selectedNation && d.nation !== selectedNation) {
+        return [255, 80, 80, 255] as [number, number, number, number]
+      }
+      if (d.id === targetId) {
+        return [255, 50, 50, 255] as [number, number, number, number]
+      }
       const base = NATION_COLORS[d.nation] ?? [200, 200, 200]
       const alpha = STATUS_ALPHA[d.status] ?? 255
       return [...base, alpha] as [number, number, number, number]
     },
     sizeScale: 1,
     sizeUnits: 'pixels',
-    sizeMinPixels: 16,
-    sizeMaxPixels: 48,
+    sizeMinPixels: 22,
+    sizeMaxPixels: 56,
+    // Larger pick radius makes hovering/clicking much easier
+    extensions: [],
     onHover: (info) => {
-      onHover(info.object?.id ?? null)
+      onHover(info.object?.id ?? null, info.x, info.y)
     },
     onClick: (info) => {
-      onClick(info.object?.id ?? null)
+      const clicked = info.object
+      if (!clicked) return
+      // In targeting mode, clicking an enemy sets target
+      if (targetingMode && selectedNation && clicked.nation !== selectedNation) {
+        onTarget(clicked.id)
+        return
+      }
+      onClick(clicked.id)
     },
     updateTriggers: {
-      getSize: [selectedId, hoveredId],
-      getColor: units.map(u => `${u.id}:${u.status}`).join(','),
+      getSize: [selectedId, hoveredId, targetId],
+      getColor: [targetingMode, targetId, units.map(u => `${u.id}:${u.status}`).join(',')],
     },
   })
 }

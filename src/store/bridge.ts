@@ -6,6 +6,7 @@ import { useGameStore } from './game-store'
 let worker: Worker | null = null
 let api: Comlink.Remote<WorkerAPI> | null = null
 let rafId: number | null = null
+let pollCounter = 0
 
 export function initBridge(): void {
   if (worker) return
@@ -13,18 +14,25 @@ export function initBridge(): void {
   worker = new Worker(new URL('@/engine/worker.ts', import.meta.url), { type: 'module' })
   api = Comlink.wrap<WorkerAPI>(worker)
 
-  // Start polling at ~30fps
-  const poll = async () => {
-    if (!api) return
-    try {
-      const vs = await api.getViewState()
-      useGameStore.getState().setViewState(vs)
-    } catch {
-      // Worker may not be ready yet
+  const frame = async () => {
+    pollCounter++
+
+    // Poll worker every 3rd frame (~10fps for state) to save overhead
+    if (pollCounter % 3 === 0 && api) {
+      try {
+        const vs = await api.getViewState()
+        useGameStore.getState().setViewState(vs)
+      } catch {
+        // Worker may not be ready yet
+      }
     }
-    rafId = requestAnimationFrame(poll)
+
+    // Interpolate visual time EVERY frame for smooth missile animation
+    useGameStore.getState().updateVisualTime()
+
+    rafId = requestAnimationFrame(frame)
   }
-  rafId = requestAnimationFrame(poll)
+  rafId = requestAnimationFrame(frame)
 }
 
 export function destroyBridge(): void {

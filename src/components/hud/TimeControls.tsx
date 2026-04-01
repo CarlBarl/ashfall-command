@@ -1,14 +1,14 @@
 import { useGameStore } from '@/store/game-store'
 import { sendCommand } from '@/store/bridge'
-import type { GameTime } from '@/types/game'
 
-const SPEEDS: GameTime['speed'][] = [0, 1, 2, 5, 10]
+const SPEEDS = [0, 1, 10, 60, 600, 3600]
 const SPEED_LABELS: Record<number, string> = {
-  0: '⏸',
+  0: '||',
   1: '1x',
-  2: '2x',
-  5: '5x',
   10: '10x',
+  60: '1min/s',
+  600: '10m/s',
+  3600: '1hr/s',
 }
 
 export default function TimeControls() {
@@ -20,7 +20,7 @@ export default function TimeControls() {
     timeZone: 'UTC',
   })
   const timeStr = gameDate.toLocaleTimeString('en-US', {
-    hour: '2-digit', minute: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
     hour12: false,
     timeZone: 'UTC',
   })
@@ -33,16 +33,16 @@ export default function TimeControls() {
       transform: 'translateX(-50%)',
       display: 'flex',
       alignItems: 'center',
-      gap: 8,
+      gap: 6,
       background: 'var(--bg-panel)',
       border: '1px solid var(--border-default)',
       borderRadius: 'var(--panel-radius)',
-      padding: '6px 12px',
+      padding: '6px 10px',
       fontFamily: 'var(--font-mono)',
       fontSize: 'var(--font-size-sm)',
       zIndex: 10,
     }}>
-      <span style={{ color: 'var(--text-accent)', fontWeight: 600, minWidth: 140, textAlign: 'center' }}>
+      <span style={{ color: 'var(--text-accent)', fontWeight: 600, minWidth: 170, textAlign: 'center' }}>
         {dateStr} {timeStr}Z
       </span>
 
@@ -57,23 +57,17 @@ export default function TimeControls() {
             color: time.speed === s ? 'var(--text-primary)' : 'var(--text-secondary)',
             border: '1px solid var(--border-default)',
             borderRadius: 4,
-            padding: '3px 8px',
+            padding: '3px 6px',
             cursor: 'pointer',
             fontFamily: 'var(--font-mono)',
             fontSize: 'var(--font-size-xs)',
             fontWeight: 600,
-            minWidth: 32,
+            minWidth: 36,
           }}
         >
           {SPEED_LABELS[s]}
         </button>
       ))}
-
-      <div style={{ width: 1, height: 20, background: 'var(--border-default)' }} />
-
-      <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)' }}>
-        T+{time.tick}
-      </span>
     </div>
   )
 }

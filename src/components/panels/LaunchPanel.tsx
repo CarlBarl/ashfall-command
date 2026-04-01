@@ -7,13 +7,18 @@ import { weaponSpecs } from '@/data/weapons/missiles'
 
 export default function LaunchPanel() {
   const selectedId = useUIStore((s) => s.selectedUnitId)
+  const targetId = useUIStore((s) => s.targetUnitId)
+  const targetingMode = useUIStore((s) => s.targetingMode)
+  const enterTargetingMode = useUIStore((s) => s.enterTargetingMode)
+  const exitTargetingMode = useUIStore((s) => s.exitTargetingMode)
+  const setTarget = useUIStore((s) => s.setTarget)
+
   const units = useGameStore((s) => s.viewState.units)
-  const [targetId, setTargetId] = useState<string | null>(null)
+  const [quantities, setQuantities] = useState<Record<string, number>>({})
 
   const unit = units.find((u) => u.id === selectedId)
   if (!unit) return null
 
-  // Only show for units with offensive weapons
   const offensiveWeapons = unit.weapons.filter(w => {
     const spec = weaponSpecs[w.weaponId]
     return spec && spec.type !== 'sam' && w.count > 0
@@ -21,24 +26,96 @@ export default function LaunchPanel() {
 
   if (offensiveWeapons.length === 0) return null
 
-  // Get enemy units as potential targets
+  const target = units.find(u => u.id === targetId)
   const enemies = units.filter(u => u.nation !== unit.nation && u.status !== 'destroyed')
+
+  const getQty = (weaponId: string, maxCount: number) => {
+    const q = quantities[weaponId] ?? 1
+    return Math.min(q, maxCount)
+  }
+
+  const setQty = (weaponId: string, val: number) => {
+    setQuantities(prev => ({ ...prev, [weaponId]: Math.max(1, val) }))
+  }
+
+  const fireSalvo = (weaponId: string, count: number) => {
+    if (!targetId) return
+    for (let i = 0; i < count; i++) {
+      sendCommand({
+        type: 'LAUNCH_MISSILE',
+        launcherId: unit.id,
+        weaponId,
+        targetId,
+      })
+    }
+  }
 
   return (
     <Panel
       title="LAUNCH CONTROL"
-      style={{ position: 'absolute', bottom: 12, right: 12, width: 300 }}
+      style={{ position: 'absolute', bottom: 12, right: 12, width: 320 }}
     >
       {/* Target selection */}
-      <div style={{ marginBottom: 8 }}>
-        <label style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)', display: 'block', marginBottom: 4 }}>
-          TARGET
-        </label>
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)', marginBottom: 4, textTransform: 'uppercase' }}>
+          Target
+        </div>
+
+        {/* Current target display */}
+        {target && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '4px 8px',
+            background: 'rgba(204, 68, 68, 0.15)',
+            border: '1px solid var(--iran-secondary)',
+            borderRadius: 4,
+            marginBottom: 6,
+          }}>
+            <span style={{ color: 'var(--iran-primary)', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>
+              {target.name}
+            </span>
+            <button
+              onClick={() => setTarget(null)}
+              style={{
+                background: 'none', border: 'none', color: 'var(--text-muted)',
+                cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)',
+              }}
+            >
+              clear
+            </button>
+          </div>
+        )}
+
+        {/* Two ways to pick target */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            onClick={targetingMode ? exitTargetingMode : enterTargetingMode}
+            style={{
+              flex: 1,
+              padding: '5px 8px',
+              background: targetingMode ? 'var(--iran-primary)' : 'var(--bg-hover)',
+              border: '1px solid var(--border-default)',
+              borderRadius: 4,
+              color: targetingMode ? '#fff' : 'var(--text-primary)',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--font-size-xs)',
+              fontWeight: 600,
+            }}
+          >
+            {targetingMode ? 'CLICK ENEMY ON MAP...' : 'SELECT ON MAP'}
+          </button>
+        </div>
+
+        {/* Dropdown fallback */}
         <select
           value={targetId ?? ''}
-          onChange={(e) => setTargetId(e.target.value || null)}
+          onChange={(e) => setTarget(e.target.value || null)}
           style={{
             width: '100%',
+            marginTop: 4,
             background: 'var(--bg-hover)',
             border: '1px solid var(--border-default)',
             borderRadius: 4,
@@ -48,53 +125,132 @@ export default function LaunchPanel() {
             fontSize: 'var(--font-size-xs)',
           }}
         >
-          <option value="">-- Select Target --</option>
+          <option value="">-- or pick from list --</option>
           {enemies.map((t) => (
             <option key={t.id} value={t.id}>
-              {t.name} ({t.category.replace(/_/g, ' ')})
+              {t.name} ({t.category.replace(/_/g, ' ')}) {t.health < 100 ? `[${t.health}%]` : ''}
             </option>
           ))}
         </select>
       </div>
 
-      {/* Weapon buttons */}
+      {/* Weapons with quantity */}
       {offensiveWeapons.map((w) => {
         const spec = weaponSpecs[w.weaponId]
         if (!spec) return null
+        const qty = getQty(w.weaponId, w.count)
         return (
-          <button
-            key={w.weaponId}
-            disabled={!targetId || w.count <= 0}
-            onClick={() => {
-              if (!targetId) return
-              sendCommand({
-                type: 'LAUNCH_MISSILE',
-                launcherId: unit.id,
-                weaponId: w.weaponId,
-                targetId,
-              })
-            }}
-            style={{
+          <div key={w.weaponId} style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            marginBottom: 5,
+          }}>
+            {/* Qty control */}
+            <div style={{
               display: 'flex',
-              justifyContent: 'space-between',
-              width: '100%',
-              padding: '6px 8px',
-              marginBottom: 4,
-              background: targetId ? 'var(--iran-secondary)' : 'var(--bg-hover)',
+              alignItems: 'center',
+              background: 'var(--bg-hover)',
               border: '1px solid var(--border-default)',
               borderRadius: 4,
-              color: 'var(--text-primary)',
-              cursor: targetId ? 'pointer' : 'not-allowed',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--font-size-xs)',
-              opacity: w.count > 0 ? 1 : 0.4,
-            }}
-          >
-            <span>FIRE {spec.name}</span>
-            <span style={{ color: 'var(--text-muted)' }}>{w.count}/{w.maxCount}</span>
-          </button>
+              overflow: 'hidden',
+              flexShrink: 0,
+            }}>
+              <QtyButton label="-" onClick={() => setQty(w.weaponId, qty - 1)} />
+              <span style={{
+                padding: '2px 6px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 'var(--font-size-xs)',
+                color: 'var(--text-primary)',
+                minWidth: 24,
+                textAlign: 'center',
+              }}>
+                {qty}
+              </span>
+              <QtyButton label="+" onClick={() => setQty(w.weaponId, Math.min(qty + 1, w.count))} />
+            </div>
+
+            {/* Fire button */}
+            <button
+              disabled={!targetId || w.count <= 0}
+              onClick={() => fireSalvo(w.weaponId, qty)}
+              style={{
+                flex: 1,
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '5px 8px',
+                background: targetId ? 'var(--iran-secondary)' : 'var(--bg-hover)',
+                border: '1px solid var(--border-default)',
+                borderRadius: 4,
+                color: 'var(--text-primary)',
+                cursor: targetId ? 'pointer' : 'not-allowed',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 'var(--font-size-xs)',
+                opacity: w.count > 0 ? 1 : 0.4,
+              }}
+            >
+              <span>FIRE {spec.name}</span>
+              <span style={{ color: 'var(--text-muted)' }}>{w.count}/{w.maxCount}</span>
+            </button>
+          </div>
         )
       })}
+
+      {/* Quick salvo presets */}
+      {targetId && offensiveWeapons.length > 0 && (
+        <div style={{ marginTop: 6, borderTop: '1px solid var(--border-default)', paddingTop: 6 }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)', marginBottom: 4, textTransform: 'uppercase' }}>
+            Quick Salvo
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {[5, 10, 20].map((n) => {
+              const w = offensiveWeapons[0]
+              const spec = weaponSpecs[w.weaponId]
+              const actual = Math.min(n, w.count)
+              return (
+                <button
+                  key={n}
+                  disabled={w.count <= 0}
+                  onClick={() => fireSalvo(w.weaponId, actual)}
+                  style={{
+                    flex: 1,
+                    padding: '4px',
+                    background: 'var(--bg-hover)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 4,
+                    color: actual < n ? 'var(--text-muted)' : 'var(--text-primary)',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 'var(--font-size-xs)',
+                  }}
+                >
+                  {n}x {spec?.name.split(' ')[0]}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </Panel>
+  )
+}
+
+function QtyButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: 'none',
+        border: 'none',
+        color: 'var(--text-secondary)',
+        cursor: 'pointer',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--font-size-sm)',
+        padding: '2px 6px',
+        lineHeight: 1,
+      }}
+    >
+      {label}
+    </button>
   )
 }

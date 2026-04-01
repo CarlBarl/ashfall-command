@@ -5,9 +5,10 @@ import type { StyleSpecification } from 'maplibre-gl'
 import DeckOverlay from './DeckOverlay'
 import ContextMenu from './ContextMenu'
 import { createUnitLayer } from './layers/UnitLayer'
-import { createMissileLayer } from './layers/MissileLayer'
+import { createMissileLayers } from './layers/MissileLayer'
 import { createImpactLayer } from './layers/ImpactLayer'
 import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
+import InfoTooltip from './InfoTooltip'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import baseStyle from '@/styles/map-style.json'
@@ -32,16 +33,24 @@ export default function GameMap() {
   const mapRef = useRef<MapRef>(null)
   const [geoData, setGeoData] = useState<GeoJSON.FeatureCollection | null>(null)
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null)
+  const [hoverPos, setHoverPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
 
   const selectedUnitId = useUIStore((s) => s.selectedUnitId)
   const hoveredUnitId = useUIStore((s) => s.hoveredUnitId)
+  const targetUnitId = useUIStore((s) => s.targetUnitId)
+  const targetingMode = useUIStore((s) => s.targetingMode)
   const selectUnit = useUIStore((s) => s.selectUnit)
   const hoverUnit = useUIStore((s) => s.hoverUnit)
+  const setTarget = useUIStore((s) => s.setTarget)
   const showRangeRings = useUIStore((s) => s.showRangeRings)
+
+  // Get selected unit's nation for targeting
   const units = useGameStore((s) => s.viewState.units)
+  const selectedUnit = units.find(u => u.id === selectedUnitId)
+  const selectedNation = selectedUnit?.nation ?? null
   const missiles = useGameStore((s) => s.viewState.missiles)
   const allEvents = useGameStore((s) => s.viewState.events)
-  const currentTime = useGameStore((s) => s.viewState.time.timestamp)
+  const currentTime = useGameStore((s) => s.visualTimestamp)
   const currentTick = useGameStore((s) => s.viewState.time.tick)
 
   useEffect(() => {
@@ -65,11 +74,16 @@ export default function GameMap() {
     setCtxMenu(null)
   }, [])
 
+  const handleHover = useCallback((id: string | null, x?: number, y?: number) => {
+    hoverUnit(id)
+    if (x !== undefined && y !== undefined) setHoverPos({ x, y })
+  }, [hoverUnit])
+
   const layers = useMemo(() => [
-    createUnitLayer(units, selectedUnitId, hoveredUnitId, hoverUnit, selectUnit),
-    createMissileLayer(missiles, currentTime),
+    createUnitLayer(units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, selectUnit, setTarget, selectedNation),
+    ...createMissileLayers(missiles, currentTime),
     createImpactLayer(allEvents, units, currentTick),
-  ], [units, selectedUnitId, hoveredUnitId, hoverUnit, selectUnit, missiles, currentTime, allEvents, currentTick])
+  ], [units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, selectUnit, setTarget, selectedNation, missiles, currentTime, allEvents, currentTick])
 
   return (
     <>
@@ -84,7 +98,7 @@ export default function GameMap() {
         attributionControl={false}
         maxZoom={12}
         minZoom={2}
-        cursor={hoveredUnitId ? 'pointer' : 'grab'}
+        cursor={targetingMode ? 'crosshair' : hoveredUnitId ? 'pointer' : 'grab'}
       >
         <DeckOverlay layers={layers} />
 
@@ -146,19 +160,32 @@ export default function GameMap() {
                 }}
               />
               <Layer
-                id="range-ring-stroke"
+                id="range-ring-stroke-sam"
                 type="line"
+                filter={['==', ['get', 'ringType'], 'sam']}
                 paint={{
                   'line-color': ['get', 'stroke'],
                   'line-width': 1,
                   'line-opacity': 0.3,
-                  'line-dasharray': ['match', ['get', 'ringType'], 'missile', ['literal', [4, 4]], ['literal', [1, 0]]],
+                }}
+              />
+              <Layer
+                id="range-ring-stroke-missile"
+                type="line"
+                filter={['==', ['get', 'ringType'], 'missile']}
+                paint={{
+                  'line-color': ['get', 'stroke'],
+                  'line-width': 1,
+                  'line-opacity': 0.3,
+                  'line-dasharray': [4, 4],
                 }}
               />
             </Source>
           )
         })()}
       </MapGL>
+
+      <InfoTooltip x={hoverPos.x} y={hoverPos.y} />
 
       {ctxMenu && (
         <ContextMenu
