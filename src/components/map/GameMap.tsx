@@ -13,6 +13,7 @@ import { createWaypointLayers } from './layers/WaypointLayer'
 import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
 import { createSupplyLineGeoJSON } from './layers/SupplyLineLayer'
 import InfoTooltip from './InfoTooltip'
+import MissileTracker from './MissileTracker'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
@@ -43,6 +44,7 @@ export default function GameMap() {
   const hoverPosRef = useRef({ x: 0, y: 0 })
   const [clusterPopup, setClusterPopup] = useState<{ cluster: UnitCluster; x: number; y: number } | null>(null)
   const [zoom, setZoom] = useState(INITIAL_VIEW.zoom)
+  const [followedMissileId, setFollowedMissileId] = useState<string | null>(null)
 
   const selectedUnitId = useUIStore((s) => s.selectedUnitId)
   const selectedUnitIds = useUIStore((s) => s.selectedUnitIds)
@@ -136,12 +138,29 @@ export default function GameMap() {
     selectUnit(id)
   }, [selectUnit, setTarget, units])
 
+  const handleMissileClick = useCallback((id: string) => {
+    setFollowedMissileId(prev => prev === id ? null : id)
+  }, [])
+
+  // Auto-clear followed missile when it's no longer inflight
+  useEffect(() => {
+    if (!followedMissileId) return
+    const found = missiles.find(m => m.id === followedMissileId && m.status === 'inflight')
+    if (!found) {
+      setFollowedMissileId(null)
+    }
+  }, [followedMissileId, missiles])
+
+  const followedMissile = followedMissileId
+    ? missiles.find(m => m.id === followedMissileId && m.status === 'inflight') ?? null
+    : null
+
   const layers = useMemo(() => [
     ...createUnitLayer(units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation, zoom),
-    ...createMissileLayers(missiles, currentTime, units, handleHover),
+    ...createMissileLayers(missiles, currentTime, units, handleHover, handleMissileClick),
     ...createImpactLayers(allEvents, units, currentTick),
     ...createWaypointLayers(units, selectedUnitIds),
-  ], [units, selectedUnitId, selectedUnitIds, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation, zoom, missiles, currentTime, allEvents, currentTick])
+  ], [units, selectedUnitId, selectedUnitIds, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, handleMissileClick, setTarget, selectedNation, zoom, missiles, currentTime, allEvents, currentTick])
 
   return (
     <>
@@ -311,6 +330,16 @@ export default function GameMap() {
       </MapGL>
 
       <InfoTooltip x={hoverPos.x} y={hoverPos.y} />
+
+      {followedMissile && (
+        <MissileTracker
+          missile={followedMissile}
+          mapRef={mapRef}
+          units={units}
+          currentTime={currentTime}
+          onClose={() => setFollowedMissileId(null)}
+        />
+      )}
 
       {clusterPopup && (
         <ClusterPopup
