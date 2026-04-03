@@ -26,6 +26,7 @@ const api = {
       units: Array.from(s.units.entries()),
       missiles: Array.from(s.missiles.entries()),
       engagements: Array.from(s.engagements.entries()),
+      supplyLines: Array.from(s.supplyLines.entries()),
       events: s.events,
     })
   },

@@ -12,6 +12,7 @@ const emptyViewState: GameViewState = {
   nations: [],
   units: [],
   missiles: [],
+  supplyLines: [],
   events: [],
   pendingEventCount: 0,
 }

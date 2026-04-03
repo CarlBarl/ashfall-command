@@ -68,6 +68,7 @@ export class GameEngine {
       units,
       missiles: new Map(),
       engagements: new Map(),
+      supplyLines: new Map(),
       events: [],
       pendingEvents: [],
     }
@@ -164,6 +165,7 @@ export class GameEngine {
       nations: Object.values(state.nations),
       units: Array.from(state.units.values()).map(toViewUnit),
       missiles: Array.from(state.missiles.values()),
+      supplyLines: Array.from(state.supplyLines.values()),
       events,
       pendingEventCount: state.events.length,
     }
@@ -178,6 +180,7 @@ export class GameEngine {
       units: new Map(raw.units),
       missiles: new Map(raw.missiles),
       engagements: new Map(raw.engagements),
+      supplyLines: new Map(raw.supplyLines ?? []),
       events: raw.events ?? [],
       pendingEvents: [],
     }
@@ -209,6 +212,8 @@ function toViewUnit(u: Unit): ViewUnit {
     speed_kts: u.speed_kts,
     status: u.status,
     health: u.health,
+    logistics: u.logistics,
+    supplyStocks: u.supplyStocks.map(s => ({ ...s })),
     weapons: u.weapons.map(w => ({ ...w })),
     roe: u.roe,
     waypoints: u.waypoints.map(w => ({ ...w })),

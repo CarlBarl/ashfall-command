@@ -1,10 +1,12 @@
 import type { Unit } from '@/types/game'
 
 let uid = 0
-const u = (partial: Omit<Unit, 'id' | 'status' | 'waypoints' | 'subordinateIds'> & { id?: string }): Unit => ({
+const u = (partial: Omit<Unit, 'id' | 'status' | 'waypoints' | 'subordinateIds' | 'logistics' | 'supplyStocks'> & { id?: string; logistics?: number; supplyStocks?: Unit['supplyStocks'] }): Unit => ({
   status: 'ready',
   waypoints: [],
   subordinateIds: [],
+  logistics: 0,
+  supplyStocks: [],
   ...partial,
   id: partial.id ?? `usa_${++uid}`,
 })

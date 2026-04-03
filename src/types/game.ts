@@ -47,12 +47,34 @@ export interface Unit {
   status: UnitStatus
   health: number // 0-100
   hardness: number // damage resistance: airbase=200, sam_site=100, ship=150, missile_battery=80
+  /** Logistics capability 0-100 (bases only). Affects resupply rate. */
+  logistics: number
+  /** Weapon stocks stored at this base for resupply (bases only) */
+  supplyStocks: WeaponStock[]
   weapons: WeaponLoadout[]
   sensors: Sensor[]
   waypoints: Position[]
   roe: ROE
   parentId?: UnitId
   subordinateIds: UnitId[]
+}
+
+export interface WeaponStock {
+  weaponId: WeaponId
+  count: number
+  maxCount: number
+  /** Units produced per game hour (0 for most — only rear bases produce) */
+  productionRate: number
+}
+
+export interface SupplyLine {
+  id: string
+  fromBaseId: UnitId
+  toBaseId: UnitId
+  /** Resupply capacity (arbitrary units, affects throughput) */
+  capacity: number
+  health: number // 0-100
+  distance_km: number
 }
 
 export type UnitCategory =
@@ -171,6 +193,7 @@ export interface GameState {
   units: Map<UnitId, Unit>
   missiles: Map<string, Missile>
   engagements: Map<string, Engagement>
+  supplyLines: Map<string, SupplyLine>
   events: GameEvent[]
   /** Events accumulated since last getViewState() call */
   pendingEvents: GameEvent[]
@@ -183,3 +206,5 @@ export type GameEvent =
   | { type: 'UNIT_DESTROYED'; unitId: UnitId; tick: number }
   | { type: 'WAR_DECLARED'; attacker: NationId; defender: NationId; tick: number }
   | { type: 'AMMO_DEPLETED'; unitId: UnitId; weaponId: WeaponId; tick: number }
+  | { type: 'RESUPPLIED'; unitId: UnitId; weaponId: WeaponId; count: number; fromBaseId: UnitId; tick: number }
+  | { type: 'SUPPLY_LINE_CUT'; lineId: string; tick: number }

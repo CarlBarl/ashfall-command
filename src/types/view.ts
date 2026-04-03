@@ -6,10 +6,12 @@ import type {
   NationId,
   Position,
   ROE,
+  SupplyLine,
   UnitCategory,
   UnitId,
   UnitStatus,
   WeaponLoadout,
+  WeaponStock,
 } from './game'
 
 /** Flat, serializable snapshot sent from Worker → Main at 30fps */
@@ -18,6 +20,7 @@ export interface GameViewState {
   nations: Nation[]
   units: ViewUnit[]
   missiles: Missile[]
+  supplyLines: SupplyLine[]
   /** New events since last poll (one-shot delivery) */
   events: GameEvent[]
   pendingEventCount: number
@@ -33,6 +36,8 @@ export interface ViewUnit {
   speed_kts: number
   status: UnitStatus
   health: number
+  logistics: number
+  supplyStocks: WeaponStock[]
   weapons: WeaponLoadout[]
   roe: ROE
   waypoints: Position[]
