@@ -8,12 +8,17 @@ interface ImpactMarker {
   damage: number
 }
 
-export function createImpactLayer(
+interface InterceptMarker {
+  position: Position
+  tick: number
+}
+
+export function createImpactLayers(
   events: GameEvent[],
   units: ViewUnit[],
   currentTick: number,
-) {
-  // Show impacts for the last 30 ticks (30 game minutes)
+): ScatterplotLayer[] {
+  // Show impacts for the last 30 ticks
   const impacts: ImpactMarker[] = events
     .filter((e): e is Extract<GameEvent, { type: 'MISSILE_IMPACT' }> =>
       e.type === 'MISSILE_IMPACT' && currentTick - e.tick < 30,
@@ -24,7 +29,14 @@ export function createImpactLayer(
     })
     .filter((x): x is ImpactMarker => x !== null)
 
-  return new ScatterplotLayer<ImpactMarker>({
+  // Show intercepts for the last 30 ticks
+  const intercepts: InterceptMarker[] = events
+    .filter((e): e is Extract<GameEvent, { type: 'MISSILE_INTERCEPTED' }> =>
+      e.type === 'MISSILE_INTERCEPTED' && currentTick - e.tick < 30,
+    )
+    .map(e => ({ position: e.position, tick: e.tick }))
+
+  const impactLayer = new ScatterplotLayer<ImpactMarker>({
     id: 'impact-layer',
     data: impacts,
     getPosition: (d) => [d.position.lng, d.position.lat],
@@ -34,17 +46,43 @@ export function createImpactLayer(
     },
     getFillColor: (d) => {
       const age = currentTick - d.tick
-      const alpha = Math.max(0, 255 - age * 8)
-      return [255, 140, 0, alpha]
+      const alpha = Math.max(0, 255 * 0.35 - age * 3)
+      return [255, 140, 0, alpha] // red-orange, faint
     },
     radiusUnits: 'meters',
     radiusScale: 1,
     filled: true,
     stroked: false,
-    opacity: 0.6,
+    opacity: 0.4,
     updateTriggers: {
       getRadius: currentTick,
       getFillColor: currentTick,
     },
   })
+
+  const interceptLayer = new ScatterplotLayer<InterceptMarker>({
+    id: 'intercept-layer',
+    data: intercepts,
+    getPosition: (d) => [d.position.lng, d.position.lat],
+    getRadius: (d) => {
+      const age = currentTick - d.tick
+      return 500 + (age * 120) // expanding circle
+    },
+    getFillColor: (d) => {
+      const age = currentTick - d.tick
+      const alpha = Math.max(0, 255 * 0.3 - age * 3)
+      return [255, 220, 50, alpha] // yellow, faint
+    },
+    radiusUnits: 'meters',
+    radiusScale: 1,
+    filled: true,
+    stroked: false,
+    opacity: 0.35,
+    updateTriggers: {
+      getRadius: currentTick,
+      getFillColor: currentTick,
+    },
+  })
+
+  return [impactLayer, interceptLayer]
 }
