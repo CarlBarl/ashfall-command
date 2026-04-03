@@ -108,6 +108,7 @@ export function createMissileLayers(
   currentTime: number,
   units: ViewUnit[],
   onHover?: (id: string | null, x?: number, y?: number) => void,
+  onMissileClick?: (id: string) => void,
 ) {
   const inflight = missiles.filter(m => m.status === 'inflight')
 
@@ -199,6 +200,11 @@ export function createMissileLayers(
       billboard: true,
       onHover: (info) => {
         onHover?.(info.object?.id ?? null, info.x, info.y)
+      },
+      onClick: (info) => {
+        if (info.object?.id) {
+          onMissileClick?.(info.object.id)
+        }
       },
       updateTriggers: {
         getPosition: currentTime,
