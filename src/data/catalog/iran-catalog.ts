@@ -289,8 +289,8 @@ export const iranCatalog: UnitCatalogEntry[] = [
     category: 'missile_battery',
     cost_millions: 10,
     description:
-      'Shahed-136 one-way attack drone battery. 12 loitering munitions, 2500 km range, ' +
-      'Mach 0.3. Cheap saturation weapon — overwhelming in numbers.',
+      'Shahed-136/131 one-way attack drone battery. 80 loitering munitions, 900-2500 km range, ' +
+      'Mach 0.15. Cheap saturation weapon — overwhelming in numbers.',
     template: {
       name: 'Shahed-136 Battery',
       nation: 'iran',
@@ -303,7 +303,8 @@ export const iranCatalog: UnitCatalogEntry[] = [
       logistics: 0,
       supplyStocks: [],
       weapons: [
-        { weaponId: 'soumar', count: 12, maxCount: 12, reloadTimeSec: 1800 },
+        { weaponId: 'shahed_136', count: 50, maxCount: 50, reloadTimeSec: 0 },
+        { weaponId: 'shahed_131', count: 30, maxCount: 30, reloadTimeSec: 0 },
       ],
       sensors: [],
       roe: 'weapons_tight',
@@ -317,7 +318,7 @@ export const iranCatalog: UnitCatalogEntry[] = [
     category: 'missile_battery',
     cost_millions: 25,
     description:
-      'Shahed-238 jet-powered one-way attack drone. 8 units, faster than Shahed-136. ' +
+      'Shahed-238 jet-powered one-way attack drone. Faster than Shahed-136. ' +
       'Turbojet propulsion with improved guidance and larger warhead.',
     template: {
       name: 'Shahed-238 Battery',
@@ -331,7 +332,8 @@ export const iranCatalog: UnitCatalogEntry[] = [
       logistics: 0,
       supplyStocks: [],
       weapons: [
-        { weaponId: 'soumar', count: 8, maxCount: 8, reloadTimeSec: 2400 },
+        { weaponId: 'shahed_238', count: 30, maxCount: 30, reloadTimeSec: 0 },
+        { weaponId: 'shahed_136', count: 20, maxCount: 20, reloadTimeSec: 0 },
       ],
       sensors: [],
       roe: 'weapons_tight',
