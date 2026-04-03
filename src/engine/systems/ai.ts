@@ -36,10 +36,10 @@ export function processAI(state: GameState, rng: SeededRNG): Command[] {
   const commands: Command[] = []
 
   for (const nation of Object.values(state.nations)) {
-    if (nation.id === 'usa') continue // player-controlled
+    if (nation.id === state.playerNation) continue // player-controlled
 
     const ai = getAIState(nation.id)
-    const enemyNation: NationId = 'usa'
+    const enemyNation = state.playerNation
 
     // Check for new attacks against this nation
     const newAttacks = state.pendingEvents.filter(e =>

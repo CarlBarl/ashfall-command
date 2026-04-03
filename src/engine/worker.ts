@@ -3,12 +3,35 @@ import { GameEngine } from './game-engine'
 import { GameLoop } from './game-loop'
 import type { GameViewState } from '@/types/view'
 import type { Command } from '@/types/commands'
+import type { NationId, Nation, Unit, SupplyLine, WeaponStock } from '@/types/game'
 
 const engine = new GameEngine()
 const loop = new GameLoop(engine)
 loop.start()
 
 const api = {
+  /** Initialize the default scenario (backward compatible) */
+  initDefaultScenario(playerNation: NationId = 'usa'): void {
+    engine.initDefaultScenario(playerNation)
+  },
+
+  /** Initialize from custom data (scenario/free mode) */
+  initFromData(
+    playerNation: NationId,
+    nations: Record<NationId, Nation>,
+    unitList: Unit[],
+    supplyLines: SupplyLine[],
+    baseSupply: Record<string, WeaponStock[]>,
+    startDate?: string,
+  ): void {
+    engine.initFromData(playerNation, nations, unitList, supplyLines, baseSupply, startDate)
+  },
+
+  /** Whether the game state is initialized */
+  isInitialized(): boolean {
+    return engine.state.initialized
+  },
+
   getViewState(): GameViewState {
     return engine.getViewState()
   },
@@ -21,6 +44,7 @@ const api = {
   getFullState(): string {
     const s = engine.state
     return JSON.stringify({
+      playerNation: s.playerNation,
       time: s.time,
       nations: s.nations,
       units: Array.from(s.units.entries()),

@@ -23,6 +23,24 @@ import { resetDroneAIState } from './systems/drone-ai'
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
 const SCENARIO_START = new Date('2026-06-15T06:00:00Z').getTime()
 
+function createEmptyState(): GameState {
+  return {
+    playerNation: 'usa',
+    initialized: false,
+    time: { tick: 0, timestamp: SCENARIO_START, speed: 0, tickIntervalMs: 100 },
+    nations: {
+      usa: { id: 'usa', name: 'USA', economy: { gdp_billions: 0, military_budget_billions: 0, military_budget_pct_gdp: 0, oil_revenue_billions: 0, sanctions_impact: 0, war_cost_per_day_millions: 0, reserves_billions: 0 }, relations: { usa: 100, iran: 0 }, atWar: [] },
+      iran: { id: 'iran', name: 'Iran', economy: { gdp_billions: 0, military_budget_billions: 0, military_budget_pct_gdp: 0, oil_revenue_billions: 0, sanctions_impact: 0, war_cost_per_day_millions: 0, reserves_billions: 0 }, relations: { usa: 0, iran: 100 }, atWar: [] },
+    },
+    units: new Map(),
+    missiles: new Map(),
+    engagements: new Map(),
+    supplyLines: new Map(),
+    events: [],
+    pendingEvents: [],
+  }
+}
+
 export class GameEngine {
   state: GameState
   rng: SeededRNG
@@ -31,16 +49,24 @@ export class GameEngine {
     this.rng = new SeededRNG(42)
     patchDronePK()
 
+    // Start with empty uninitialized state — initGame() populates it
+    this.state = createEmptyState()
+  }
+
+  /** Initialize game from the default scenario (backward-compatible) */
+  initDefaultScenario(playerNation: NationId = 'usa'): void {
     const units = new Map<UnitId, Unit>()
     for (const u of [...usaUnits, ...iranUnits]) {
       units.set(u.id, { ...u })
     }
 
     this.state = {
+      playerNation,
+      initialized: true,
       time: {
         tick: 0,
         timestamp: SCENARIO_START,
-        speed: 0, // paused
+        speed: 0,
         tickIntervalMs: 100,
       },
       nations: {
@@ -83,7 +109,7 @@ export class GameEngine {
       pendingEvents: [],
     }
 
-    // Initialize supply: apply stocks + logistics to bases, load supply lines
+    // Initialize supply
     for (const [unitId, stocks] of Object.entries({ ...usaBaseSupply, ...iranBaseSupply })) {
       const unit = this.state.units.get(unitId)
       if (unit) {
@@ -96,8 +122,50 @@ export class GameEngine {
     }
   }
 
+  /** Initialize from scenario data (used by the game mode menu) */
+  initFromData(
+    playerNation: NationId,
+    nations: Record<NationId, import('@/types/game').Nation>,
+    unitList: Unit[],
+    supplyLines: import('@/types/game').SupplyLine[],
+    baseSupply: Record<string, import('@/types/game').WeaponStock[]>,
+    startDate?: string,
+  ): void {
+    const units = new Map<UnitId, Unit>()
+    for (const u of unitList) {
+      units.set(u.id, { ...u })
+    }
+
+    const timestamp = startDate ? new Date(startDate).getTime() : SCENARIO_START
+
+    this.state = {
+      playerNation,
+      initialized: true,
+      time: { tick: 0, timestamp, speed: 0, tickIntervalMs: 100 },
+      nations,
+      units,
+      missiles: new Map(),
+      engagements: new Map(),
+      supplyLines: new Map<string, import('@/types/game').SupplyLine>(),
+      events: [],
+      pendingEvents: [],
+    }
+
+    for (const [unitId, stocks] of Object.entries(baseSupply)) {
+      const unit = this.state.units.get(unitId)
+      if (unit) {
+        unit.supplyStocks = stocks
+        unit.logistics = 100
+      }
+    }
+    for (const line of supplyLines) {
+      this.state.supplyLines.set(line.id, { ...line })
+    }
+  }
+
   /** Advance simulation by one tick */
   tick(): void {
+    if (!this.state.initialized) return
     const { state } = this
     state.time.tick++
     state.time.timestamp += TICK_MS
@@ -133,7 +201,7 @@ export class GameEngine {
         state.time.speed = cmd.speed
         break
       case 'DECLARE_WAR': {
-        const player: NationId = 'usa'
+        const player = state.playerNation
         if (!state.nations[player].atWar.includes(cmd.target)) {
           state.nations[player].atWar.push(cmd.target)
         }
@@ -171,7 +239,7 @@ export class GameEngine {
         break
       }
       case 'CEASE_FIRE': {
-        const player: NationId = 'usa'
+        const player = state.playerNation
         state.nations[player].atWar = state.nations[player].atWar.filter(n => n !== cmd.target)
         state.nations[cmd.target].atWar = state.nations[cmd.target].atWar.filter(n => n !== player)
         break
@@ -186,6 +254,8 @@ export class GameEngine {
     state.pendingEvents = [] // one-shot delivery
 
     return {
+      playerNation: state.playerNation,
+      initialized: state.initialized,
       time: { ...state.time },
       nations: Object.values(state.nations),
       units: Array.from(state.units.values()).map(toViewUnit),
@@ -206,6 +276,8 @@ export class GameEngine {
       if (unit.pointDefense == null) unit.pointDefense = []
     }
     this.state = {
+      playerNation: raw.playerNation ?? 'usa',
+      initialized: true,
       time: raw.time,
       nations: raw.nations,
       units,

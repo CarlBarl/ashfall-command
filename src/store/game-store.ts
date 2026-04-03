@@ -3,6 +3,8 @@ import type { GameViewState } from '@/types/view'
 import type { GameEvent } from '@/types/game'
 
 const emptyViewState: GameViewState = {
+  playerNation: 'usa',
+  initialized: false,
   time: {
     tick: 0,
     timestamp: new Date('2026-06-15T06:00:00Z').getTime(),

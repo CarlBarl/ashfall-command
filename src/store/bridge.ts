@@ -57,3 +57,25 @@ export async function loadState(json: string): Promise<void> {
   if (!api) throw new Error('Bridge not initialized')
   await api.loadState(json)
 }
+
+export async function initDefaultScenario(playerNation: import('@/types/game').NationId = 'usa'): Promise<void> {
+  if (!api) throw new Error('Bridge not initialized')
+  await api.initDefaultScenario(playerNation)
+}
+
+export async function initFromData(
+  playerNation: import('@/types/game').NationId,
+  nations: Record<import('@/types/game').NationId, import('@/types/game').Nation>,
+  unitList: import('@/types/game').Unit[],
+  supplyLines: import('@/types/game').SupplyLine[],
+  baseSupply: Record<string, import('@/types/game').WeaponStock[]>,
+  startDate?: string,
+): Promise<void> {
+  if (!api) throw new Error('Bridge not initialized')
+  await api.initFromData(playerNation, nations, unitList, supplyLines, baseSupply, startDate)
+}
+
+export async function isGameInitialized(): Promise<boolean> {
+  if (!api) return false
+  return api.isInitialized()
+}

@@ -219,6 +219,10 @@ export interface Engagement {
 }
 
 export interface GameState {
+  /** Which nation the player controls (enemy runs on AI) */
+  playerNation: NationId
+  /** false until initGame() is called — tick() is a no-op while uninitialized */
+  initialized: boolean
   time: GameTime
   nations: Record<NationId, Nation>
   units: Map<UnitId, Unit>

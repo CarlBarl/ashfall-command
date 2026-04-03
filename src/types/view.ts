@@ -17,6 +17,8 @@ import type {
 
 /** Flat, serializable snapshot sent from Worker → Main at 30fps */
 export interface GameViewState {
+  playerNation: NationId
+  initialized: boolean
   time: GameTime
   nations: Nation[]
   units: ViewUnit[]

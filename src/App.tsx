@@ -8,20 +8,46 @@ import UnitInfoPanel from '@/components/panels/UnitInfoPanel'
 import EconomyPanel from '@/components/panels/EconomyPanel'
 import OrbatPanel from '@/components/panels/OrbatPanel'
 import StatsPanel from '@/components/panels/StatsPanel'
+import StartScreen from '@/components/menu/StartScreen'
+import ScenarioSelect from '@/components/menu/ScenarioSelect'
+import FreeModeLobby from '@/components/menu/FreeModeLobby'
 import { useGameStore } from '@/store/game-store'
 import { useUIStore } from '@/store/ui-store'
+import { useMenuStore } from '@/store/menu-store'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { initBridge } from '@/store/bridge'
+import { initBridge, initDefaultScenario, initFromData } from '@/store/bridge'
+import { getScenario } from '@/data/scenarios/index'
 
 type MobilePanel = null | 'unit' | 'strike' | 'orbat' | 'stats' | 'econ' | 'events'
 
 export default function App() {
   const isMobile = useIsMobile()
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>(null)
+  const screen = useMenuStore(s => s.screen)
 
   useEffect(() => {
     initBridge()
   }, [])
+
+  // When transitioning to 'playing', initialize the game engine
+  useEffect(() => {
+    if (screen !== 'playing') return
+    const store = useMenuStore.getState()
+    const mode = store.selectedMode ?? 'scenario'
+
+    if (mode === 'scenario') {
+      const scenario = getScenario('persian-gulf-2026')
+      if (scenario) {
+        const data = scenario.getData()
+        initFromData(store.selectedNation, data.nations, data.units, data.supplyLines, data.baseSupply, scenario.startDate)
+      } else {
+        initDefaultScenario(store.selectedNation)
+      }
+    } else {
+      // Free mode — use default scenario data for nations/economy, but custom units
+      initDefaultScenario(store.selectedNation)
+    }
+  }, [screen])
 
   const units = useGameStore((s) => s.viewState.units)
   const selectedUnitId = useUIStore((s) => s.selectedUnitId)
@@ -35,6 +61,11 @@ export default function App() {
       setMobilePanel('unit')
     }
   }, [isMobile, selectedUnitId])
+
+  // Menu screens — shown before game starts
+  if (screen === 'start') return <StartScreen />
+  if (screen === 'scenario-select') return <ScenarioSelect />
+  if (screen === 'free-lobby') return <FreeModeLobby />
 
   if (isMobile) {
     return (
