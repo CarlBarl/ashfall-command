@@ -41,6 +41,7 @@ export default function GameMap() {
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const hoverPosRef = useRef({ x: 0, y: 0 })
   const [clusterPopup, setClusterPopup] = useState<{ cluster: UnitCluster; x: number; y: number } | null>(null)
+  const [zoom, setZoom] = useState(INITIAL_VIEW.zoom)
 
   const selectedUnitId = useUIStore((s) => s.selectedUnitId)
   const selectedUnitIds = useUIStore((s) => s.selectedUnitIds)
@@ -82,6 +83,10 @@ export default function GameMap() {
 
   const onMapClick = useCallback(() => {
     setCtxMenu(null)
+  }, [])
+
+  const onMove = useCallback((evt: { viewState: { zoom: number } }) => {
+    setZoom(evt.viewState.zoom)
   }, [])
 
   const handleHover = useCallback((id: string | null, x?: number, y?: number) => {
@@ -130,11 +135,11 @@ export default function GameMap() {
   }, [selectUnit, setTarget, units])
 
   const layers = useMemo(() => [
-    ...createUnitLayer(units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation),
+    ...createUnitLayer(units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation, zoom),
     ...createMissileLayers(missiles, currentTime, units, handleHover),
     createImpactLayer(allEvents, units, currentTick),
     ...createWaypointLayers(units, selectedUnitIds),
-  ], [units, selectedUnitId, selectedUnitIds, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation, missiles, currentTime, allEvents, currentTick])
+  ], [units, selectedUnitId, selectedUnitIds, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation, zoom, missiles, currentTime, allEvents, currentTick])
 
   return (
     <>
@@ -144,6 +149,7 @@ export default function GameMap() {
         style={{ width: '100%', height: '100%' }}
         mapStyle={baseStyle as StyleSpecification}
         onLoad={onLoad}
+        onMove={onMove}
         onContextMenu={onContextMenu}
         onClick={onMapClick}
         attributionControl={false}

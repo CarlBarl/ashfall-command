@@ -78,8 +78,9 @@ export function createUnitLayer(
   onClick: (id: string | null) => void,
   onTarget: (id: string | null) => void,
   selectedNation: string | null,
+  zoom: number,
 ) {
-  const clustered = clusterUnits(units)
+  const clustered = clusterUnits(units, zoom)
   const renderItems = clustered.map(toRenderUnit)
 
   // Build a lookup: clusterId → UnitCluster (for click handling)

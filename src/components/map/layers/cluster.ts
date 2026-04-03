@@ -23,9 +23,16 @@ const CATEGORY_PRIORITY: Record<string, number> = {
   aircraft: 3,
 }
 
-/** Cluster nearby friendly units into groups */
-export function clusterUnits(units: ViewUnit[]): (ViewUnit | UnitCluster)[] {
+/** Cluster nearby friendly units into groups. Radius scales with zoom — dissolves at zoom 9+. */
+export function clusterUnits(units: ViewUnit[], zoom: number): (ViewUnit | UnitCluster)[] {
   const alive = units.filter(u => u.status !== 'destroyed')
+
+  // Scale radius by zoom: full at zoom <=5, zero at zoom >=9
+  const radius = CLUSTER_RADIUS_KM * Math.max(0, 1 - (zoom - 5) / 4)
+
+  // If radius is 0, skip clustering entirely
+  if (radius <= 0) return alive
+
   const used = new Set<string>()
   const results: (ViewUnit | UnitCluster)[] = []
 
@@ -43,7 +50,7 @@ export function clusterUnits(units: ViewUnit[]): (ViewUnit | UnitCluster)[] {
     for (const other of sorted) {
       if (used.has(other.id)) continue
       if (other.nation !== unit.nation) continue
-      if (fastDistKm(unit.position, other.position) <= CLUSTER_RADIUS_KM) {
+      if (fastDistKm(unit.position, other.position) <= radius) {
         nearby.push(other)
         used.add(other.id)
       }
