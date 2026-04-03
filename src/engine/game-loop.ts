@@ -5,6 +5,7 @@ const BASE_INTERVAL_MS = 100
 export class GameLoop {
   private engine: GameEngine
   private intervalId: ReturnType<typeof setInterval> | null = null
+  private accumulator = 0
 
   constructor(engine: GameEngine) {
     this.engine = engine
@@ -26,9 +27,18 @@ export class GameLoop {
     const speed = this.engine.state.time.speed
     if (speed === 0) return // paused
 
-    // Burst N ticks per interval — keeps CPU budget safe
-    for (let i = 0; i < speed; i++) {
-      this.engine.tick()
+    if (speed < 1) {
+      // Fractional speed: accumulate until we have a full tick
+      this.accumulator += speed
+      while (this.accumulator >= 1) {
+        this.engine.tick()
+        this.accumulator -= 1
+      }
+    } else {
+      // Burst N ticks per interval
+      for (let i = 0; i < speed; i++) {
+        this.engine.tick()
+      }
     }
   }
 }

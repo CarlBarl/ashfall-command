@@ -2,9 +2,10 @@ import { useGameStore } from '@/store/game-store'
 import { sendCommand } from '@/store/bridge'
 import { useIsMobile } from '@/hooks/useIsMobile'
 
-const SPEEDS = [0, 1, 6, 60, 600, 3600]
+const SPEEDS = [0, 0.1, 1, 6, 60, 600, 3600]
 const SPEED_LABELS: Record<number, string> = {
   0: '||',
+  0.1: '1s/s',
   1: '10s/s',
   6: '1m/s',
   60: '10m/s',
@@ -12,14 +13,14 @@ const SPEED_LABELS: Record<number, string> = {
   3600: '10h/s',
 }
 
-const MOBILE_SPEEDS = [0, 1, 6, 60, 600, 3600]
+const MOBILE_SPEEDS = [0, 0.1, 1, 6, 60, 600]
 const MOBILE_LABELS: Record<number, string> = {
   0: '||',
+  0.1: '1s',
   1: '10s',
   6: '1m',
   60: '10m',
   600: '1hr',
-  3600: '10h',
 }
 
 export default function TimeControls() {
