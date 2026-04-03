@@ -63,7 +63,7 @@ export default function GameMap() {
   const selectedUnit = units.find(u => u.id === selectedUnitId)
   const selectedNation = selectedUnit?.nation ?? null
   const missiles = useGameStore((s) => s.viewState.missiles)
-  const allEvents = useGameStore((s) => s.viewState.events)
+  const allEvents = useGameStore((s) => s.eventLog)
   const currentTime = useGameStore((s) => s.visualTimestamp)
   const currentTick = useGameStore((s) => s.viewState.time.tick)
   const supplyLines = useGameStore((s) => s.viewState.supplyLines)
