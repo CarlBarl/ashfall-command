@@ -46,12 +46,16 @@ export interface Unit {
   maxSpeed_kts: number
   status: UnitStatus
   health: number // 0-100
+  /** Max recoverable health (decreases on heavy damage = permanent structural damage) */
+  maxHealth: number // 0-100, starts at 100
   hardness: number // damage resistance: airbase=200, sam_site=100, ship=150, missile_battery=80
   /** Logistics capability 0-100 (bases only). Affects resupply rate. */
   logistics: number
   /** Weapon stocks stored at this base for resupply (bases only) */
   supplyStocks: WeaponStock[]
   weapons: WeaponLoadout[]
+  /** Gun/missile point defense (Phalanx CIWS, C-RAM, etc.) */
+  pointDefense: PointDefenseSystem[]
   sensors: Sensor[]
   waypoints: Position[]
   roe: ROE
@@ -94,6 +98,7 @@ export type UnitStatus =
   | 'damaged'
   | 'destroyed'
   | 'reloading'
+  | 'repairing'
 
 export interface WeaponLoadout {
   weaponId: WeaponId
@@ -123,6 +128,8 @@ export interface WeaponSpec {
   pk: Partial<Record<WeaponType, number>>
   flight_altitude_ft: number
   guidance: string
+  /** Radar cross-section in m² (defaults to 1.0). Shaheds ~0.1 m² */
+  rcs_m2?: number
 }
 
 export type WeaponType =
@@ -131,6 +138,7 @@ export type WeaponType =
   | 'sam'
   | 'aam'
   | 'ashm'
+  | 'loitering_munition'
 
 export interface ADSystemSpec {
   id: string
@@ -141,6 +149,29 @@ export interface ADSystemSpec {
   fire_channels: number
   reload_time_sec: number
   interceptorId: WeaponId
+}
+
+export interface PointDefenseSystem {
+  specId: string
+  active: boolean
+  ammo: number
+  maxAmmo: number
+  cooldownUntil?: number
+}
+
+export interface PointDefenseSpec {
+  id: string
+  name: string
+  /** Effective engagement range in km (1.5 for Phalanx, 2 for C-RAM) */
+  range_km: number
+  /** Probability of kill per target weapon type */
+  pk: Partial<Record<WeaponType, number>>
+  /** Rounds consumed per engagement attempt */
+  ammoPerEngagement: number
+  /** Seconds between engagements */
+  cooldown_sec: number
+  /** 'gun' = instant resolution (CIWS), 'missile' = launches interceptor (Iron Dome) */
+  engagementType: 'gun' | 'missile'
 }
 
 export interface AircraftSpec {
@@ -208,3 +239,5 @@ export type GameEvent =
   | { type: 'AMMO_DEPLETED'; unitId: UnitId; weaponId: WeaponId; tick: number }
   | { type: 'RESUPPLIED'; unitId: UnitId; weaponId: WeaponId; count: number; fromBaseId: UnitId; tick: number }
   | { type: 'SUPPLY_LINE_CUT'; lineId: string; tick: number }
+  | { type: 'UNIT_REPAIRED'; unitId: UnitId; healthRestored: number; tick: number }
+  | { type: 'POINT_DEFENSE_KILL'; unitId: UnitId; missileId: string; specId: string; tick: number }

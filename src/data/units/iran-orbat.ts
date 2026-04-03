@@ -1,12 +1,14 @@
 import type { Unit } from '@/types/game'
 
 let uid = 0
-const u = (partial: Omit<Unit, 'id' | 'status' | 'waypoints' | 'subordinateIds' | 'logistics' | 'supplyStocks'> & { id?: string; logistics?: number; supplyStocks?: Unit['supplyStocks'] }): Unit => ({
+const u = (partial: Omit<Unit, 'id' | 'status' | 'waypoints' | 'subordinateIds' | 'logistics' | 'supplyStocks' | 'maxHealth' | 'pointDefense'> & { id?: string; logistics?: number; supplyStocks?: Unit['supplyStocks']; maxHealth?: number; pointDefense?: Unit['pointDefense'] }): Unit => ({
   status: 'ready',
   waypoints: [],
   subordinateIds: [],
   logistics: 0,
   supplyStocks: [],
+  maxHealth: 100,
+  pointDefense: [],
   ...partial,
   id: partial.id ?? `iran_${++uid}`,
 })
@@ -302,6 +304,60 @@ export const iranUnits: Unit[] = [
     health: 100, hardness: 200,
     weapons: [],
     sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.85 }],
+    roe: 'weapons_tight',
+  }),
+
+  // ═══════════════════════════════════════════════
+  //  DRONE LAUNCHERS — IRGC Shahed OWA Drones
+  // ═══════════════════════════════════════════════
+
+  // Shahed-136 rack launchers — primary saturation weapon
+  // 5-drone racks, multiple TELs per battery, dispersed around western Iran
+  u({
+    id: 'shahed_kermanshah', name: 'Shahed-136 Battery (Kermanshah)', nation: 'iran', category: 'missile_battery',
+    position: { lat: 34.35, lng: 47.15 }, heading: 270, speed_kts: 0, maxSpeed_kts: 40,
+    health: 100, hardness: 60,
+    weapons: [
+      { weaponId: 'shahed_136', count: 50, maxCount: 50, reloadTimeSec: 0 },
+      { weaponId: 'shahed_131', count: 30, maxCount: 30, reloadTimeSec: 0 },
+    ],
+    sensors: [],
+    roe: 'weapons_tight',
+  }),
+
+  u({
+    id: 'shahed_dezful', name: 'Shahed-136 Battery (Dezful)', nation: 'iran', category: 'missile_battery',
+    position: { lat: 32.40, lng: 48.35 }, heading: 240, speed_kts: 0, maxSpeed_kts: 40,
+    health: 100, hardness: 60,
+    weapons: [
+      { weaponId: 'shahed_136', count: 50, maxCount: 50, reloadTimeSec: 0 },
+    ],
+    sensors: [],
+    roe: 'weapons_tight',
+  }),
+
+  u({
+    id: 'shahed_isfahan', name: 'Shahed-136 Battery (Isfahan)', nation: 'iran', category: 'missile_battery',
+    position: { lat: 32.60, lng: 51.75 }, heading: 210, speed_kts: 0, maxSpeed_kts: 40,
+    health: 100, hardness: 60,
+    weapons: [
+      { weaponId: 'shahed_136', count: 40, maxCount: 40, reloadTimeSec: 0 },
+      { weaponId: 'shahed_238', count: 20, maxCount: 20, reloadTimeSec: 0 },
+    ],
+    sensors: [],
+    roe: 'weapons_tight',
+  }),
+
+  // Shahed-238 jet-powered — faster, harder to intercept
+  u({
+    id: 'shahed_shiraz', name: 'Shahed-238 Battery (Shiraz)', nation: 'iran', category: 'missile_battery',
+    position: { lat: 29.55, lng: 52.55 }, heading: 200, speed_kts: 0, maxSpeed_kts: 40,
+    health: 100, hardness: 60,
+    weapons: [
+      { weaponId: 'shahed_238', count: 30, maxCount: 30, reloadTimeSec: 0 },
+      { weaponId: 'shahed_136', count: 20, maxCount: 20, reloadTimeSec: 0 },
+    ],
+    sensors: [],
     roe: 'weapons_tight',
   }),
 ]

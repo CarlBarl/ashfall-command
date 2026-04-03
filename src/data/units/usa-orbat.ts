@@ -1,12 +1,14 @@
 import type { Unit } from '@/types/game'
 
 let uid = 0
-const u = (partial: Omit<Unit, 'id' | 'status' | 'waypoints' | 'subordinateIds' | 'logistics' | 'supplyStocks'> & { id?: string; logistics?: number; supplyStocks?: Unit['supplyStocks'] }): Unit => ({
+const u = (partial: Omit<Unit, 'id' | 'status' | 'waypoints' | 'subordinateIds' | 'logistics' | 'supplyStocks' | 'maxHealth' | 'pointDefense'> & { id?: string; logistics?: number; supplyStocks?: Unit['supplyStocks']; maxHealth?: number; pointDefense?: Unit['pointDefense'] }): Unit => ({
   status: 'ready',
   waypoints: [],
   subordinateIds: [],
   logistics: 0,
   supplyStocks: [],
+  maxHealth: 100,
+  pointDefense: [],
   ...partial,
   id: partial.id ?? `usa_${++uid}`,
 })
@@ -23,6 +25,9 @@ export const usaUnits: Unit[] = [
     weapons: [
       { weaponId: 'jassm_er', count: 96, maxCount: 96, reloadTimeSec: 0 },
     ],
+    pointDefense: [
+      { specId: 'cram_centurion', active: true, ammo: 2000, maxAmmo: 2000 },
+    ],
     sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95 }],
     roe: 'weapons_tight',
   }),
@@ -33,6 +38,9 @@ export const usaUnits: Unit[] = [
     health: 100, hardness: 200,
     weapons: [
       { weaponId: 'jassm_er', count: 48, maxCount: 48, reloadTimeSec: 0 },
+    ],
+    pointDefense: [
+      { specId: 'cram_centurion', active: true, ammo: 2000, maxAmmo: 2000 },
     ],
     sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95 }],
     roe: 'weapons_tight',
@@ -45,6 +53,9 @@ export const usaUnits: Unit[] = [
     weapons: [
       { weaponId: 'jassm_er', count: 64, maxCount: 64, reloadTimeSec: 0 },
     ],
+    pointDefense: [
+      { specId: 'cram_centurion', active: true, ammo: 2000, maxAmmo: 2000 },
+    ],
     sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95 }],
     roe: 'weapons_tight',
   }),
@@ -55,6 +66,9 @@ export const usaUnits: Unit[] = [
     health: 100, hardness: 200,
     weapons: [
       { weaponId: 'jassm_er', count: 32, maxCount: 32, reloadTimeSec: 0 },
+    ],
+    pointDefense: [
+      { specId: 'cram_centurion', active: true, ammo: 1550, maxAmmo: 1550 },
     ],
     sensors: [{ type: 'radar', range_km: 350, detection_prob: 0.90 }],
     roe: 'weapons_tight',
@@ -96,6 +110,11 @@ export const usaUnits: Unit[] = [
       { weaponId: 'sm3_iia', count: 24, maxCount: 24, reloadTimeSec: 0 },
       { weaponId: 'harpoon', count: 16, maxCount: 16, reloadTimeSec: 0 },
     ],
+    pointDefense: [
+      { specId: 'phalanx_ciws', active: true, ammo: 1550, maxAmmo: 1550 },
+      { specId: 'phalanx_ciws', active: true, ammo: 1550, maxAmmo: 1550 },
+      { specId: 'rim116_ram', active: true, ammo: 21, maxAmmo: 21 },
+    ],
     sensors: [
       { type: 'radar', range_km: 500, detection_prob: 0.98 },
       { type: 'sonar', range_km: 50, detection_prob: 0.70 },
@@ -109,10 +128,14 @@ export const usaUnits: Unit[] = [
     position: { lat: 26.2, lng: 52.5 }, heading: 45, speed_kts: 15, maxSpeed_kts: 30,
     health: 100, hardness: 150,
     weapons: [
-      { weaponId: 'tomahawk', count: 20, maxCount: 20, reloadTimeSec: 0 }, // 96 VLS total
+      { weaponId: 'tomahawk', count: 20, maxCount: 20, reloadTimeSec: 0 },
       { weaponId: 'sm6', count: 52, maxCount: 52, reloadTimeSec: 0 },
       { weaponId: 'sm2_iiia', count: 24, maxCount: 24, reloadTimeSec: 0 },
-      { weaponId: 'harpoon', count: 8, maxCount: 8, reloadTimeSec: 0 }, // deck-mounted
+      { weaponId: 'harpoon', count: 8, maxCount: 8, reloadTimeSec: 0 },
+    ],
+    pointDefense: [
+      { specId: 'phalanx_ciws', active: true, ammo: 1550, maxAmmo: 1550 },
+      { specId: 'rim116_ram', active: true, ammo: 21, maxAmmo: 21 },
     ],
     sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.96 }],
     roe: 'weapons_tight',
@@ -123,10 +146,14 @@ export const usaUnits: Unit[] = [
     position: { lat: 25.8, lng: 53.0 }, heading: 90, speed_kts: 12, maxSpeed_kts: 30,
     health: 100, hardness: 150,
     weapons: [
-      { weaponId: 'tomahawk', count: 20, maxCount: 20, reloadTimeSec: 0 }, // 96 VLS total
+      { weaponId: 'tomahawk', count: 20, maxCount: 20, reloadTimeSec: 0 },
       { weaponId: 'sm6', count: 52, maxCount: 52, reloadTimeSec: 0 },
       { weaponId: 'sm2_iiia', count: 24, maxCount: 24, reloadTimeSec: 0 },
-      { weaponId: 'harpoon', count: 8, maxCount: 8, reloadTimeSec: 0 }, // deck-mounted
+      { weaponId: 'harpoon', count: 8, maxCount: 8, reloadTimeSec: 0 },
+    ],
+    pointDefense: [
+      { specId: 'phalanx_ciws', active: true, ammo: 1550, maxAmmo: 1550 },
+      { specId: 'rim116_ram', active: true, ammo: 21, maxAmmo: 21 },
     ],
     sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.96 }],
     roe: 'weapons_tight',
@@ -140,6 +167,9 @@ export const usaUnits: Unit[] = [
       { weaponId: 'tomahawk', count: 45, maxCount: 45, reloadTimeSec: 0 },
       { weaponId: 'sm6', count: 42, maxCount: 42, reloadTimeSec: 0 },
       { weaponId: 'harpoon', count: 8, maxCount: 8, reloadTimeSec: 0 },
+    ],
+    pointDefense: [
+      { specId: 'phalanx_ciws', active: true, ammo: 1550, maxAmmo: 1550 },
     ],
     sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.96 }],
     roe: 'weapons_tight',

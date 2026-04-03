@@ -11,8 +11,14 @@ import { processEconomy } from './systems/economy'
 import { processOrders, resetOrdersState } from './systems/orders'
 import { processFriendlyAI, resetFriendlyAIState } from './systems/friendly-ai'
 import { processLogistics, resetLogisticsState } from './systems/logistics'
+import { processPointDefense, resetPointDefenseState } from './systems/point-defense'
+import { processRepair, resetRepairState } from './systems/repair'
 import { usaBaseSupply, usaSupplyLines } from '@/data/supply/usa-supply'
 import { iranBaseSupply, iranSupplyLines } from '@/data/supply/iran-supply'
+// Register drone weapon specs + patch interceptor pK values
+import '@/data/weapons/drones'
+import { patchDronePK } from '@/data/weapons/drone-pk-patch'
+import { resetDroneAIState } from './systems/drone-ai'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
 const SCENARIO_START = new Date('2026-06-15T06:00:00Z').getTime()
@@ -23,6 +29,7 @@ export class GameEngine {
 
   constructor() {
     this.rng = new SeededRNG(42)
+    patchDronePK()
 
     const units = new Map<UnitId, Unit>()
     for (const u of [...usaUnits, ...iranUnits]) {
@@ -104,8 +111,10 @@ export class GameEngine {
     }
 
     processCombat(state, this.rng)
+    processPointDefense(state, this.rng)
     processEconomy(state)
     processLogistics(state)
+    processRepair(state)
 
     // Autonomous offensive fire for weapons_free units (any nation)
     const friendlyCmds = processFriendlyAI(state, this.rng)
@@ -190,10 +199,16 @@ export class GameEngine {
   /** Load a previously saved state */
   loadState(json: string): void {
     const raw = JSON.parse(json)
+    const units = new Map(raw.units as [string, Unit][])
+    // Backfill new fields for saves from older versions
+    for (const unit of units.values()) {
+      if (unit.maxHealth == null) unit.maxHealth = 100
+      if (unit.pointDefense == null) unit.pointDefense = []
+    }
     this.state = {
       time: raw.time,
       nations: raw.nations,
-      units: new Map(raw.units),
+      units,
       missiles: new Map(raw.missiles),
       engagements: new Map(raw.engagements),
       supplyLines: new Map(raw.supplyLines ?? []),
@@ -206,6 +221,9 @@ export class GameEngine {
     resetFriendlyAIState()
     resetOrdersState()
     resetLogisticsState()
+    resetPointDefenseState()
+    resetRepairState()
+    resetDroneAIState()
   }
 
   private emitEvent(event: GameEvent): void {
@@ -229,9 +247,11 @@ function toViewUnit(u: Unit): ViewUnit {
     speed_kts: u.speed_kts,
     status: u.status,
     health: u.health,
+    maxHealth: u.maxHealth,
     logistics: u.logistics,
     supplyStocks: u.supplyStocks.map(s => ({ ...s })),
     weapons: u.weapons.map(w => ({ ...w })),
+    pointDefense: u.pointDefense.map(pd => ({ ...pd })),
     roe: u.roe,
     waypoints: u.waypoints.map(w => ({ ...w })),
     parentId: u.parentId,

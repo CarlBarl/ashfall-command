@@ -37,6 +37,9 @@ export function detectThreats(state: GameState, adUnit: Unit): DetectedThreat[] 
       // Low-altitude cruise missiles are harder to detect at range
       if (spec.flight_altitude_ft < 500) effectiveRange *= 0.4
       else if (spec.flight_altitude_ft < 5000) effectiveRange *= 0.7
+      // RCS factor: small targets (drones ~0.1 m²) are harder to detect
+      const rcs = spec.rcs_m2 ?? 1.0
+      if (rcs < 1.0) effectiveRange *= Math.min(1.0, Math.sqrt(rcs))
     }
 
     if (dist <= effectiveRange) {

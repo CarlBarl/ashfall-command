@@ -176,7 +176,7 @@ export default function StatsPanel() {
       title="SITUATION REPORT"
       style={{
         position: 'absolute',
-        top: 60,
+        top: 44,
         left: 290,
         maxHeight: '60vh',
         minWidth: 260,

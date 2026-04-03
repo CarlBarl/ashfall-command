@@ -91,7 +91,7 @@ export default function AlertFeed() {
           position: 'absolute',
           bottom: 12,
           left: 12,
-          width: 300,
+          width: 240,
           background: 'rgba(13, 17, 23, 0.8)',
           border: '1px solid var(--border-default)',
           borderRadius: 'var(--panel-radius)',
@@ -248,6 +248,8 @@ function eventColor(e: GameEvent): string {
     case 'UNIT_DESTROYED': return 'var(--status-damaged)'
     case 'WAR_DECLARED': return '#ff4444'
     case 'AMMO_DEPLETED': return 'var(--text-muted)'
+    case 'POINT_DEFENSE_KILL': return 'var(--status-ready)'
+    case 'UNIT_REPAIRED': return 'var(--status-moving)'
     default: return 'var(--text-secondary)'
   }
 }
@@ -266,6 +268,10 @@ function formatEvent(e: GameEvent): string {
       return `T+${e.tick} WAR: ${e.attacker} -> ${e.defender}`
     case 'AMMO_DEPLETED':
       return `T+${e.tick} AMMO OUT: ${e.unitId} / ${e.weaponId}`
+    case 'POINT_DEFENSE_KILL':
+      return `T+${e.tick} CIWS KILL ${e.missileId} by ${e.unitId}`
+    case 'UNIT_REPAIRED':
+      return `T+${e.tick} REPAIRED ${e.unitId} (+${e.healthRestored} HP)`
     default:
       return `T+${(e as GameEvent & { tick: number }).tick} ${(e as GameEvent & { type: string }).type}`
   }

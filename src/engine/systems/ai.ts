@@ -3,6 +3,7 @@ import type { Command } from '@/types/commands'
 import type { SeededRNG } from '../utils/rng'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import { haversine } from '../utils/geo'
+import { processDroneSwarm, getDroneAmmo } from './drone-ai'
 
 type AIPhase = 'PEACETIME' | 'ALERT' | 'DEFENSIVE' | 'OFFENSIVE' | 'ATTRITION'
 
@@ -91,6 +92,11 @@ export function processAI(state: GameState, rng: SeededRNG): Command[] {
         if (ai.attacksReceived > 0 && state.time.tick - ai.lastRetaliationTick > 300) {
           const salvoCommands = generateRetaliatorySalvo(state, nation.id, enemyNation, rng, 'defensive')
           commands.push(...salvoCommands)
+          // Accompany with drone swarm for saturation effect
+          if (getDroneAmmo(state, nation.id) > 10) {
+            const droneCommands = processDroneSwarm(state, nation.id, enemyNation, rng, 'defensive')
+            commands.push(...droneCommands)
+          }
           ai.lastRetaliationTick = state.time.tick
           ai.attacksReceived = 0
         }
@@ -104,14 +110,24 @@ export function processAI(state: GameState, rng: SeededRNG): Command[] {
           ai.lastRetaliationTick = state.time.tick
           ai.salvosLaunched++
         }
+        // Drone swarms — supplement ballistic salvos with cheap drones
+        if (getDroneAmmo(state, nation.id) > 20) {
+          const droneCommands = processDroneSwarm(state, nation.id, enemyNation, rng, 'offensive')
+          commands.push(...droneCommands)
+        }
         break
 
       case 'ATTRITION':
-        // Conserve ammo — launch only when accumulating enough for saturation
+        // Conserve ballistic ammo — launch only for saturation
         if (state.time.tick - ai.lastRetaliationTick > 3600) {
           const salvoCommands = generateRetaliatorySalvo(state, nation.id, enemyNation, rng, 'saturation')
           commands.push(...salvoCommands)
           ai.lastRetaliationTick = state.time.tick
+        }
+        // Rely heavily on drones in attrition phase — cheap and plentiful
+        if (getDroneAmmo(state, nation.id) > 10) {
+          const droneCommands = processDroneSwarm(state, nation.id, enemyNation, rng, 'saturation')
+          commands.push(...droneCommands)
         }
         break
     }

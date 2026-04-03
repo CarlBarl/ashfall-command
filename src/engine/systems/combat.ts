@@ -52,7 +52,7 @@ function updateMissileFuel(state: GameState): void {
       if (missile.is_interceptor) {
         // Interceptors with no fuel have missed their target
         toRemove.push(missile.id)
-      } else if (spec.type === 'cruise_missile' || spec.type === 'ashm') {
+      } else if (spec.type === 'cruise_missile' || spec.type === 'ashm' || spec.type === 'loitering_munition') {
         // Cruise missiles: speed decays and altitude drops (handled in speed/altitude updates)
         // If altitude has reached 0 or below, crash
         if (missile.altitude_m <= 0) {
@@ -787,7 +787,15 @@ function resolveImpacts(state: GameState): void {
 
     if (target && target.status !== 'destroyed' && spec) {
       const damage = computeDamage(spec, target.hardness)
+      const healthBefore = target.health
       target.health = Math.max(0, target.health - damage)
+
+      // Permanent structural damage: heavy hits that bring unit below 30 HP
+      // reduce maxHealth, making full repair impossible
+      if (target.health < 30 && healthBefore >= 30) {
+        const permanentDmg = Math.ceil(damage * 0.25)
+        target.maxHealth = Math.max(10, (target.maxHealth ?? 100) - permanentDmg)
+      }
 
       events.push({
         type: 'MISSILE_IMPACT',

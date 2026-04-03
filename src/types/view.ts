@@ -4,6 +4,7 @@ import type {
   Missile,
   Nation,
   NationId,
+  PointDefenseSystem,
   Position,
   ROE,
   SupplyLine,
@@ -36,9 +37,11 @@ export interface ViewUnit {
   speed_kts: number
   status: UnitStatus
   health: number
+  maxHealth: number
   logistics: number
   supplyStocks: WeaponStock[]
   weapons: WeaponLoadout[]
+  pointDefense: PointDefenseSystem[]
   roe: ROE
   waypoints: Position[]
   parentId?: UnitId

@@ -299,7 +299,7 @@ export default function OrbatPanel() {
       title="ORDER OF BATTLE"
       style={{
         position: 'absolute',
-        top: 60,
+        top: 44,
         left: 12,
         maxHeight: '60vh',
         minWidth: 240,

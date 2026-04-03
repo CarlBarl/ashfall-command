@@ -28,6 +28,12 @@ const basePositions = {
   fateh_shiraz:       { lat: 29.59, lng: 52.59 },
   zolfaghar_kermanshah: { lat: 34.31, lng: 47.07 },
   soumar_base:        { lat: 34.10, lng: 50.90 },
+
+  // Shahed drone launchers
+  shahed_kermanshah:  { lat: 34.35, lng: 47.15 },
+  shahed_dezful:      { lat: 32.40, lng: 48.35 },
+  shahed_isfahan:     { lat: 32.60, lng: 51.75 },
+  shahed_shiraz:      { lat: 29.55, lng: 52.55 },
 } as const
 
 // ═══════════════════════════════════════════════
@@ -52,6 +58,10 @@ export const iranBaseSupply: Record<string, WeaponStock[]> = {
     { weaponId: 'sejjil2',      count: 4,  maxCount: 8,  productionRate: 0 },
     { weaponId: 'fateh110',     count: 12, maxCount: 24, productionRate: 0 },
     { weaponId: 'soumar',       count: 6,  maxCount: 12, productionRate: 0 },
+    // Shahed drone production — Iran mass-produces at ~100-300/month
+    { weaponId: 'shahed_136',   count: 200, maxCount: 500, productionRate: 2 },
+    { weaponId: 'shahed_131',   count: 100, maxCount: 200, productionRate: 1 },
+    { weaponId: 'shahed_238',   count: 50,  maxCount: 100, productionRate: 0.5 },
   ],
 
   isfahan_ab: [
@@ -163,4 +173,10 @@ export const iranSupplyLines: SupplyLine[] = [
   // ─── Northwest ───
   makeLine('mehrabad', 'tabriz_ab', 80),           // Tehran → Tabriz (~600 km, long but critical)
   makeLine('tabriz_ab', 'shahab_tabriz', 100),     // Tabriz AB ↔ Shahab TELs (co-located)
+
+  // ─── Drone launcher supply lines ───
+  makeLine('zolfaghar_kermanshah', 'shahed_kermanshah', 100), // Kermanshah hub → drone battery
+  makeLine('fateh_dezful', 'shahed_dezful', 100),             // Dezful hub → drone battery
+  makeLine('isfahan_ab', 'shahed_isfahan', 100),              // Isfahan hub → drone battery
+  makeLine('fateh_shiraz', 'shahed_shiraz', 100),             // Shiraz hub → drone battery
 ]
