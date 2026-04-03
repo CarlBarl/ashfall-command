@@ -10,6 +10,9 @@ import { processAI, resetAIState } from './systems/ai'
 import { processEconomy } from './systems/economy'
 import { processOrders, resetOrdersState } from './systems/orders'
 import { processFriendlyAI, resetFriendlyAIState } from './systems/friendly-ai'
+import { processLogistics, resetLogisticsState } from './systems/logistics'
+import { usaBaseSupply, usaSupplyLines } from '@/data/supply/usa-supply'
+import { iranBaseSupply, iranSupplyLines } from '@/data/supply/iran-supply'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
 const SCENARIO_START = new Date('2026-06-15T06:00:00Z').getTime()
@@ -68,9 +71,21 @@ export class GameEngine {
       units,
       missiles: new Map(),
       engagements: new Map(),
-      supplyLines: new Map(),
+      supplyLines: new Map<string, import('@/types/game').SupplyLine>(),
       events: [],
       pendingEvents: [],
+    }
+
+    // Initialize supply: apply stocks + logistics to bases, load supply lines
+    for (const [unitId, stocks] of Object.entries({ ...usaBaseSupply, ...iranBaseSupply })) {
+      const unit = this.state.units.get(unitId)
+      if (unit) {
+        unit.supplyStocks = stocks
+        unit.logistics = 100
+      }
+    }
+    for (const line of [...usaSupplyLines, ...iranSupplyLines]) {
+      this.state.supplyLines.set(line.id, { ...line })
     }
   }
 
@@ -90,6 +105,7 @@ export class GameEngine {
 
     processCombat(state, this.rng)
     processEconomy(state)
+    processLogistics(state)
 
     // Autonomous offensive fire for weapons_free units (any nation)
     const friendlyCmds = processFriendlyAI(state, this.rng)
@@ -189,6 +205,7 @@ export class GameEngine {
     resetAIState()
     resetFriendlyAIState()
     resetOrdersState()
+    resetLogisticsState()
   }
 
   private emitEvent(event: GameEvent): void {

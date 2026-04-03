@@ -11,6 +11,7 @@ import { createMissileLayers } from './layers/MissileLayer'
 import { createImpactLayer } from './layers/ImpactLayer'
 import { createWaypointLayers } from './layers/WaypointLayer'
 import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
+import { createSupplyLineGeoJSON } from './layers/SupplyLineLayer'
 import InfoTooltip from './InfoTooltip'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
@@ -63,6 +64,7 @@ export default function GameMap() {
   const allEvents = useGameStore((s) => s.viewState.events)
   const currentTime = useGameStore((s) => s.visualTimestamp)
   const currentTick = useGameStore((s) => s.viewState.time.tick)
+  const supplyLines = useGameStore((s) => s.viewState.supplyLines)
 
   useEffect(() => {
     fetch('/geo/ne_50m_admin_0.geojson')
@@ -158,6 +160,44 @@ export default function GameMap() {
         cursor={targetingMode ? 'crosshair' : hoveredUnitId ? 'pointer' : 'grab'}
       >
         <DeckOverlay layers={layers} />
+
+        {supplyLines.length > 0 && (
+          <Source id="supply-lines" type="geojson" data={createSupplyLineGeoJSON(supplyLines, units)}>
+            <Layer
+              id="supply-line-healthy"
+              type="line"
+              filter={['==', ['get', 'status'], 'healthy']}
+              paint={{
+                'line-color': '#2a6e3f',
+                'line-width': 1,
+                'line-opacity': 0.4,
+                'line-dasharray': [4, 4],
+              }}
+            />
+            <Layer
+              id="supply-line-damaged"
+              type="line"
+              filter={['==', ['get', 'status'], 'damaged']}
+              paint={{
+                'line-color': '#b8860b',
+                'line-width': 1,
+                'line-opacity': 0.5,
+                'line-dasharray': [2, 4],
+              }}
+            />
+            <Layer
+              id="supply-line-cut"
+              type="line"
+              filter={['==', ['get', 'status'], 'cut']}
+              paint={{
+                'line-color': '#8b0000',
+                'line-width': 0.5,
+                'line-opacity': 0.3,
+                'line-dasharray': [1, 4],
+              }}
+            />
+          </Source>
+        )}
 
         {geoData && (
           <Source id="countries" type="geojson" data={geoData}>
