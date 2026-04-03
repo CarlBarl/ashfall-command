@@ -102,9 +102,27 @@ export default function GameMap() {
     }
     setClusterPopup(null)
 
-    // Check if clicked unit is an enemy — set as target instead of selecting
+    // Check if clicked unit is an enemy — set as target and auto-select nearest armed friendly
     const clickedUnit = units.find(u => u.id === id)
     if (clickedUnit && clickedUnit.nation !== 'usa') {
+      // Find nearest friendly unit with available offensive weapons
+      const friendlies = units.filter(u =>
+        u.nation === 'usa' && u.status !== 'destroyed' &&
+        u.weapons.some(w => w.count > 0),
+      )
+      if (friendlies.length > 0) {
+        const tLat = clickedUnit.position.lat
+        const tLng = clickedUnit.position.lng
+        let nearest = friendlies[0]
+        let bestDist = Infinity
+        for (const f of friendlies) {
+          const dLat = f.position.lat - tLat
+          const dLng = f.position.lng - tLng
+          const d = dLat * dLat + dLng * dLng
+          if (d < bestDist) { bestDist = d; nearest = f }
+        }
+        selectUnit(nearest.id)
+      }
       setTarget(id)
       return
     }

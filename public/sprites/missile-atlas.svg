@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="64" viewBox="0 0 128 64">
+  <!-- Cruise missile / interceptor: slender arrow pointing up -->
+  <path d="M32 6 L40 54 L32 44 L24 54 Z" fill="white"/>
+  <!-- Ballistic missile: wider arrow pointing up -->
+  <path d="M96 6 L108 54 L96 40 L84 54 Z" fill="white"/>
+</svg>

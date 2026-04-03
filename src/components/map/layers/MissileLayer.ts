@@ -1,28 +1,32 @@
 import { TripsLayer } from '@deck.gl/geo-layers'
-import { ScatterplotLayer } from '@deck.gl/layers'
+import { IconLayer } from '@deck.gl/layers'
 import type { Missile, NationId } from '@/types/game'
 import { weaponSpecs } from '@/data/weapons/missiles'
 
-const NATION_TRAIL_COLORS: Record<string, [number, number, number]> = {
-  usa: [80, 160, 255],
-  iran: [255, 80, 80],
+const TRAIL_COLORS: Record<string, [number, number, number]> = {
+  usa: [60, 130, 210],
+  iran: [210, 60, 60],
 }
 
-const NATION_HEAD_COLORS: Record<string, [number, number, number]> = {
-  usa: [180, 220, 255],
-  iran: [255, 180, 160],
+const HEAD_COLORS: Record<string, [number, number, number, number]> = {
+  usa: [140, 200, 255, 255],
+  iran: [255, 140, 120, 255],
 }
 
-const NATION_GLOW_COLORS: Record<string, [number, number, number, number]> = {
-  usa: [80, 160, 255, 120],
-  iran: [255, 80, 80, 120],
+const INTERCEPTOR_COLOR: [number, number, number, number] = [200, 200, 200, 220]
+
+const ICON_MAPPING: Record<string, { x: number; y: number; width: number; height: number; mask: boolean }> = {
+  cruise:    { x: 0,  y: 0, width: 64, height: 64, mask: true },
+  ballistic: { x: 64, y: 0, width: 64, height: 64, mask: true },
 }
 
 interface MissileHead {
   id: string
   position: [number, number]
   nation: NationId
-  isBallistic: boolean
+  type: 'cruise' | 'ballistic'
+  bearing: number
+  isInterceptor: boolean
   altitude_km: number
   phase: string
 }
@@ -47,6 +51,31 @@ function getMissilePosition(m: Missile, currentTime: number): [number, number] |
   return null
 }
 
+/** Compute bearing (degrees clockwise from north) from the last two path segments */
+function getMissileBearing(m: Missile, currentTime: number): number {
+  const { timestamps, path } = m
+  if (path.length < 2) return 0
+
+  // Find the current segment index
+  let idx = path.length - 2
+  for (let i = 0; i < timestamps.length - 1; i++) {
+    if (currentTime >= timestamps[i] && currentTime < timestamps[i + 1]) {
+      idx = i
+      break
+    }
+  }
+
+  const [lng1, lat1] = path[idx]
+  const [lng2, lat2] = path[Math.min(idx + 1, path.length - 1)]
+
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const lat1r = lat1 * Math.PI / 180
+  const lat2r = lat2 * Math.PI / 180
+  const y = Math.sin(dLng) * Math.cos(lat2r)
+  const x = Math.cos(lat1r) * Math.sin(lat2r) - Math.sin(lat1r) * Math.cos(lat2r) * Math.cos(dLng)
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360
+}
+
 export function createMissileLayers(
   missiles: Missile[],
   currentTime: number,
@@ -54,85 +83,73 @@ export function createMissileLayers(
 ) {
   const inflight = missiles.filter(m => m.status === 'inflight')
 
-  // Compute head positions
+  // Compute head positions + bearings
   const heads: MissileHead[] = []
   for (const m of inflight) {
     const pos = getMissilePosition(m, currentTime)
     if (!pos) continue
     const spec = weaponSpecs[m.weaponId]
+    const isBallistic = spec?.type === 'ballistic_missile'
     heads.push({
       id: m.id,
       position: pos,
       nation: m.nation,
-      isBallistic: spec?.type === 'ballistic_missile',
+      type: isBallistic ? 'ballistic' : 'cruise',
+      bearing: getMissileBearing(m, currentTime),
+      isInterceptor: m.is_interceptor,
       altitude_km: m.altitude_km,
       phase: m.phase,
     })
   }
 
   return [
-    // Layer 1: Fading trail (CMANO-style thin line behind the missile)
+    // Single thin trail — fading, no double-layer laser effect
     new TripsLayer<Missile>({
       id: 'missile-trail',
       data: inflight,
       getPath: (d) => d.path,
       getTimestamps: (d) => d.timestamps,
-      getColor: (d) => NATION_TRAIL_COLORS[d.nation] ?? [200, 200, 200],
+      getColor: (d) => d.is_interceptor
+        ? [160, 160, 160] as [number, number, number]
+        : TRAIL_COLORS[d.nation] ?? [180, 180, 180],
       currentTime,
-      trailLength: 600_000, // 10 game minutes — long enough to see the full flight path
+      trailLength: 300_000, // 5 game minutes
       fadeTrail: true,
-      widthMinPixels: 1.5,
-      widthMaxPixels: 3,
+      widthMinPixels: 1,
+      widthMaxPixels: 2,
       jointRounded: true,
       capRounded: true,
-      opacity: 0.7,
+      opacity: 0.5,
     }),
 
-    // Layer 2: Brighter leading edge (thicker, shorter trail = bright head)
-    new TripsLayer<Missile>({
-      id: 'missile-head-trail',
-      data: inflight,
-      getPath: (d) => d.path,
-      getTimestamps: (d) => d.timestamps,
-      getColor: (d) => NATION_HEAD_COLORS[d.nation] ?? [255, 255, 255],
-      currentTime,
-      trailLength: 60_000, // 1 game minute — short bright head
-      fadeTrail: true,
-      widthMinPixels: 3,
-      widthMaxPixels: 5,
-      jointRounded: true,
-      capRounded: true,
-      opacity: 0.9,
-    }),
-
-    // Layer 3: Missile head dot (bright marker, pickable for tooltip)
-    new ScatterplotLayer<MissileHead>({
-      id: 'missile-head-dot',
+    // Directional arrow heads — rotated by bearing, pickable
+    new IconLayer<MissileHead>({
+      id: 'missile-heads',
       data: heads,
       pickable: true,
+      iconAtlas: '/sprites/missile-atlas.svg',
+      iconMapping: ICON_MAPPING,
+      getIcon: (d) => d.type,
       getPosition: (d) => d.position,
-      getRadius: (d) => d.isBallistic ? 8 : 5,
-      getFillColor: (d) => NATION_HEAD_COLORS[d.nation] as [number, number, number] ?? [255, 255, 255],
-      radiusUnits: 'pixels',
-      filled: true,
-      stroked: false,
-      opacity: 1.0,
+      getSize: (d) => {
+        if (d.isInterceptor) return 14
+        return d.type === 'ballistic' ? 20 : 16
+      },
+      getColor: (d) => d.isInterceptor
+        ? INTERCEPTOR_COLOR
+        : HEAD_COLORS[d.nation] ?? [255, 255, 255, 255],
+      getAngle: (d) => -d.bearing, // deck.gl rotates counter-clockwise; bearing is clockwise
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 24,
+      billboard: true,
       onHover: (info) => {
         onHover?.(info.object?.id ?? null, info.x, info.y)
       },
-    }),
-
-    // Layer 4: Glow around the head (larger, semi-transparent)
-    new ScatterplotLayer<MissileHead>({
-      id: 'missile-head-glow',
-      data: heads,
-      getPosition: (d) => d.position,
-      getRadius: (d) => d.isBallistic ? 14 : 10,
-      getFillColor: (d) => NATION_GLOW_COLORS[d.nation] ?? [200, 200, 200, 100],
-      radiusUnits: 'pixels',
-      filled: true,
-      stroked: false,
-      opacity: 0.5,
+      updateTriggers: {
+        getPosition: currentTime,
+        getAngle: currentTime,
+      },
     }),
   ]
 }

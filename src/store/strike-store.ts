@@ -131,7 +131,10 @@ export const useStrikeStore = create<StrikeStore>((set) => ({
     open: true,
     mode: 'configure',
   }),
-  setTargetUnitId: (id) => set({ targetUnitId: id, targetingMode: false, open: id !== null }),
+  setTargetUnitId: (id) => set(id
+    ? { targetUnitId: id, targetingMode: false, open: true, mode: 'direct' as StrikeMode }
+    : { targetUnitId: null, targetingMode: false, open: false }
+  ),
   setTargetingMode: (on) => set({ targetingMode: on }),
   toggleTargetCheck: (unitId) => set((s) => ({
     targets: s.targets.map(t => t.unitId === unitId ? { ...t, checked: !t.checked } : t),
