@@ -1,46 +1,17 @@
 import { create } from 'zustand'
-import type { UnitId, WeaponId, UnitCategory } from '@/types/game'
+import type { UnitId } from '@/types/game'
 import type { AttackPriority, TimingMode, AttackPlan } from '@/types/attack-plan'
-import type { UnitCluster } from '@/components/map/layers/cluster'
 
-export type StrikeMode = 'direct' | 'configure' | 'plan'
-
-export interface LauncherAllocation {
-  unitId: UnitId
-  unitName: string
-  weaponId: WeaponId
-  count: number
-  maxAvailable: number
-}
-
-export interface StrikeTarget {
-  unitId: UnitId
-  name: string
-  category: UnitCategory
-  health: number
-  checked: boolean
-}
+export type StrikeMode = 'direct' | 'plan'
 
 interface StrikeStore {
   // Panel visibility
   open: boolean
   mode: StrikeMode
 
-  // Target cluster (set when TARGET GROUP is clicked)
-  strikeCluster: UnitCluster | null
-  // Individual targets within the cluster (with checkboxes)
-  targets: StrikeTarget[]
   // Single target (for direct fire mode)
   targetUnitId: UnitId | null
   targetingMode: boolean
-
-  // Launcher allocations (per-launcher weapon counts)
-  allocations: LauncherAllocation[]
-
-  // Configure mode settings
-  severity: 'surgical' | 'standard' | 'overwhelming'
-  seadFirst: boolean
-  distribution: 'even' | 'weighted' | 'manual'
 
   // Plan mode (presidential planner)
   planPriorities: AttackPriority[]
@@ -58,20 +29,8 @@ interface StrikeStore {
   setMode: (mode: StrikeMode) => void
 
   // Actions — targeting
-  setStrikeCluster: (cluster: UnitCluster) => void
   setTargetUnitId: (id: UnitId | null) => void
   setTargetingMode: (on: boolean) => void
-  toggleTargetCheck: (unitId: UnitId) => void
-  setTargets: (targets: StrikeTarget[]) => void
-
-  // Actions — allocation
-  setAllocations: (allocs: LauncherAllocation[]) => void
-  updateAllocation: (unitId: UnitId, weaponId: WeaponId, count: number) => void
-
-  // Actions — configure
-  setSeverity: (s: 'surgical' | 'standard' | 'overwhelming') => void
-  setSeadFirst: (on: boolean) => void
-  setDistribution: (d: 'even' | 'weighted' | 'manual') => void
 
   // Actions — plan mode
   addPlanPriority: (p: AttackPriority) => void
@@ -93,14 +52,8 @@ interface StrikeStore {
 const INITIAL_STATE = {
   open: false,
   mode: 'direct' as StrikeMode,
-  strikeCluster: null,
-  targets: [],
   targetUnitId: null,
   targetingMode: false,
-  allocations: [],
-  severity: 'standard' as const,
-  seadFirst: true,
-  distribution: 'even' as const,
   planPriorities: [],
   planTiming: 'simultaneous' as TimingMode,
   planName: 'Strike Plan Alpha',
@@ -118,41 +71,11 @@ export const useStrikeStore = create<StrikeStore>((set) => ({
   setMode: (mode) => set({ mode, open: true }),
 
   // Targeting
-  setStrikeCluster: (cluster) => set({
-    strikeCluster: cluster,
-    targets: cluster.units.map(u => ({
-      unitId: u.id,
-      name: u.name,
-      category: u.category,
-      health: u.health,
-      checked: true,
-    })),
-    targetUnitId: cluster.primary.id, // auto-set for DIRECT FIRE tab
-    open: true,
-    mode: 'configure',
-  }),
   setTargetUnitId: (id) => set(id
     ? { targetUnitId: id, targetingMode: false, open: true, mode: 'direct' as StrikeMode }
     : { targetUnitId: null, targetingMode: false, open: false }
   ),
   setTargetingMode: (on) => set({ targetingMode: on }),
-  toggleTargetCheck: (unitId) => set((s) => ({
-    targets: s.targets.map(t => t.unitId === unitId ? { ...t, checked: !t.checked } : t),
-  })),
-  setTargets: (targets) => set({ targets }),
-
-  // Allocation
-  setAllocations: (allocs) => set({ allocations: allocs }),
-  updateAllocation: (unitId, weaponId, count) => set((s) => ({
-    allocations: s.allocations.map(a =>
-      a.unitId === unitId && a.weaponId === weaponId ? { ...a, count: Math.max(0, Math.min(count, a.maxAvailable)) } : a
-    ),
-  })),
-
-  // Configure
-  setSeverity: (severity) => set({ severity }),
-  setSeadFirst: (seadFirst) => set({ seadFirst }),
-  setDistribution: (distribution) => set({ distribution }),
 
   // Plan mode
   addPlanPriority: (p) => set((s) => ({ planPriorities: [...s.planPriorities, p] })),
