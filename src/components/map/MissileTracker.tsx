@@ -104,7 +104,7 @@ export default function MissileTracker({ missile, mapRef, units, currentTime, on
 
       {/* Stats rows */}
       <TrackerRow label="Speed" value={`${missile.speed_current_mach.toFixed(1)} Mach`} />
-      <TrackerRow label="Alt" value={`${(missile.altitude_km * 1000).toFixed(0)}m`} />
+      <TrackerRow label="Alt" value={`${Math.round(missile.altitude_m)}m`} />
       <TrackerRow label="Phase" value={missile.phase.toUpperCase()} highlight />
       <TrackerRow label="Target" value={targetName} />
       <TrackerRow label="ETA" value={remainingSec > 0 ? etaStr : 'IMPACT'} highlight />

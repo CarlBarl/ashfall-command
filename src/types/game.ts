@@ -137,7 +137,7 @@ export interface ADSystemSpec {
   name: string
   radar_range_km: number
   engagement_range_km: number
-  max_altitude_km: number
+  max_altitude_m: number
   fire_channels: number
   reload_time_sec: number
   interceptorId: WeaponId
@@ -164,8 +164,8 @@ export interface Missile {
   status: 'inflight' | 'intercepted' | 'impact'
   launchTime: number
   eta: number
-  /** Current altitude in km — computed from flight phase */
-  altitude_km: number
+  /** Current altitude in meters — computed from flight phase */
+  altitude_m: number
   /** Flight phase for ballistic missiles */
   phase: 'boost' | 'midcourse' | 'terminal' | 'cruise'
   /** Actual current speed in Mach (varies with fuel, phase, gravity) */
