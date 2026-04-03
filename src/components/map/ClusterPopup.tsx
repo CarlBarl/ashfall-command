@@ -25,7 +25,6 @@ export default function ClusterPopup({ cluster, x, y, onClose }: ClusterPopupPro
   const selectedUnitIds = useUIStore((s) => s.selectedUnitIds)
   const targetingMode = useStrikeStore((s) => s.targetingMode)
   const setTargetUnitId = useStrikeStore((s) => s.setTargetUnitId)
-  const setStrikeCluster = useStrikeStore((s) => s.setStrikeCluster)
 
   const friendlyUnits = cluster.units.filter(u => u.nation === 'usa')
 
@@ -180,11 +179,11 @@ export default function ClusterPopup({ cluster, x, y, onClose }: ClusterPopupPro
           </button>
         )}
 
-        {/* TARGET GROUP — opens StrikePanel in CONFIGURE mode with this cluster */}
+        {/* TARGET GROUP — opens StrikePanel in DIRECT FIRE mode with cluster primary */}
         {cluster.units.length > 0 && cluster.units[0].nation !== 'usa' && (
           <button
             onClick={() => {
-              setStrikeCluster(cluster)
+              setTargetUnitId(cluster.primary.id)
               onClose()
             }}
             style={{

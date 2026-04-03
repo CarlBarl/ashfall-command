@@ -1,22 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Panel from '@/components/common/Panel'
 import StatBar from '@/components/common/StatBar'
-import { useStrikeStore, type StrikeMode, type LauncherAllocation } from '@/store/strike-store'
+import { useStrikeStore, type StrikeMode } from '@/store/strike-store'
 import { useGameStore } from '@/store/game-store'
 import { sendCommand } from '@/store/bridge'
 import { weaponSpecs } from '@/data/weapons/missiles'
-import { adSystems } from '@/data/weapons/air-defense'
 import { computeAttackPlan } from '@/engine/attack-planner'
 import { haversine } from '@/engine/utils/geo'
-import type { ViewUnit } from '@/types/view'
-import type { WeaponLoadout, UnitCategory, WeaponId } from '@/types/game'
+import type { UnitCategory } from '@/types/game'
 import type { AttackPriority, Severity, TimingMode, PlannedStrike, AttackPlan } from '@/types/attack-plan'
 
 // ════════════════════════════════════════════════════════════════
 //  Constants
 // ════════════════════════════════════════════════════════════════
-
-const OFFENSIVE_TYPES = new Set(['cruise_missile', 'ballistic_missile', 'ashm'])
 
 const SEVERITY_OPTIONS: { value: Severity; label: string; desc: string }[] = [
   { value: 'surgical', label: 'SURGICAL', desc: '1 per target' },
@@ -40,46 +36,6 @@ const TARGET_CATEGORIES: { value: UnitCategory; label: string }[] = [
   { value: 'carrier_group', label: 'Carrier Groups' },
 ]
 
-const DISTRIBUTION_OPTIONS: { value: 'even' | 'weighted' | 'manual'; label: string }[] = [
-  { value: 'even', label: 'EVEN' },
-  { value: 'weighted', label: 'WEIGHTED' },
-  { value: 'manual', label: 'MANUAL' },
-]
-
-// ════════════════════════════════════════════════════════════════
-//  Helpers
-// ════════════════════════════════════════════════════════════════
-
-function isOffensiveWeapon(wl: WeaponLoadout): boolean {
-  const spec = weaponSpecs[wl.weaponId]
-  return !!spec && OFFENSIVE_TYPES.has(spec.type)
-}
-
-function isSAMWeapon(wl: WeaponLoadout): boolean {
-  const spec = weaponSpecs[wl.weaponId]
-  return !!spec && spec.type === 'sam'
-}
-
-function adSystemForInterceptor(interceptorId: WeaponId) {
-  return Object.values(adSystems).find((s) => s.interceptorId === interceptorId)
-}
-
-function adMultiplier(target: ViewUnit, enemyUnits: ViewUnit[]): number {
-  let totalFireChannels = 0
-  for (const eu of enemyUnits) {
-    if (eu.category !== 'sam_site' || eu.status === 'destroyed') continue
-    const dist = haversine(eu.position, target.position)
-    if (dist > 200) continue
-    for (const wl of eu.weapons) {
-      if (!isSAMWeapon(wl) || wl.count === 0) continue
-      const ad = adSystemForInterceptor(wl.weaponId)
-      if (ad) totalFireChannels += ad.fire_channels
-    }
-  }
-  if (totalFireChannels === 0) return 1.0
-  return Math.min(4.0, 1.0 + totalFireChannels * 0.15)
-}
-
 let priorityCounter = 0
 
 // ════════════════════════════════════════════════════════════════
@@ -89,7 +45,7 @@ let priorityCounter = 0
 export default function StrikePanel() {
   const strike = useStrikeStore()
 
-  const { mode, open, strikeCluster, targetUnitId } = strike
+  const { mode, open, targetUnitId } = strike
 
   // Visibility: show when explicitly opened OR when a target is set (auto-show direct fire)
   const autoShowDirect = mode === 'direct' && targetUnitId !== null
@@ -99,9 +55,7 @@ export default function StrikePanel() {
   const title =
     mode === 'plan'
       ? 'PRESIDENTIAL STRIKE AUTHORIZATION'
-      : mode === 'configure' && strikeCluster
-        ? `STRIKE PANEL \u2014 ${strikeCluster.primary.name}`
-        : 'STRIKE PANEL'
+      : 'STRIKE PANEL'
 
   // Position per mode
   const positionStyle: React.CSSProperties =
@@ -120,7 +74,6 @@ export default function StrikePanel() {
 
       {/* Tab content */}
       {mode === 'direct' && <DirectFireTab />}
-      {mode === 'configure' && <ConfigureTab />}
       {mode === 'plan' && <PlanAttackTab />}
     </Panel>
   )
@@ -133,7 +86,6 @@ export default function StrikePanel() {
 function TabBar({ mode, onSetMode }: { mode: StrikeMode; onSetMode: (m: StrikeMode) => void }) {
   const tabs: { value: StrikeMode; label: string }[] = [
     { value: 'direct', label: 'DIRECT FIRE' },
-    { value: 'configure', label: 'CONFIGURE' },
     { value: 'plan', label: 'PLAN ATTACK' },
   ]
 
@@ -347,416 +299,6 @@ function DirectFireTab() {
             )
           })}
         </>
-      )}
-    </>
-  )
-}
-
-// ════════════════════════════════════════════════════════════════
-//  CONFIGURE TAB
-// ════════════════════════════════════════════════════════════════
-
-function ConfigureTab() {
-  const strikeCluster = useStrikeStore((s) => s.strikeCluster)
-  const targets = useStrikeStore((s) => s.targets)
-  const severity = useStrikeStore((s) => s.severity)
-  const seadFirst = useStrikeStore((s) => s.seadFirst)
-  const distribution = useStrikeStore((s) => s.distribution)
-  const allocations = useStrikeStore((s) => s.allocations)
-  const setAllocations = useStrikeStore((s) => s.setAllocations)
-  const toggleTargetCheck = useStrikeStore((s) => s.toggleTargetCheck)
-  const setSeverity = useStrikeStore((s) => s.setSeverity)
-  const setSeadFirst = useStrikeStore((s) => s.setSeadFirst)
-  const setDistribution = useStrikeStore((s) => s.setDistribution)
-  const updateAllocation = useStrikeStore((s) => s.updateAllocation)
-  const startExecution = useStrikeStore((s) => s.startExecution)
-  const updateProgress = useStrikeStore((s) => s.updateProgress)
-  const finishExecution = useStrikeStore((s) => s.finishExecution)
-  const executing = useStrikeStore((s) => s.executing)
-  const executionProgress = useStrikeStore((s) => s.executionProgress)
-  const units = useGameStore((s) => s.viewState.units)
-  // Track manual edits — skip auto-allocation when user has overridden
-  const [manualOverride, setManualOverride] = useState(false)
-  const [expandedLauncher, setExpandedLauncher] = useState<string | null>(null)
-
-  const friendlyUnits = useMemo(
-    () => units.filter((u) => u.nation === 'usa' && u.status !== 'destroyed'),
-    [units],
-  )
-  const enemyUnits = useMemo(
-    () => units.filter((u) => u.nation !== 'usa' && u.status !== 'destroyed'),
-    [units],
-  )
-
-  // Auto-allocate when severity/cluster/targets change (unless manually overridden)
-  useEffect(() => {
-    if (!strikeCluster || manualOverride) return
-    const checkedTargets = targets.filter((t) => t.checked)
-    if (checkedTargets.length === 0) {
-      setAllocations([])
-      return
-    }
-
-    // Find all target ViewUnits
-    const targetUnits = checkedTargets
-      .map((t) => units.find((u) => u.id === t.unitId))
-      .filter((u): u is ViewUnit => !!u)
-
-    // Compute missiles needed per target
-    const allocs: LauncherAllocation[] = []
-    const usedAmmo = new Map<string, Map<string, number>>() // unitId -> weaponId -> used
-
-    for (const target of targetUnits) {
-      const mult = adMultiplier(target, enemyUnits)
-      const needed =
-        severity === 'surgical' ? 1 :
-        severity === 'standard' ? Math.ceil(mult) :
-        Math.ceil(2 * mult)
-
-      // Find launchers in range
-      let allocated = 0
-      for (const fu of friendlyUnits) {
-        if (allocated >= needed) break
-        for (const wl of fu.weapons) {
-          if (allocated >= needed) break
-          if (!isOffensiveWeapon(wl)) continue
-          const spec = weaponSpecs[wl.weaponId]
-          if (!spec) continue
-          const dist = haversine(fu.position, target.position)
-          if (dist > spec.range_km) continue
-
-          const usedForUnit = usedAmmo.get(fu.id) ?? new Map()
-          const alreadyUsed = usedForUnit.get(wl.weaponId) ?? 0
-          const avail = wl.count - alreadyUsed
-          if (avail <= 0) continue
-
-          const take = Math.min(needed - allocated, avail)
-          usedForUnit.set(wl.weaponId, alreadyUsed + take)
-          usedAmmo.set(fu.id, usedForUnit)
-
-          allocs.push({
-            unitId: fu.id,
-            unitName: fu.name,
-            weaponId: wl.weaponId,
-            count: take,
-            maxAvailable: wl.count,
-          })
-          allocated += take
-        }
-      }
-    }
-
-    setAllocations(allocs)
-  }, [strikeCluster, targets, severity, friendlyUnits, enemyUnits, setAllocations, manualOverride])
-
-  // Reset manual override when severity changes (user wants new auto-calculation)
-  useEffect(() => {
-    setManualOverride(false)
-  }, [severity])
-
-  if (!strikeCluster) {
-    return <EmptyState text='Click TARGET GROUP on an enemy cluster to configure a strike.' />
-  }
-
-  const checkedTargets = targets.filter((t) => t.checked)
-  const totalMissiles = allocations.reduce((sum, a) => sum + a.count, 0)
-
-  // Group allocations by launcher
-  const launcherGroups = new Map<string, LauncherAllocation[]>()
-  for (const a of allocations) {
-    const group = launcherGroups.get(a.unitId) ?? []
-    group.push(a)
-    launcherGroups.set(a.unitId, group)
-  }
-
-  // Available weapon types that can reach the cluster
-  const clusterPos = strikeCluster.position
-  const weaponsInRange = useMemo(() => {
-    const wmap = new Map<string, { name: string; count: number; launchers: number }>()
-    for (const fu of friendlyUnits) {
-      for (const wl of fu.weapons) {
-        if (!isOffensiveWeapon(wl) || wl.count <= 0) continue
-        const spec = weaponSpecs[wl.weaponId]
-        if (!spec) continue
-        const dist = haversine(fu.position, clusterPos)
-        if (dist > spec.range_km) continue
-        const existing = wmap.get(wl.weaponId)
-        if (existing) {
-          existing.count += wl.count
-          existing.launchers++
-        } else {
-          wmap.set(wl.weaponId, { name: spec.name, count: wl.count, launchers: 1 })
-        }
-      }
-    }
-    return wmap
-  }, [friendlyUnits, clusterPos])
-
-  const handleLaunchStrike = useCallback(async () => {
-    if (allocations.length === 0) return
-    startExecution()
-
-    const checkedIds = new Set(targets.filter((t) => t.checked).map((t) => t.unitId))
-    let fired = 0
-
-    for (const alloc of allocations) {
-      const targetPool = [...checkedIds]
-      for (let i = 0; i < alloc.count; i++) {
-        const targetId = targetPool[i % targetPool.length]
-        await sendCommand({
-          type: 'LAUNCH_MISSILE',
-          launcherId: alloc.unitId,
-          weaponId: alloc.weaponId,
-          targetId,
-        })
-        fired++
-        updateProgress(fired / totalMissiles)
-      }
-    }
-
-    finishExecution()
-  }, [allocations, targets, totalMissiles, startExecution, updateProgress, finishExecution])
-
-  return (
-    <>
-      {/* TARGET LIST */}
-      <Section title="TARGET LIST">
-        {targets.map((t) => (
-          <label
-            key={t.unitId}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '3px 6px', cursor: 'pointer',
-              background: t.checked ? 'rgba(204, 68, 68, 0.08)' : 'transparent',
-              borderRadius: 3, marginBottom: 2,
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={t.checked}
-              onChange={() => toggleTargetCheck(t.unitId)}
-              style={{ accentColor: 'var(--iran-primary)' }}
-            />
-            <span style={{
-              flex: 1, fontSize: 'var(--font-size-xs)', color: 'var(--text-primary)',
-              fontFamily: 'var(--font-mono)',
-            }}>
-              {t.name}
-            </span>
-            <span style={{ fontSize: '0.55rem', color: 'var(--text-muted)' }}>
-              {t.category.replace(/_/g, ' ')}
-            </span>
-            {t.health < 100 && (
-              <span style={{ fontSize: '0.55rem', color: 'var(--status-damaged)' }}>
-                {t.health}%
-              </span>
-            )}
-          </label>
-        ))}
-      </Section>
-
-      {/* SEVERITY */}
-      <Section title="SEVERITY">
-        <div style={{ display: 'flex', gap: 4 }}>
-          {SEVERITY_OPTIONS.map((s) => (
-            <button
-              key={s.value}
-              onClick={() => setSeverity(s.value)}
-              style={{
-                flex: 1, padding: '4px 6px',
-                background: severity === s.value ? 'var(--bg-hover)' : 'transparent',
-                border: `1px solid ${severity === s.value ? 'var(--border-accent)' : 'var(--border-default)'}`,
-                borderRadius: 4,
-                color: severity === s.value ? 'var(--text-accent)' : 'var(--text-muted)',
-                cursor: 'pointer', fontFamily: 'var(--font-mono)',
-                fontSize: '0.6rem', fontWeight: 600, textAlign: 'center',
-              }}
-            >
-              <div>{s.label}</div>
-              <div style={{ fontSize: '0.5rem', fontWeight: 400 }}>{s.desc}</div>
-            </button>
-          ))}
-        </div>
-      </Section>
-
-      {/* SEAD FIRST */}
-      <Section title="SEAD FIRST">
-        <button
-          onClick={() => setSeadFirst(!seadFirst)}
-          style={{
-            padding: '4px 10px',
-            background: seadFirst ? 'var(--usa-secondary)' : 'transparent',
-            border: `1px solid ${seadFirst ? 'var(--usa-primary)' : 'var(--border-default)'}`,
-            borderRadius: 4,
-            color: seadFirst ? 'var(--usa-primary)' : 'var(--text-muted)',
-            cursor: 'pointer', fontFamily: 'var(--font-mono)',
-            fontSize: 'var(--font-size-xs)', fontWeight: 600,
-          }}
-        >
-          {seadFirst ? 'SEAD ENABLED' : 'SEAD DISABLED'}
-        </button>
-      </Section>
-
-      {/* WEAPON ALLOCATION */}
-      <Section title="WEAPON ALLOCATION">
-        {weaponsInRange.size === 0 ? (
-          <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 'var(--font-size-xs)' }}>
-            No weapons in range of this cluster.
-          </div>
-        ) : (
-          Array.from(weaponsInRange.entries()).map(([wId, info]) => {
-            const allocForWeapon = allocations.filter((a) => a.weaponId === wId)
-            const allocCount = allocForWeapon.reduce((s, a) => s + a.count, 0)
-            return (
-              <div key={wId} style={{ marginBottom: 6 }}>
-                <div style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  fontSize: 'var(--font-size-xs)', fontFamily: 'var(--font-mono)',
-                }}>
-                  <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-                    {info.name}
-                  </span>
-                  <span style={{ color: 'var(--text-muted)' }}>
-                    {allocCount}/{info.count} from {info.launchers} unit{info.launchers !== 1 ? 's' : ''}
-                  </span>
-                </div>
-                <StatBar
-                  label=""
-                  value={allocCount}
-                  max={info.count}
-                  color={allocCount > info.count * 0.8 ? 'var(--status-damaged)' : 'var(--text-accent)'}
-                  showCount={false}
-                />
-              </div>
-            )
-          })
-        )}
-      </Section>
-
-      {/* LAUNCHERS (expandable) */}
-      <Section title="LAUNCHERS">
-        {Array.from(launcherGroups.entries()).map(([unitId, allocs]) => {
-          const fu = friendlyUnits.find((u) => u.id === unitId)
-          const expanded = expandedLauncher === unitId
-          return (
-            <div key={unitId} style={{
-              marginBottom: 4, background: 'var(--bg-hover)',
-              borderRadius: 4, overflow: 'hidden',
-            }}>
-              <div
-                onClick={() => setExpandedLauncher(expanded ? null : unitId)}
-                style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '4px 8px', cursor: 'pointer',
-                }}
-              >
-                <span style={{ color: 'var(--text-primary)', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>
-                  {expanded ? 'v' : '>'} {allocs[0].unitName}
-                </span>
-                <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>
-                  {allocs.reduce((s, a) => s + a.count, 0)} missiles
-                </span>
-              </div>
-
-              {allocs.map((a) => (
-                <div key={`${a.unitId}-${a.weaponId}`} style={{
-                  display: 'flex', alignItems: 'center', gap: 4,
-                  padding: '2px 8px 2px 20px',
-                }}>
-                  <span style={{ flex: 1, fontSize: '0.55rem', color: 'var(--text-secondary)' }}>
-                    {weaponSpecs[a.weaponId]?.name ?? a.weaponId}
-                  </span>
-                  <div style={{
-                    display: 'flex', alignItems: 'center',
-                    background: 'var(--bg-tertiary)', border: '1px solid var(--border-default)',
-                    borderRadius: 3, overflow: 'hidden',
-                  }}>
-                    <QtyButton label="-" onClick={() => { setManualOverride(true); updateAllocation(a.unitId, a.weaponId, a.count - 1) }} />
-                    <span style={{
-                      padding: '1px 4px', fontFamily: 'var(--font-mono)',
-                      fontSize: '0.55rem', color: 'var(--text-primary)',
-                      minWidth: 20, textAlign: 'center',
-                    }}>
-                      {a.count}
-                    </span>
-                    <QtyButton label="+" onClick={() => { setManualOverride(true); updateAllocation(a.unitId, a.weaponId, a.count + 1) }} />
-                  </div>
-                </div>
-              ))}
-
-              {/* Expanded: full weapon inventory */}
-              {expanded && fu && (
-                <div style={{
-                  padding: '4px 8px 4px 20px',
-                  borderTop: '1px solid var(--border-default)',
-                  fontSize: '0.55rem', color: 'var(--text-muted)',
-                }}>
-                  {fu.weapons.map((wl) => {
-                    const spec = weaponSpecs[wl.weaponId]
-                    return (
-                      <div key={wl.weaponId} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
-                        <span>{spec?.name ?? wl.weaponId}</span>
-                        <span>{wl.count}/{wl.maxCount}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </Section>
-
-      {/* DISTRIBUTION */}
-      <Section title="DISTRIBUTION">
-        <div style={{ display: 'flex', gap: 4 }}>
-          {DISTRIBUTION_OPTIONS.map((d) => (
-            <button
-              key={d.value}
-              onClick={() => setDistribution(d.value)}
-              style={{
-                flex: 1, padding: '3px 6px',
-                background: distribution === d.value ? 'var(--bg-hover)' : 'transparent',
-                border: `1px solid ${distribution === d.value ? 'var(--border-accent)' : 'var(--border-default)'}`,
-                borderRadius: 4,
-                color: distribution === d.value ? 'var(--text-accent)' : 'var(--text-muted)',
-                cursor: 'pointer', fontFamily: 'var(--font-mono)',
-                fontSize: '0.6rem', fontWeight: 600,
-              }}
-            >
-              {d.label}
-            </button>
-          ))}
-        </div>
-      </Section>
-
-      {/* Execution state */}
-      {executing ? (
-        <div style={{ marginTop: 8, textAlign: 'center' }}>
-          <div style={{ color: 'var(--status-engaged)', fontWeight: 600, fontSize: 'var(--font-size-xs)' }}>
-            EXECUTING... {Math.round(executionProgress * 100)}%
-          </div>
-          <div style={{ height: 4, background: 'var(--bg-hover)', borderRadius: 2, marginTop: 4 }}>
-            <div style={{
-              width: `${executionProgress * 100}%`, height: '100%',
-              background: 'var(--status-engaged)', borderRadius: 2,
-            }} />
-          </div>
-        </div>
-      ) : (
-        <button
-          disabled={checkedTargets.length === 0 || totalMissiles === 0}
-          onClick={handleLaunchStrike}
-          style={{
-            ...btnStyle,
-            width: '100%', marginTop: 8,
-            background: checkedTargets.length > 0 && totalMissiles > 0 ? 'var(--iran-secondary)' : 'var(--bg-hover)',
-            color: '#fff', fontWeight: 700,
-            opacity: checkedTargets.length > 0 && totalMissiles > 0 ? 1 : 0.4,
-          }}
-        >
-          LAUNCH STRIKE ({totalMissiles} MISSILES)
-        </button>
       )}
     </>
   )
