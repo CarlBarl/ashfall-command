@@ -130,12 +130,31 @@ function updateMissileAltitudes(state: GameState): void {
     if (!spec) continue
 
     if (missile.is_interceptor) {
-      // Interceptors climb toward target altitude (simplified)
+      // 3-phase SAM flight profile: climb → cruise at altitude → terminal dive
       const target = state.missiles.get(missile.interceptTargetMissileId ?? '')
-      if (target) {
-        // Gradually approach target altitude
-        const diff = target.altitude_km - missile.altitude_km
-        missile.altitude_km += diff * 0.1
+      if (!target) continue
+
+      const elapsed = state.time.timestamp - missile.launchTime
+      const flightDuration = missile.eta - missile.launchTime
+      const progress = Math.max(0, Math.min(1, elapsed / flightDuration))
+
+      // Determine climb altitude: SAMs climb ABOVE the target, then dive down
+      // Exoatmospheric interceptors (SM-3, THAAD) climb directly to high altitude
+      const isExo = spec.flight_altitude_ft > 200000
+      const minClimbM = isExo ? spec.flight_altitude_ft * 0.3048 * 0.3 : 3000 // 3km min for endo SAMs
+      const overheadM = isExo ? 0 : 2000 // endo SAMs climb 2km above target
+      const climbAlt = Math.max(target.altitude_km * 1000 + overheadM, minClimbM)
+
+      if (progress < 0.3) {
+        // Phase 1: Rapid vertical climb
+        missile.altitude_km = (climbAlt / 1000) * (progress / 0.3)
+      } else if (progress < 0.7) {
+        // Phase 2: Cruise at engagement altitude
+        missile.altitude_km = climbAlt / 1000
+      } else {
+        // Phase 3: Terminal dive toward target
+        const termProgress = (progress - 0.7) / 0.3
+        missile.altitude_km = (climbAlt + (target.altitude_km * 1000 - climbAlt) * termProgress) / 1000
       }
       continue
     }
@@ -230,7 +249,15 @@ function updateMissilePositions(state: GameState): void {
       kmPerSec,
     )
 
-    // Append to path + timestamps for TripsLayer visualization (cap at 500 points)
+    // Truncate initial great-circle path points that are in the future
+    // (they have non-monotonic timestamps that break interpolation)
+    while (missile.timestamps.length > 1 &&
+           missile.timestamps[missile.timestamps.length - 1] > state.time.timestamp + 2000) {
+      missile.path.pop()
+      missile.timestamps.pop()
+    }
+
+    // Append actual tick position
     missile.path.push([newPos.lng, newPos.lat])
     missile.timestamps.push(state.time.timestamp + 1000)
     if (missile.path.length > 500) {
