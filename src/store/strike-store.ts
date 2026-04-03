@@ -4,6 +4,11 @@ import type { AttackPriority, TimingMode, AttackPlan } from '@/types/attack-plan
 
 export type StrikeMode = 'direct' | 'plan'
 
+export interface ClusterTarget {
+  id: string
+  name: string
+}
+
 interface StrikeStore {
   // Panel visibility
   open: boolean
@@ -12,6 +17,8 @@ interface StrikeStore {
   // Single target (for direct fire mode)
   targetUnitId: UnitId | null
   targetingMode: boolean
+  // Cluster targeting (multi-target direct fire)
+  strikeClusterUnits: ClusterTarget[]
 
   // Plan mode (presidential planner)
   planPriorities: AttackPriority[]
@@ -31,6 +38,7 @@ interface StrikeStore {
   // Actions — targeting
   setTargetUnitId: (id: UnitId | null) => void
   setTargetingMode: (on: boolean) => void
+  setStrikeCluster: (units: ClusterTarget[]) => void
 
   // Actions — plan mode
   addPlanPriority: (p: AttackPriority) => void
@@ -54,6 +62,7 @@ const INITIAL_STATE = {
   mode: 'direct' as StrikeMode,
   targetUnitId: null,
   targetingMode: false,
+  strikeClusterUnits: [] as ClusterTarget[],
   planPriorities: [],
   planTiming: 'simultaneous' as TimingMode,
   planName: 'Strike Plan Alpha',
@@ -72,10 +81,17 @@ export const useStrikeStore = create<StrikeStore>((set) => ({
 
   // Targeting
   setTargetUnitId: (id) => set(id
-    ? { targetUnitId: id, targetingMode: false, open: true, mode: 'direct' as StrikeMode }
-    : { targetUnitId: null, targetingMode: false, open: false }
+    ? { targetUnitId: id, targetingMode: false, open: true, mode: 'direct' as StrikeMode, strikeClusterUnits: [] }
+    : { targetUnitId: null, targetingMode: false, open: false, strikeClusterUnits: [] }
   ),
   setTargetingMode: (on) => set({ targetingMode: on }),
+  setStrikeCluster: (units) => set({
+    strikeClusterUnits: units,
+    targetUnitId: null,
+    targetingMode: false,
+    open: true,
+    mode: 'direct' as StrikeMode,
+  }),
 
   // Plan mode
   addPlanPriority: (p) => set((s) => ({ planPriorities: [...s.planPriorities, p] })),

@@ -127,30 +127,41 @@ function DirectFireTab() {
   const targetingMode = useStrikeStore((s) => s.targetingMode)
   const setTargetUnitId = useStrikeStore((s) => s.setTargetUnitId)
   const setTargetingMode = useStrikeStore((s) => s.setTargetingMode)
+  const strikeClusterUnits = useStrikeStore((s) => s.strikeClusterUnits)
+  const setStrikeCluster = useStrikeStore((s) => s.setStrikeCluster)
 
   const [selectedLauncherId, setSelectedLauncherId] = useState<string | null>(null)
   const [quantities, setQuantities] = useState<Record<string, number>>({})
+  const [clusterQty, setClusterQty] = useState<Record<string, number>>({})
 
   const target = units.find((u) => u.id === targetUnitId)
+
+  // Cluster mode: resolve targets from IDs
+  const clusterTargets = useMemo(
+    () => strikeClusterUnits.map(ct => units.find(u => u.id === ct.id)).filter(Boolean),
+    [strikeClusterUnits, units],
+  )
+  const isClusterMode = clusterTargets.length > 1
   const enemies = useMemo(
     () => units.filter((u) => u.nation !== 'usa' && u.status !== 'destroyed'),
     [units],
   )
 
-  // Units in range of target, sorted by distance
+  // Units in range of target (or first cluster target), sorted by distance
+  const rangeRef = isClusterMode ? clusterTargets[0] : target
   const unitsInRange = useMemo(() => {
-    if (!target) return []
+    if (!rangeRef) return []
     return units
       .filter((u) => u.nation === 'usa' && u.status !== 'destroyed' &&
         u.weapons.some(w => {
           const spec = weaponSpecs[w.weaponId]
           return spec && spec.type !== 'sam' && w.count > 0 &&
-                 haversine(u.position, target.position) <= spec.range_km
+                 haversine(u.position, rangeRef.position) <= spec.range_km
         }),
       )
-      .map(u => ({ ...u, distance: Math.round(haversine(u.position, target.position)) }))
+      .map(u => ({ ...u, distance: Math.round(haversine(u.position, rangeRef.position)) }))
       .sort((a, b) => a.distance - b.distance)
-  }, [units, target])
+  }, [units, rangeRef])
 
   // Auto-select nearest unit when target changes
   useEffect(() => {
@@ -185,6 +196,94 @@ function DirectFireTab() {
     for (let i = 0; i < count; i++) {
       sendCommand({ type: 'LAUNCH_MISSILE', launcherId: selectedLauncherId, weaponId, targetId: targetUnitId })
     }
+  }
+
+  // Cluster fire handler — distributes missiles evenly across cluster targets
+  const fireCluster = () => {
+    if (!selectedLauncherId || clusterTargets.length === 0) return
+    for (const ct of clusterTargets) {
+      if (!ct) continue
+      const qty = clusterQty[ct.id] ?? 1
+      for (let i = 0; i < qty; i++) {
+        // Find first offensive weapon on launcher that can reach this target
+        const launcher = unitsInRange.find(u => u.id === selectedLauncherId)
+        if (!launcher) continue
+        const wpn = launcher.weapons.find(w => {
+          const spec = weaponSpecs[w.weaponId]
+          return spec && spec.type !== 'sam' && w.count > 0 &&
+                 haversine(launcher.position, ct.position) <= spec.range_km
+        })
+        if (wpn) {
+          sendCommand({ type: 'LAUNCH_MISSILE', launcherId: selectedLauncherId, weaponId: wpn.weaponId, targetId: ct.id })
+        }
+      }
+    }
+  }
+
+  // Cluster mode UI
+  if (isClusterMode) {
+    return (
+      <>
+        <SectionLabel>Cluster Strike — {clusterTargets.length} targets</SectionLabel>
+        <button
+          onClick={() => setStrikeCluster([])}
+          style={{ ...clearBtnStyle, marginBottom: 6 }}
+        >clear cluster</button>
+
+        {/* Target list with per-target qty */}
+        {clusterTargets.map(ct => {
+          if (!ct) return null
+          const qty = clusterQty[ct.id] ?? 1
+          return (
+            <div key={ct.id} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
+              <div style={{
+                display: 'flex', alignItems: 'center',
+                background: 'var(--bg-hover)', border: '1px solid var(--border-default)',
+                borderRadius: 4, overflow: 'hidden', flexShrink: 0,
+              }}>
+                <QtyButton label="-" onClick={() => setClusterQty(prev => ({ ...prev, [ct.id]: Math.max(1, qty - 1) }))} />
+                <span style={{ padding: '2px 5px', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', color: 'var(--text-primary)', minWidth: 24, textAlign: 'center' }}>{qty}</span>
+                <QtyButton label="+" onClick={() => setClusterQty(prev => ({ ...prev, [ct.id]: qty + 1 }))} />
+              </div>
+              <span style={{ flex: 1, color: 'var(--iran-primary)', fontSize: 'var(--font-size-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {ct.name}
+              </span>
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.55rem' }}>{ct.health}%</span>
+            </div>
+          )
+        })}
+
+        {/* Launcher dropdown */}
+        {unitsInRange.length > 0 && (
+          <>
+            <SectionLabel>Fire from</SectionLabel>
+            <select
+              value={selectedLauncherId ?? ''}
+              onChange={(e) => setSelectedLauncherId(e.target.value || null)}
+              style={{ ...selectStyle, marginBottom: 6 }}
+            >
+              {unitsInRange.map(u => (
+                <option key={u.id} value={u.id}>{u.name} — {u.distance}km</option>
+              ))}
+            </select>
+
+            <button
+              onClick={fireCluster}
+              style={{
+                width: '100%', padding: '6px',
+                background: 'var(--iran-primary)', border: '1px solid var(--iran-primary)',
+                borderRadius: 4, color: '#fff', cursor: 'pointer',
+                fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', fontWeight: 700,
+              }}
+            >
+              FIRE {clusterTargets.reduce((s, ct) => s + (clusterQty[ct!.id] ?? 1), 0)} MISSILES
+            </button>
+          </>
+        )}
+
+        {unitsInRange.length === 0 && <EmptyState text="No launchers in range of cluster." />}
+      </>
+    )
   }
 
   return (
