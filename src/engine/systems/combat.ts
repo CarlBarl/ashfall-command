@@ -55,7 +55,7 @@ function updateMissileFuel(state: GameState): void {
       } else if (spec.type === 'cruise_missile' || spec.type === 'ashm') {
         // Cruise missiles: speed decays and altitude drops (handled in speed/altitude updates)
         // If altitude has reached 0 or below, crash
-        if (missile.altitude_km <= 0) {
+        if (missile.altitude_m <= 0) {
           toRemove.push(missile.id)
         }
       }
@@ -143,18 +143,18 @@ function updateMissileAltitudes(state: GameState): void {
       const isExo = spec.flight_altitude_ft > 200000
       const minClimbM = isExo ? spec.flight_altitude_ft * 0.3048 * 0.3 : 3000 // 3km min for endo SAMs
       const overheadM = isExo ? 0 : 2000 // endo SAMs climb 2km above target
-      const climbAlt = Math.max(target.altitude_km * 1000 + overheadM, minClimbM)
+      const climbAlt = Math.max(target.altitude_m + overheadM, minClimbM)
 
       if (progress < 0.3) {
         // Phase 1: Rapid vertical climb
-        missile.altitude_km = (climbAlt / 1000) * (progress / 0.3)
+        missile.altitude_m = climbAlt * (progress / 0.3)
       } else if (progress < 0.7) {
         // Phase 2: Cruise at engagement altitude
-        missile.altitude_km = climbAlt / 1000
+        missile.altitude_m = climbAlt
       } else {
         // Phase 3: Terminal dive toward target
         const termProgress = (progress - 0.7) / 0.3
-        missile.altitude_km = (climbAlt + (target.altitude_km * 1000 - climbAlt) * termProgress) / 1000
+        missile.altitude_m = climbAlt + (target.altitude_m - climbAlt) * termProgress
       }
       continue
     }
@@ -165,29 +165,29 @@ function updateMissileAltitudes(state: GameState): void {
       const progress = Math.max(0, Math.min(1, elapsed / flightDuration))
 
       // Ballistic profile: boost (0-0.15), midcourse (0.15-0.7), terminal (0.7-1.0)
-      const peakAltKm = spec.flight_altitude_ft * 0.0003048 // convert ft to km
+      const peakAltM = spec.flight_altitude_ft * 0.3048 // convert ft to m
 
       if (progress < 0.15) {
         missile.phase = 'boost'
-        missile.altitude_km = (progress / 0.15) * peakAltKm * 0.5
+        missile.altitude_m = (progress / 0.15) * peakAltM * 0.5
       } else if (progress < 0.7) {
         missile.phase = 'midcourse'
         // Parabolic arc peaking at midpoint
         const midProgress = (progress - 0.15) / 0.55
-        missile.altitude_km = peakAltKm * (1 - 4 * (midProgress - 0.5) ** 2)
+        missile.altitude_m = peakAltM * (1 - 4 * (midProgress - 0.5) ** 2)
       } else {
         missile.phase = 'terminal'
         const termProgress = (progress - 0.7) / 0.3
-        missile.altitude_km = peakAltKm * (1 - termProgress) * 0.5
+        missile.altitude_m = peakAltM * (1 - termProgress) * 0.5
       }
     } else {
       // Cruise missiles fly at constant low altitude while fueled
       missile.phase = 'cruise'
       if (missile.fuel_remaining_sec > 0) {
-        missile.altitude_km = spec.flight_altitude_ft * 0.0003048
+        missile.altitude_m = spec.flight_altitude_ft * 0.3048
       } else {
-        // Fuel exhausted: altitude drops 0.01 km/sec
-        missile.altitude_km = Math.max(0, missile.altitude_km - 0.01)
+        // Fuel exhausted: altitude drops 10 m/sec
+        missile.altitude_m = Math.max(0, missile.altitude_m - 10)
       }
     }
   }
@@ -341,7 +341,7 @@ function runADEngagement(state: GameState, _rng: SeededRNG): void {
         if (isAlreadyEngagedByUnit(unit.id, threat.missile.id)) continue
 
         // ALTITUDE CHECK -- can this system reach the missile?
-        if (threat.missile.altitude_km > adSpec.max_altitude_km) continue
+        if (threat.missile.altitude_m > adSpec.max_altitude_m) continue
 
         // RANGE CHECK
         if (threat.distKm > adSpec.engagement_range_km) continue
@@ -390,7 +390,7 @@ function runADEngagement(state: GameState, _rng: SeededRNG): void {
           status: 'inflight',
           launchTime: state.time.timestamp,
           eta: state.time.timestamp + flightTimeMs,
-          altitude_km: 0,
+          altitude_m: 0,
           phase: 'cruise',
           speed_current_mach: interceptorSpec.speed_mach,
           fuel_remaining_sec: fuelSec,
@@ -563,7 +563,7 @@ function computePKill(
     // Terminal phase is harder (fast reentry)
     if (missile.phase === 'terminal') pKill *= 0.75
     // Midcourse at very high altitude -- only BMD interceptors good here
-    if (missile.phase === 'midcourse' && missile.altitude_km > 100) pKill *= 0.85
+    if (missile.phase === 'midcourse' && missile.altitude_m > 100000) pKill *= 0.85
     // Boost phase -- difficult but possible for forward-deployed BMD
     if (missile.phase === 'boost') pKill *= 0.7
   }
@@ -632,7 +632,7 @@ export function launchMissile(
     status: 'inflight',
     launchTime: state.time.timestamp,
     eta: state.time.timestamp + flightTimeMs,
-    altitude_km: spec.type === 'ballistic_missile' ? 0 : spec.flight_altitude_ft * 0.0003048,
+    altitude_m: spec.type === 'ballistic_missile' ? 0 : spec.flight_altitude_ft * 0.3048,
     phase: spec.type === 'ballistic_missile' ? 'boost' : 'cruise',
     speed_current_mach: spec.type === 'ballistic_missile' ? 0 : spec.speed_mach,
     fuel_remaining_sec: fuelSec,
@@ -673,7 +673,7 @@ export function launchSAM(
 
   // Check altitude envelope
   const adSpec = findADSpecForWeapon(weaponId)
-  if (adSpec && targetMissile.altitude_km > adSpec.max_altitude_km) return null // can't reach
+  if (adSpec && targetMissile.altitude_m > adSpec.max_altitude_m) return null // can't reach
 
   loadout.count--
 
@@ -714,7 +714,7 @@ export function launchSAM(
     status: 'inflight',
     launchTime: state.time.timestamp,
     eta: state.time.timestamp + flightTimeMs,
-    altitude_km: 0,
+    altitude_m: 0,
     phase: 'cruise',
     speed_current_mach: interceptorSpec.speed_mach,
     fuel_remaining_sec: fuelSec,

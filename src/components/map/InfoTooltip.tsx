@@ -43,7 +43,7 @@ function MissileTooltipView({ missile, x, y }: { missile: Missile; x: number; y:
       <div style={headerStyle}>{spec?.name ?? missile.weaponId}</div>
       <Row label="Type" value={spec?.type.replace(/_/g, ' ') ?? '?'} />
       <Row label="Speed" value={`Mach ${spec?.speed_mach} (${Math.round(speedKmh)} km/h)`} />
-      <Row label="Altitude" value={`${missile.altitude_km.toFixed(1)} km`} highlight />
+      <Row label="Altitude" value={`${Math.round(missile.altitude_m)} m`} highlight />
       <Row label="Phase" value={missile.phase.toUpperCase()} highlight />
       <Row label="Warhead" value={`${spec?.warhead_kg ?? '?'} kg`} />
       <Row label="CEP" value={`${spec?.cep_m ?? '?'} m`} />
