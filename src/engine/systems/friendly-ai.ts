@@ -14,6 +14,11 @@ import { haversine } from '../utils/geo'
 const FIRE_COOLDOWN_TICKS = 300 // 5 minutes between autonomous salvos
 const lastFireTick = new Map<UnitId, number>()
 
+/** Reset module-level state — must be called on save/load */
+export function resetFriendlyAIState(): void {
+  lastFireTick.clear()
+}
+
 const CATEGORY_PRIORITY: Record<string, number> = {
   carrier_group: 10,
   airbase: 9,

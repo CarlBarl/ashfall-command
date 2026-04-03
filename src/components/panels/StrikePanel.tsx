@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Panel from '@/components/common/Panel'
 import StatBar from '@/components/common/StatBar'
 import { useStrikeStore, type StrikeMode, type LauncherAllocation } from '@/store/strike-store'
-import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { sendCommand } from '@/store/bridge'
 import { weaponSpecs } from '@/data/weapons/missiles'
@@ -81,39 +80,6 @@ function adMultiplier(target: ViewUnit, enemyUnits: ViewUnit[]): number {
   return Math.min(4.0, 1.0 + totalFireChannels * 0.15)
 }
 
-interface AggregatedWeapon {
-  weaponId: string
-  weaponName: string
-  totalCount: number
-  totalMax: number
-  launchers: { unitId: string; unitName: string; count: number }[]
-}
-
-function aggregateWeapons(units: ViewUnit[]): AggregatedWeapon[] {
-  const map = new Map<string, AggregatedWeapon>()
-  for (const unit of units) {
-    for (const w of unit.weapons) {
-      const spec = weaponSpecs[w.weaponId]
-      if (!spec || spec.type === 'sam' || w.count <= 0) continue
-      const existing = map.get(w.weaponId)
-      if (existing) {
-        existing.totalCount += w.count
-        existing.totalMax += w.maxCount
-        existing.launchers.push({ unitId: unit.id, unitName: unit.name, count: w.count })
-      } else {
-        map.set(w.weaponId, {
-          weaponId: w.weaponId,
-          weaponName: spec.name,
-          totalCount: w.count,
-          totalMax: w.maxCount,
-          launchers: [{ unitId: unit.id, unitName: unit.name, count: w.count }],
-        })
-      }
-    }
-  }
-  return Array.from(map.values())
-}
-
 let priorityCounter = 0
 
 // ════════════════════════════════════════════════════════════════
@@ -122,27 +88,11 @@ let priorityCounter = 0
 
 export default function StrikePanel() {
   const strike = useStrikeStore()
-  const selectedUnitIds = useUIStore((s) => s.selectedUnitIds)
-  const units = useGameStore((s) => s.viewState.units)
 
-  const { mode, open, strikeCluster } = strike
+  const { mode, open, strikeCluster, targetUnitId } = strike
 
-  // Selected friendly units (for DIRECT mode)
-  const selectedUnits = useMemo(
-    () => units.filter((u) => selectedUnitIds.has(u.id)),
-    [units, selectedUnitIds],
-  )
-
-  // Check if any selected unit has offensive weapons
-  const hasOffensiveWeapons = useMemo(
-    () => selectedUnits.some((u) => u.weapons.some(isOffensiveWeapon)),
-    [selectedUnits],
-  )
-
-  // Visibility: show when
-  // - explicitly opened (TARGET GROUP, STRIKE button)
-  // - in direct mode with offensive units selected (auto-show like old LaunchPanel)
-  const autoShowDirect = mode === 'direct' && selectedUnitIds.size > 0 && hasOffensiveWeapons
+  // Visibility: show when explicitly opened OR when a target is set (auto-show direct fire)
+  const autoShowDirect = mode === 'direct' && targetUnitId !== null
   if (!open && !autoShowDirect) return null
 
   // Title per mode
@@ -220,79 +170,74 @@ function TabBar({ mode, onSetMode }: { mode: StrikeMode; onSetMode: (m: StrikeMo
 // ════════════════════════════════════════════════════════════════
 
 function DirectFireTab() {
-  const selectedUnitIds = useUIStore((s) => s.selectedUnitIds)
   const units = useGameStore((s) => s.viewState.units)
-  const strike = useStrikeStore()
-  const { targetUnitId, targetingMode } = strike
+  const targetUnitId = useStrikeStore((s) => s.targetUnitId)
+  const targetingMode = useStrikeStore((s) => s.targetingMode)
+  const setTargetUnitId = useStrikeStore((s) => s.setTargetUnitId)
+  const setTargetingMode = useStrikeStore((s) => s.setTargetingMode)
 
   const [quantities, setQuantities] = useState<Record<string, number>>({})
 
-  const selectedUnits = useMemo(
-    () => units.filter((u) => selectedUnitIds.has(u.id)),
-    [units, selectedUnitIds],
-  )
-  const unitCount = selectedUnits.length
-
-  if (unitCount === 0) {
-    return <EmptyState text="Select friendly units to fire weapons." />
-  }
-
-  const weapons = aggregateWeapons(selectedUnits)
-  if (weapons.length === 0) {
-    return <EmptyState text="Selected units have no offensive weapons." />
-  }
-
   const target = units.find((u) => u.id === targetUnitId)
-  const firstUnit = selectedUnits[0]
-  const enemies = units.filter(
-    (u) => u.nation !== firstUnit.nation && u.status !== 'destroyed',
+  const friendlyUnits = useMemo(
+    () => units.filter((u) => u.nation === 'usa' && u.status !== 'destroyed'),
+    [units],
+  )
+  const enemies = useMemo(
+    () => units.filter((u) => u.nation !== 'usa' && u.status !== 'destroyed'),
+    [units],
   )
 
-  const getQty = (weaponId: string, maxCount: number) => {
-    const q = quantities[weaponId] ?? unitCount
-    return Math.min(q, maxCount)
+  // Auto-discover ALL launchers in range of the target, sorted by distance
+  interface LauncherInRange {
+    unitId: string; unitName: string; weaponId: string; weaponName: string
+    count: number; maxCount: number; distance: number
   }
 
-  const setQty = (weaponId: string, val: number) => {
-    setQuantities((prev) => ({ ...prev, [weaponId]: Math.max(1, val) }))
-  }
-
-  const fireSalvo = (weaponId: string, totalCount: number) => {
-    if (!targetUnitId) return
-    const agg = weapons.find((w) => w.weaponId === weaponId)
-    if (!agg) return
-    const available = agg.launchers.map((l) => ({ ...l }))
-    let remaining = totalCount
-    let idx = 0
-    let stuck = 0
-    while (remaining > 0 && stuck < available.length) {
-      const launcher = available[idx % available.length]
-      if (launcher.count > 0) {
-        sendCommand({
-          type: 'LAUNCH_MISSILE',
-          launcherId: launcher.unitId,
-          weaponId,
-          targetId: targetUnitId,
+  const inRangeLaunchers: LauncherInRange[] = useMemo(() => {
+    if (!target) return []
+    return friendlyUnits
+      .flatMap(u => u.weapons
+        .filter(w => {
+          const spec = weaponSpecs[w.weaponId]
+          return spec && spec.type !== 'sam' && w.count > 0 &&
+                 haversine(u.position, target.position) <= spec.range_km
         })
-        launcher.count--
-        remaining--
-        stuck = 0
-      } else {
-        stuck++
+        .map(w => ({
+          unitId: u.id, unitName: u.name,
+          weaponId: w.weaponId, weaponName: weaponSpecs[w.weaponId]?.name ?? w.weaponId,
+          count: w.count, maxCount: w.maxCount,
+          distance: Math.round(haversine(u.position, target.position)),
+        }))
+      )
+      .sort((a, b) => a.distance - b.distance)
+  }, [friendlyUnits, target])
+
+  const getQty = (key: string, max: number) => Math.min(quantities[key] ?? 1, max)
+  const setQty = (key: string, val: number) => setQuantities(prev => ({ ...prev, [key]: Math.max(1, val) }))
+
+  const fireLauncher = (launcher: LauncherInRange, count: number) => {
+    if (!targetUnitId) return
+    for (let i = 0; i < count; i++) {
+      sendCommand({ type: 'LAUNCH_MISSILE', launcherId: launcher.unitId, weaponId: launcher.weaponId, targetId: targetUnitId })
+    }
+  }
+
+  const fireAll = (count: number) => {
+    if (!targetUnitId) return
+    let remaining = count
+    for (const l of inRangeLaunchers) {
+      if (remaining <= 0) break
+      const take = Math.min(remaining, l.count)
+      for (let i = 0; i < take; i++) {
+        sendCommand({ type: 'LAUNCH_MISSILE', launcherId: l.unitId, weaponId: l.weaponId, targetId: targetUnitId })
       }
-      idx++
+      remaining -= take
     }
   }
 
   return (
     <>
-      {/* Multi-unit indicator */}
-      {unitCount > 1 && (
-        <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)', marginBottom: 6, fontStyle: 'italic' }}>
-          Weapons aggregated from {unitCount} units. Fire distributes evenly.
-        </div>
-      )}
-
       {/* Target selection */}
       <div style={{ marginBottom: 10 }}>
         <SectionLabel>Target</SectionLabel>
@@ -306,18 +251,13 @@ function DirectFireTab() {
             <span style={{ color: 'var(--iran-primary)', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>
               {target.name}
             </span>
-            <button
-              onClick={() => strike.setTargetUnitId(null)}
-              style={clearBtnStyle}
-            >
-              clear
-            </button>
+            <button onClick={() => setTargetUnitId(null)} style={clearBtnStyle}>clear</button>
           </div>
         )}
 
         <div style={{ display: 'flex', gap: 4 }}>
           <button
-            onClick={() => strike.setTargetingMode(!targetingMode)}
+            onClick={() => setTargetingMode(!targetingMode)}
             style={{
               flex: 1, padding: '5px 8px',
               background: targetingMode ? 'var(--iran-primary)' : 'var(--bg-hover)',
@@ -333,7 +273,7 @@ function DirectFireTab() {
 
         <select
           value={targetUnitId ?? ''}
-          onChange={(e) => strike.setTargetUnitId(e.target.value || null)}
+          onChange={(e) => setTargetUnitId(e.target.value || null)}
           style={{ ...selectStyle, marginTop: 4 }}
         >
           <option value="">-- or pick from list --</option>
@@ -345,64 +285,69 @@ function DirectFireTab() {
         </select>
       </div>
 
-      {/* Weapons with quantity */}
-      {weapons.map((w) => {
-        const qty = getQty(w.weaponId, w.totalCount)
-        const step = unitCount
+      {/* Launchers in range — sorted by distance */}
+      {!target && <EmptyState text="Click an enemy unit to see available launchers." />}
+
+      {target && inRangeLaunchers.length === 0 && (
+        <EmptyState text="No launchers in range of this target." />
+      )}
+
+      {target && inRangeLaunchers.map((l) => {
+        const key = `${l.unitId}:${l.weaponId}`
+        const qty = getQty(key, l.count)
         return (
-          <div key={w.weaponId} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 5 }}>
+          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
             <div style={{
               display: 'flex', alignItems: 'center',
               background: 'var(--bg-hover)', border: '1px solid var(--border-default)',
               borderRadius: 4, overflow: 'hidden', flexShrink: 0,
             }}>
-              <QtyButton label="-" onClick={() => setQty(w.weaponId, qty - step)} />
+              <QtyButton label="-" onClick={() => setQty(key, qty - 1)} />
               <span style={{
-                padding: '2px 6px', fontFamily: 'var(--font-mono)',
+                padding: '2px 5px', fontFamily: 'var(--font-mono)',
                 fontSize: 'var(--font-size-xs)', color: 'var(--text-primary)',
-                minWidth: 28, textAlign: 'center',
+                minWidth: 24, textAlign: 'center',
               }}>
                 {qty}
               </span>
-              <QtyButton label="+" onClick={() => setQty(w.weaponId, Math.min(qty + step, w.totalCount))} />
+              <QtyButton label="+" onClick={() => setQty(key, Math.min(qty + 1, l.count))} />
             </div>
 
             <button
-              disabled={!targetUnitId || w.totalCount <= 0}
-              onClick={() => fireSalvo(w.weaponId, qty)}
+              onClick={() => fireLauncher(l, qty)}
               style={{
-                flex: 1, display: 'flex', justifyContent: 'space-between',
-                padding: '5px 8px',
-                background: targetUnitId ? 'var(--iran-secondary)' : 'var(--bg-hover)',
+                flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '4px 8px',
+                background: 'var(--iran-secondary)',
                 border: '1px solid var(--border-default)', borderRadius: 4,
-                color: 'var(--text-primary)', cursor: targetUnitId ? 'pointer' : 'not-allowed',
-                fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)',
-                opacity: w.totalCount > 0 ? 1 : 0.4,
+                color: 'var(--text-primary)', cursor: 'pointer',
+                fontFamily: 'var(--font-mono)', fontSize: '0.6rem',
               }}
             >
-              <span>FIRE {w.weaponName}</span>
-              <span style={{ color: 'var(--text-muted)' }}>
-                {w.totalCount}/{w.totalMax}
-                {w.launchers.length > 1 && ` (${w.launchers.length}u)`}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {l.unitName.split(' ').slice(0, 2).join(' ')}
+              </span>
+              <span style={{ color: 'var(--text-muted)', flexShrink: 0, marginLeft: 4 }}>
+                {l.distance}km {l.weaponName.split(' ')[0]} {l.count}/{l.maxCount}
               </span>
             </button>
           </div>
         )
       })}
 
-      {/* Quick salvo presets */}
-      {targetUnitId && weapons.length > 0 && (
+      {/* Quick salvo — fire from closest first */}
+      {target && inRangeLaunchers.length > 0 && (
         <div style={{ marginTop: 6, borderTop: '1px solid var(--border-default)', paddingTop: 6 }}>
-          <SectionLabel>Quick Salvo</SectionLabel>
+          <SectionLabel>Quick Salvo (closest first)</SectionLabel>
           <div style={{ display: 'flex', gap: 4 }}>
             {[5, 10, 20].map((n) => {
-              const w = weapons[0]
-              const actual = Math.min(n, w.totalCount)
+              const total = inRangeLaunchers.reduce((s, l) => s + l.count, 0)
+              const actual = Math.min(n, total)
               return (
                 <button
                   key={n}
-                  disabled={w.totalCount <= 0}
-                  onClick={() => fireSalvo(w.weaponId, actual)}
+                  disabled={total <= 0}
+                  onClick={() => fireAll(actual)}
                   style={{
                     flex: 1, padding: '4px',
                     background: 'var(--bg-hover)',
@@ -412,7 +357,7 @@ function DirectFireTab() {
                     fontSize: 'var(--font-size-xs)',
                   }}
                 >
-                  {n}x {w.weaponName.split(' ')[0]}
+                  {n}x
                 </button>
               )
             })}

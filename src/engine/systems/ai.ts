@@ -16,6 +16,11 @@ interface AIState {
 
 const aiStates = new Map<NationId, AIState>()
 
+/** Reset module-level state — must be called on save/load */
+export function resetAIState(): void {
+  aiStates.clear()
+}
+
 function getAIState(nation: NationId): AIState {
   let s = aiStates.get(nation)
   if (!s) {

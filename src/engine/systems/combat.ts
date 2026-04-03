@@ -13,6 +13,13 @@ let interceptorCounter = 0
 // Track active fire channels per AD system per unit: `${unitId}:${adSystemId}` -> Set<missileId>
 const activeEngagements = new Map<string, Set<string>>()
 
+/** Reset module-level state — must be called on save/load */
+export function resetCombatState(): void {
+  missileCounter = 0
+  interceptorCounter = 0
+  activeEngagements.clear()
+}
+
 export function processCombat(state: GameState, rng: SeededRNG): void {
   updateMissileFuel(state)
   updateMissileSpeed(state)
@@ -91,12 +98,13 @@ function updateMissileSpeed(state: GameState): void {
         const boostProgress = progress / 0.15
         missile.speed_current_mach = spec.speed_mach * boostProgress
       } else if (progress < 0.7) {
-        // Midcourse: slight drag
-        missile.speed_current_mach *= 0.9999
+        // Midcourse: exoatmospheric — negligible drag, maintain burnout speed
+        missile.speed_current_mach = spec.speed_mach
       } else {
-        // Terminal: speed increases due to gravity (reentry)
+        // Terminal: gravity accelerates reentry vehicle substantially
+        // Real BMs gain ~50-70% speed during reentry (e.g. Mach 7 → Mach 10-12)
         const terminalProgress = (progress - 0.7) / 0.3
-        missile.speed_current_mach *= (1 + 0.001 * terminalProgress)
+        missile.speed_current_mach *= (1 + 0.005 * terminalProgress)
       }
     } else {
       // Cruise missiles and ASHMs
@@ -799,6 +807,9 @@ function updateReloads(state: GameState): void {
 
 function emitEvents(state: GameState, events: GameEvent[]): void {
   state.events.push(...events)
+  if (state.events.length > 2000) {
+    state.events.splice(0, state.events.length - 2000)
+  }
   state.pendingEvents.push(...events)
 }
 

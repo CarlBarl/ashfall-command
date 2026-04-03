@@ -6,6 +6,11 @@ import { detectThreats } from './detection'
 /** Module-level command queue — units can have pending commands */
 const commandQueues = new Map<UnitId, Command[]>()
 
+/** Reset module-level state — must be called on save/load */
+export function resetOrdersState(): void {
+  commandQueues.clear()
+}
+
 /** Enqueue a command for a unit */
 export function enqueueCommand(unitId: UnitId, cmd: Command): void {
   let queue = commandQueues.get(unitId)

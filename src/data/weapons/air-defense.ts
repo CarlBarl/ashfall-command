@@ -7,7 +7,7 @@ export const adSystems: Record<string, ADSystemSpec> = {
     name: 'MIM-104 Patriot PAC-3',
     radar_range_km: 180,
     engagement_range_km: 60,
-    max_altitude_km: 24,
+    max_altitude_km: 40, // published max; was 24
     fire_channels: 9,
     reload_time_sec: 600,
     interceptorId: 'pac3_mse',
@@ -26,7 +26,7 @@ export const adSystems: Record<string, ADSystemSpec> = {
     id: 'aegis_bmd',
     name: 'Aegis BMD (SM-3)',
     radar_range_km: 500,
-    engagement_range_km: 700,
+    engagement_range_km: 1200, // SM-3 IIA per CSIS; was 700
     max_altitude_km: 500,
     fire_channels: 18,
     reload_time_sec: 0, // VLS cells, no reload in combat
@@ -88,7 +88,7 @@ export const adSystems: Record<string, ADSystemSpec> = {
     id: 'tor_m1',
     name: 'Tor-M1',
     radar_range_km: 25,
-    engagement_range_km: 12,
+    engagement_range_km: 15, // per CSIS; was 12
     max_altitude_km: 6,
     fire_channels: 2,
     reload_time_sec: 300,

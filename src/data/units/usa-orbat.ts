@@ -107,10 +107,10 @@ export const usaUnits: Unit[] = [
     position: { lat: 26.2, lng: 52.5 }, heading: 45, speed_kts: 15, maxSpeed_kts: 30,
     health: 100, hardness: 150,
     weapons: [
-      { weaponId: 'tomahawk', count: 45, maxCount: 45, reloadTimeSec: 0 },
-      { weaponId: 'sm6', count: 42, maxCount: 42, reloadTimeSec: 0 },
+      { weaponId: 'tomahawk', count: 20, maxCount: 20, reloadTimeSec: 0 }, // 96 VLS total
+      { weaponId: 'sm6', count: 52, maxCount: 52, reloadTimeSec: 0 },
       { weaponId: 'sm2_iiia', count: 24, maxCount: 24, reloadTimeSec: 0 },
-      { weaponId: 'harpoon', count: 8, maxCount: 8, reloadTimeSec: 0 },
+      { weaponId: 'harpoon', count: 8, maxCount: 8, reloadTimeSec: 0 }, // deck-mounted
     ],
     sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.96 }],
     roe: 'weapons_tight',
@@ -121,10 +121,10 @@ export const usaUnits: Unit[] = [
     position: { lat: 25.8, lng: 53.0 }, heading: 90, speed_kts: 12, maxSpeed_kts: 30,
     health: 100, hardness: 150,
     weapons: [
-      { weaponId: 'tomahawk', count: 45, maxCount: 45, reloadTimeSec: 0 },
-      { weaponId: 'sm6', count: 42, maxCount: 42, reloadTimeSec: 0 },
+      { weaponId: 'tomahawk', count: 20, maxCount: 20, reloadTimeSec: 0 }, // 96 VLS total
+      { weaponId: 'sm6', count: 52, maxCount: 52, reloadTimeSec: 0 },
       { weaponId: 'sm2_iiia', count: 24, maxCount: 24, reloadTimeSec: 0 },
-      { weaponId: 'harpoon', count: 8, maxCount: 8, reloadTimeSec: 0 },
+      { weaponId: 'harpoon', count: 8, maxCount: 8, reloadTimeSec: 0 }, // deck-mounted
     ],
     sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.96 }],
     roe: 'weapons_tight',

@@ -64,7 +64,7 @@ export const PAC3_MSE = reg({
   warhead_kg: 0, // hit-to-kill
   cep_m: 0,
   pk: { ballistic_missile: 0.85, cruise_missile: 0.90, aam: 0.7 },
-  flight_altitude_ft: 80000,
+  flight_altitude_ft: 131000, // ~40 km per published data; was 80000
   guidance: 'Ka-band active radar/hit-to-kill',
 })
 
@@ -99,7 +99,7 @@ export const SM3_IIA = reg({
   name: 'SM-3 Block IIA',
   type: 'sam',
   range_km: 2500,
-  speed_mach: 15.0,
+  speed_mach: 13.2, // 4.5 km/s per CSIS; was 15.0
   warhead_kg: 0, // hit-to-kill KV
   cep_m: 0,
   pk: { ballistic_missile: 0.80 },
@@ -133,7 +133,7 @@ export const SHAHAB3 = reg({
   warhead_kg: 760,
   cep_m: 2500,
   pk: {},
-  flight_altitude_ft: 500000,
+  flight_altitude_ft: 1100000, // ~335 km apogee for 1300 km MRBM; was 500000
   guidance: 'INS',
 })
 
@@ -143,10 +143,10 @@ export const SEJJIL2 = reg({
   type: 'ballistic_missile',
   range_km: 2000,
   speed_mach: 7.5,
-  warhead_kg: 650,
+  warhead_kg: 700, // per CSIS; was 650
   cep_m: 500,
   pk: {},
-  flight_altitude_ft: 550000,
+  flight_altitude_ft: 1500000, // ~457 km apogee for 2000 km MRBM; was 550000
   guidance: 'INS/GPS',
 })
 
@@ -179,13 +179,13 @@ export const ZOLFAGHAR = reg({
 export const KHALIJ_FARS = reg({
   id: 'khalij_fars',
   name: 'Khalij Fars',
-  type: 'ashm',
+  type: 'ballistic_missile', // ASBM — Fateh-110 derivative, ballistic arc with terminal seeker
   range_km: 300,
-  speed_mach: 3.0,
+  speed_mach: 3.5,
   warhead_kg: 450,
   cep_m: 8,
   pk: { ashm: 0.85 },
-  flight_altitude_ft: 150000,
+  flight_altitude_ft: 250000, // ~76 km apogee for 300 km SRBM
   guidance: 'EO/IR terminal',
 })
 

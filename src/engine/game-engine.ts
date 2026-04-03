@@ -5,11 +5,11 @@ import { usaUnits } from '@/data/units/usa-orbat'
 import { iranUnits } from '@/data/units/iran-orbat'
 import { SeededRNG } from './utils/rng'
 import { processMovement } from './systems/movement'
-import { processCombat, launchMissile, launchSAM } from './systems/combat'
-import { processAI } from './systems/ai'
+import { processCombat, launchMissile, launchSAM, resetCombatState } from './systems/combat'
+import { processAI, resetAIState } from './systems/ai'
 import { processEconomy } from './systems/economy'
-import { processOrders } from './systems/orders'
-import { processFriendlyAI } from './systems/friendly-ai'
+import { processOrders, resetOrdersState } from './systems/orders'
+import { processFriendlyAI, resetFriendlyAIState } from './systems/friendly-ai'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
 const SCENARIO_START = new Date('2026-06-15T06:00:00Z').getTime()
@@ -181,6 +181,11 @@ export class GameEngine {
       events: raw.events ?? [],
       pendingEvents: [],
     }
+    // Reset all module-level state that would otherwise persist across loads
+    resetCombatState()
+    resetAIState()
+    resetFriendlyAIState()
+    resetOrdersState()
   }
 
   private emitEvent(event: GameEvent): void {
