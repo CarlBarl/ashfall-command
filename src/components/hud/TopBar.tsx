@@ -89,10 +89,11 @@ export default function TopBar() {
           display: 'flex',
           alignItems: 'center',
           gap: isMobile ? 2 : 4,
-          background: 'var(--bg-panel)',
+          background: 'rgba(13, 17, 23, 0.85)',
           border: '1px solid var(--border-default)',
           borderRadius: 'var(--panel-radius)',
-          padding: isMobile ? '3px 4px' : '4px 6px',
+          padding: isMobile ? '3px 4px' : '3px 5px',
+          backdropFilter: 'blur(4px)',
           fontFamily: 'var(--font-mono)',
           fontSize: 'var(--font-size-xs)',
         }}
