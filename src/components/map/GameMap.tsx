@@ -8,7 +8,7 @@ import { createUnitLayer, getLastClusterMap } from './layers/UnitLayer'
 import ClusterPopup from './ClusterPopup'
 import type { UnitCluster } from './layers/cluster'
 import { createMissileLayers } from './layers/MissileLayer'
-import { createImpactLayer } from './layers/ImpactLayer'
+import { createImpactLayers } from './layers/ImpactLayer'
 import { createWaypointLayers } from './layers/WaypointLayer'
 import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
 import { createSupplyLineGeoJSON } from './layers/SupplyLineLayer'
@@ -139,7 +139,7 @@ export default function GameMap() {
   const layers = useMemo(() => [
     ...createUnitLayer(units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation, zoom),
     ...createMissileLayers(missiles, currentTime, units, handleHover),
-    createImpactLayer(allEvents, units, currentTick),
+    ...createImpactLayers(allEvents, units, currentTick),
     ...createWaypointLayers(units, selectedUnitIds),
   ], [units, selectedUnitId, selectedUnitIds, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation, zoom, missiles, currentTime, allEvents, currentTick])
 

@@ -201,7 +201,7 @@ export interface GameState {
 
 export type GameEvent =
   | { type: 'MISSILE_LAUNCHED'; missileId: string; launcherId: UnitId; targetId: UnitId; weaponName: string; tick: number }
-  | { type: 'MISSILE_INTERCEPTED'; missileId: string; interceptorId: UnitId; tick: number }
+  | { type: 'MISSILE_INTERCEPTED'; missileId: string; interceptorId: UnitId; position: Position; tick: number }
   | { type: 'MISSILE_IMPACT'; missileId: string; targetId: UnitId; damage: number; tick: number }
   | { type: 'UNIT_DESTROYED'; unitId: UnitId; tick: number }
   | { type: 'WAR_DECLARED'; attacker: NationId; defender: NationId; tick: number }

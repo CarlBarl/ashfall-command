@@ -481,6 +481,7 @@ function updateInterceptors(state: GameState, rng: SeededRNG): void {
           type: 'MISSILE_INTERCEPTED',
           missileId: targetMissileId,
           interceptorId: interceptor.launcherId,
+          position: { lng: targetPos[0], lat: targetPos[1] },
           tick: state.time.tick,
         })
         state.missiles.delete(targetMissileId)
