@@ -142,16 +142,17 @@ export function createUnitLayer(
     },
   })
 
-  // Labels: show name + count badge for clusters
+  // Labels: only show at zoom >= 6 to reduce clutter at theater view
+  const showLabels = zoom >= 6
   const labelLayer = new TextLayer<RenderUnit>({
     id: 'unit-labels',
-    data: renderItems,
+    data: showLabels ? renderItems : [],
     getPosition: (d) => [d.position.lng, d.position.lat],
     getText: (d) => d.isCluster ? `${d.name} [${d.count}]` : d.name,
     getSize: 11,
     getColor: (d) => {
       const base = NATION_COLORS[d.nation] ?? [200, 200, 200]
-      return [...base, 200] as [number, number, number, number]
+      return [...base, Math.round(150 + Math.min(zoom - 6, 2) * 50)] as [number, number, number, number]
     },
     getPixelOffset: [0, 24],
     fontFamily: 'JetBrains Mono, Fira Code, monospace',

@@ -168,10 +168,10 @@ export default function GameMap() {
               type="line"
               filter={['==', ['get', 'status'], 'healthy']}
               paint={{
-                'line-color': '#2a6e3f',
-                'line-width': 1,
-                'line-opacity': 0.4,
-                'line-dasharray': [4, 4],
+                'line-color': '#1a4a2a',
+                'line-width': 0.5,
+                'line-opacity': 0.15,
+                'line-dasharray': [4, 6],
               }}
             />
             <Layer
@@ -179,10 +179,10 @@ export default function GameMap() {
               type="line"
               filter={['==', ['get', 'status'], 'damaged']}
               paint={{
-                'line-color': '#b8860b',
-                'line-width': 1,
-                'line-opacity': 0.5,
-                'line-dasharray': [2, 4],
+                'line-color': '#8b6914',
+                'line-width': 0.5,
+                'line-opacity': 0.25,
+                'line-dasharray': [2, 6],
               }}
             />
             <Layer

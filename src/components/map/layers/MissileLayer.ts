@@ -143,7 +143,7 @@ export function createMissileLayers(
   const offensive = renders.filter(r => !r.isInterceptor)
 
   return [
-    // Solid trail — where the missile has been
+    // Solid trail — where the missile has been (subtle)
     new PathLayer<MissileRender>({
       id: 'missile-trail',
       data: renders,
@@ -151,26 +151,26 @@ export function createMissileLayers(
       getColor: (d) => d.isInterceptor
         ? INTERCEPTOR_TRAIL
         : TRAIL_COLORS[d.nation] ?? [180, 180, 180],
-      widthMinPixels: 1,
-      widthMaxPixels: 2,
+      widthMinPixels: 0.5,
+      widthMaxPixels: 1,
       jointRounded: true,
       capRounded: true,
-      opacity: 0.5,
+      opacity: 0.35,
       updateTriggers: { getPath: currentTime },
     }),
 
-    // Dashed predicted path — where the missile is headed
+    // Dashed predicted path — very faint, only shows direction
     new (PathLayer as any)({
       id: 'missile-predicted',
       data: offensive.filter(r => r.predicted.length >= 2),
       getPath: (d: MissileRender) => d.predicted,
       getColor: (d: MissileRender) => TRAIL_COLORS[d.nation] ?? [180, 180, 180],
-      getDashArray: [6, 4],
-      widthMinPixels: 1,
-      widthMaxPixels: 1.5,
+      getDashArray: [4, 8],
+      widthMinPixels: 0.5,
+      widthMaxPixels: 1,
       jointRounded: true,
       capRounded: true,
-      opacity: 0.3,
+      opacity: 0.12,
       extensions: [new PathStyleExtension({ dash: true })],
       dashJustified: true,
       updateTriggers: { getPath: currentTime },
