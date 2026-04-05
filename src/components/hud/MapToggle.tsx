@@ -46,10 +46,12 @@ const btnActive: CSSProperties = {
 export default function MapToggle() {
   const mapMode = useUIStore((s) => s.mapMode)
   const showElevation = useUIStore((s) => s.showElevation)
+  const showRangeRings = useUIStore((s) => s.showRangeRings)
   const showRadarLOS = useUIStore((s) => s.showRadarLOS)
   const showIntelCoverage = useUIStore((s) => s.showIntelCoverage)
   const cycleMapMode = useUIStore((s) => s.cycleMapMode)
   const toggleElevation = useUIStore((s) => s.toggleElevation)
+  const toggleRangeRings = useUIStore((s) => s.toggleRangeRings)
   const toggleRadarLOS = useUIStore((s) => s.toggleRadarLOS)
   const toggleIntelCoverage = useUIStore((s) => s.toggleIntelCoverage)
 
@@ -78,12 +80,22 @@ export default function MapToggle() {
         ELV
       </button>
       <button
+        onClick={toggleRangeRings}
+        style={{
+          ...btn,
+          ...(showRangeRings ? btnActive : {}),
+        }}
+        title="Toggle radar range circles (friendly blue, enemy red)"
+      >
+        RNG
+      </button>
+      <button
         onClick={toggleRadarLOS}
         style={{
           ...btn,
           ...(showRadarLOS ? btnActive : {}),
         }}
-        title="Toggle radar coverage (friendly blue, enemy red)"
+        title="Toggle terrain-masked LOS on hover/select"
       >
         LOS
       </button>

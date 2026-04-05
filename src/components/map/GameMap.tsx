@@ -153,9 +153,9 @@ export default function GameMap() {
     return null
   }, [gridReady, selectedUnitId, hoveredUnitId, showRadarLOS, units])
 
-  // Map-wide radar coverage when LOS toggle is on — show all radar ranges as circles
+  // Map-wide radar range circles when RNG toggle is on
   const allRadarCoverage = useMemo(() => {
-    if (!showRadarLOS) return null
+    if (!showRangeRings) return null
     const pNation = useGameStore.getState().viewState.playerNation
     const features = units
       .filter(u => u.status !== 'destroyed' && u.sensors?.some(s => s.type === 'radar'))
@@ -168,7 +168,7 @@ export default function GameMap() {
         }
       })
     return { type: 'FeatureCollection' as const, features }
-  }, [showRadarLOS, units])
+  }, [showRangeRings, units])
 
   const onLoad = useCallback(() => {
     mapRef.current?.getMap()?.resize()
