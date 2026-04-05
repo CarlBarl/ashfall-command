@@ -16,6 +16,7 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
     if (unit.readiness === 'packing' || unit.readiness === 'deploying') continue
 
     const isNaval = NAVAL_CATEGORIES.has(unit.category)
+    const isAircraft = unit.category === 'aircraft'
     const target = unit.waypoints[0]
     const dist = haversine(unit.position, target)
 
@@ -44,8 +45,8 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
       const brng = bearing(unit.position, target)
       const nextPos = destination(unit.position, brng, speedKmPerSec)
 
-      // Terrain validation: ships stay on water, land units stay on land
-      if (elevationGrid) {
+      // Terrain validation: ships stay on water, land units stay on land (aircraft ignore terrain)
+      if (elevationGrid && !isAircraft) {
         const nextIsWater = elevationGrid.isWater(nextPos.lat, nextPos.lng)
         if (isNaval && !nextIsWater) {
           // Ship hitting land — skip this waypoint
@@ -82,6 +83,7 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
     const events: GameEvent[] = []
     for (const missile of state.missiles.values()) {
       if (missile.status !== 'inflight') continue
+      if (missile.is_interceptor) continue // SAM interceptors have their own altitude model (combat.ts)
       if (missile.phase !== 'cruise') continue
       if (missile.path.length === 0) continue
 
@@ -124,18 +126,10 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
         missile.altitude_m = Math.max(requiredAlt, missile.altitude_m - 50)
       }
 
-      // Crash into terrain check — only crash if still below terrain after climb attempt
+      // Modern cruise missiles have TERCOM/DSMAC terrain avoidance — they don't crash
+      // into mountains. If still below terrain after climb attempt, force altitude to clear.
       if (missile.altitude_m < terrainElev) {
-        missile.status = 'impact'
-        missilesToDelete.push(missile.id)
-        // Emit MISSILE_IMPACT event so the player can see what happened
-        events.push({
-          type: 'MISSILE_IMPACT',
-          missileId: missile.id,
-          targetId: missile.targetId,
-          damage: 0, // terrain crash — no damage to target
-          tick: state.time.tick,
-        })
+        missile.altitude_m = terrainElev + clearance
       }
     }
     for (const id of missilesToDelete) {

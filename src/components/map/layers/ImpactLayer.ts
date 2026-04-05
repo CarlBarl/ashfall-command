@@ -66,21 +66,27 @@ export function createImpactLayers(
     getPosition: (d) => [d.position.lng, d.position.lat],
     getRadius: (d) => {
       const age = currentTick - d.tick
-      return 500 + (age * 120) // expanding circle
+      return 8 + age * 0.8 // expanding circle in pixels
     },
     getFillColor: (d) => {
       const age = currentTick - d.tick
-      const alpha = Math.max(0, 255 * 0.3 - age * 3)
-      return [255, 220, 50, alpha] // yellow, faint
+      const alpha = Math.max(0, 220 - age * 7)
+      return [255, 220, 50, alpha] // yellow flash
     },
-    radiusUnits: 'meters',
-    radiusScale: 1,
+    getLineColor: (d) => {
+      const age = currentTick - d.tick
+      const alpha = Math.max(0, 255 - age * 8)
+      return [255, 255, 150, alpha]
+    },
+    radiusUnits: 'pixels',
     filled: true,
-    stroked: false,
-    opacity: 0.35,
+    stroked: true,
+    lineWidthMinPixels: 1.5,
+    opacity: 0.8,
     updateTriggers: {
       getRadius: currentTick,
       getFillColor: currentTick,
+      getLineColor: currentTick,
     },
   })
 
