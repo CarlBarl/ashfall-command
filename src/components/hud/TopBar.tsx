@@ -181,8 +181,11 @@ export default function TopBar() {
             ))}
           </div>
 
-          {/* Right: war status + ROE */}
+          {/* Right: ATK + war status + ROE */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {/* Strike planner shortcut */}
+            <StrikeBtn compact />
+
             {atWarWithPrimaryEnemy ? (
               <span style={{
                 color: 'var(--status-damaged)',

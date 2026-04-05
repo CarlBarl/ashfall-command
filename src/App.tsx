@@ -16,6 +16,7 @@ import { useGameStore } from '@/store/game-store'
 import { useUIStore } from '@/store/ui-store'
 import { useMenuStore } from '@/store/menu-store'
 import { useDeploymentStore } from '@/store/deployment-store'
+import { useStrikeStore } from '@/store/strike-store'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { initBridge, initFromData, sendCommand } from '@/store/bridge'
 import { getScenario } from '@/data/scenarios/index'
@@ -152,10 +153,13 @@ function MobileNav({
   onSelect: (p: MobilePanel) => void
   hasSelection: boolean
 }) {
+  const openStrike = useStrikeStore((s) => s.openStrike)
+  const closeStrike = useStrikeStore((s) => s.closeStrike)
+
   const tabs: { key: MobilePanel; label: string; show?: boolean; accent?: string }[] = [
     { key: 'orbat', label: 'OOB' },
     { key: 'unit', label: 'UNIT', show: hasSelection },
-    { key: 'strike', label: 'FIRE', show: hasSelection, accent: 'var(--iran-primary)' },
+    { key: 'strike', label: 'FIRE', accent: 'var(--iran-primary)' },
     { key: 'stats', label: 'SIT' },
     { key: 'econ', label: 'ECON' },
     { key: 'intel', label: 'INTEL' },
@@ -163,6 +167,19 @@ function MobileNav({
   ]
 
   const visible = tabs.filter(t => t.show !== false)
+
+  const handleSelect = (key: MobilePanel) => {
+    if (active === key) {
+      // Closing the active panel
+      if (key === 'strike') closeStrike()
+      onSelect(null)
+    } else {
+      // Opening a panel
+      if (key === 'strike') openStrike('plan')
+      if (active === 'strike') closeStrike()
+      onSelect(key)
+    }
+  }
 
   return (
     <div style={{
@@ -183,7 +200,7 @@ function MobileNav({
         return (
           <button
             key={t.key}
-            onClick={() => onSelect(isActive ? null : t.key)}
+            onClick={() => handleSelect(t.key)}
             style={{
               flex: 1,
               padding: '8px 0 6px',

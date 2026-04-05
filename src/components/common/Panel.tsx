@@ -12,7 +12,7 @@ interface PanelProps {
 /** Strip all positioning props from style on mobile */
 function stripPosition(s: CSSProperties | undefined): CSSProperties {
   if (!s) return {}
-  const { position, top, right, bottom, left, width, minWidth, maxWidth, ...rest } = s
+  const { position, top, right, bottom, left, width, minWidth, maxWidth, transform, ...rest } = s
   return rest
 }
 
@@ -117,12 +117,10 @@ export default function Panel({ title, children, style, onClose, defaultMinimize
         }}>
           {title}
         </span>
-        {!isMobile && (
-          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-            <TitleButton label={minimized ? '+' : '-'} onClick={() => setMinimized(!minimized)} />
-            {onClose && <TitleButton label="x" onClick={onClose} />}
-          </div>
-        )}
+        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+          {!isMobile && <TitleButton label={minimized ? '+' : '-'} onClick={() => setMinimized(!minimized)} />}
+          {onClose && <TitleButton label="x" onClick={onClose} />}
+        </div>
       </div>
       {!minimized && children}
     </div>
