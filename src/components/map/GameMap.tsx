@@ -20,6 +20,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
 import { getMapStyle } from '@/styles/map-providers'
+import { weaponSpecs } from '@/data/weapons/missiles'
 
 const INITIAL_VIEW = {
   longitude: 51.4,
@@ -175,11 +176,15 @@ export default function GameMap() {
 
     // Check if clicked unit is an enemy — set as target and auto-select nearest armed friendly
     const clickedUnit = units.find(u => u.id === id)
-    if (clickedUnit && clickedUnit.nation !== 'usa') {
-      // Find nearest friendly unit with available offensive weapons
+    const pNation = useGameStore.getState().viewState.playerNation
+    if (clickedUnit && clickedUnit.nation !== pNation) {
+      // Find nearest friendly unit with available OFFENSIVE weapons (not SAMs)
       const friendlies = units.filter(u =>
-        u.nation === 'usa' && u.status !== 'destroyed' &&
-        u.weapons.some(w => w.count > 0),
+        u.nation === pNation && u.status !== 'destroyed' &&
+        u.weapons.some(w => {
+          const spec = weaponSpecs[w.weaponId]
+          return spec && spec.type !== 'sam' && w.count > 0
+        }),
       )
       if (friendlies.length > 0) {
         const tLat = clickedUnit.position.lat
