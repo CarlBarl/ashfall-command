@@ -53,12 +53,6 @@ interface LOSInput {
   sectorDeg: number    // coverage arc (360 = omnidirectional)
 }
 
-/** Earth radius in km */
-const R_EARTH = 6371
-
-/** Standard atmospheric refraction factor (4/3 earth radius model) */
-const K_REFRACTION = 4 / 3
-
 /** Number of rays cast around 360 degrees */
 const NUM_RAYS = 360
 
@@ -88,31 +82,38 @@ export function computeLOSPolygon(input: LOSInput): Feature<Polygon> {
 
   const numSteps = Math.max(1, Math.ceil(radarRange_km / STEP_KM))
 
-  /** Raycast a single bearing and return the farthest visible point */
+  /** Raycast a single bearing and return the farthest visible point.
+   *  Shows terrain masking only — if a mountain peak between the radar
+   *  and a distant point is higher than the radar antenna, the ray is blocked.
+   *  Horizon/curvature is NOT applied here (it's target-altitude-dependent
+   *  and handled by the detection engine). */
   const castRay = (bearing: number): [number, number] => {
     let maxVisibleDist_km = 0
+    let maxObstacleAngle = -Infinity // highest "look angle" to any terrain seen so far
 
     for (let step = 1; step <= numSteps; step++) {
       const dist_km = (step / numSteps) * radarRange_km
 
-      // Compute curvature drop at this distance
-      // drop = d^2 / (2 * R * k) in meters (d in km, result in km, convert to m)
-      const curvatureDrop_m = ((dist_km * dist_km) / (2 * R_EARTH * K_REFRACTION)) * 1000
-
-      // LOS line height at this distance (straight line from antenna, minus curvature)
-      const losHeight_m = radarAlt - curvatureDrop_m
-
-      // Get terrain elevation at this point
       const pt = destination(origin, dist_km, bearing, { units: 'kilometers' })
       const coords = pt.geometry.coordinates
       const terrainElev = elevationGrid.getElevation(coords[1], coords[0])
 
-      if (terrainElev > losHeight_m) {
-        // Terrain blocks LOS at this distance
+      // Compute the angle from the radar to this terrain point
+      // angle = atan2(terrainElev - radarAlt, dist_km * 1000)
+      const elevDiff = terrainElev - radarAlt
+      const angle = Math.atan2(elevDiff, dist_km * 1000)
+
+      if (angle > maxObstacleAngle) {
+        // This point is visible (higher angle than any previous obstacle)
+        maxObstacleAngle = angle
+        maxVisibleDist_km = dist_km
+      }
+      // If angle <= maxObstacleAngle, a previous terrain peak blocks this point
+      // But we keep going — there might be higher terrain further out that IS visible
+      // For simplicity, break when blocked (conservative)
+      else if (elevDiff > 0 && angle <= maxObstacleAngle) {
         break
       }
-
-      maxVisibleDist_km = dist_km
     }
 
     if (maxVisibleDist_km <= 0) {
