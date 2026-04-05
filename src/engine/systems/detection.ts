@@ -58,16 +58,15 @@ export function detectThreats(state: GameState, adUnit: Unit, grid?: ElevationGr
     // Detection range modified by missile profile
     const spec = weaponSpecs[missile.weaponId]
     let effectiveRange = radarRange
+
     if (spec) {
-      // Low-altitude cruise missiles are harder to detect at range
-      if (spec.flight_altitude_ft < 500) effectiveRange *= 0.4
-      else if (spec.flight_altitude_ft < 5000) effectiveRange *= 0.7
       // RCS factor: small targets (drones ~0.1 m²) are harder to detect
       const rcs = spec.rcs_m2 ?? 1.0
       if (rcs < 1.0) effectiveRange *= Math.min(1.0, Math.sqrt(rcs))
     }
 
-    // Radar horizon + terrain masking (when elevation grid available)
+    // Radar horizon caps detection range for low-altitude targets
+    // (replaces the old flat altitude modifier — horizon is physics-based)
     if (grid) {
       const radarElevation = grid.getElevation(adUnit.position.lat, adUnit.position.lng)
       const antennaHeight = adUnit.sensors.find(s => s.type === 'radar')?.antenna_height_m ?? 15
@@ -75,10 +74,16 @@ export function detectThreats(state: GameState, adUnit: Unit, grid?: ElevationGr
       const targetAltM = missile.altitude_m ?? 50
 
       const horizonKm = radarHorizon(radarAltM, targetAltM)
-      if (dist > horizonKm) continue
+      // Horizon caps effective range — not a hard cutoff on distance
+      effectiveRange = Math.min(effectiveRange, horizonKm)
 
-      // Terrain masking — currentPos is [lng, lat]
-      if (!hasLineOfSight(adUnit.position, radarAltM, currentPos[1], currentPos[0], targetAltM, grid)) continue
+      // Terrain masking is a hard check — mountains physically block radar
+      if (dist <= effectiveRange &&
+          !hasLineOfSight(adUnit.position, radarAltM, currentPos[1], currentPos[0], targetAltM, grid)) continue
+    } else if (spec) {
+      // Fallback: old altitude modifiers when no elevation grid
+      if (spec.flight_altitude_ft < 500) effectiveRange *= 0.4
+      else if (spec.flight_altitude_ft < 5000) effectiveRange *= 0.7
     }
 
     if (dist <= effectiveRange) {
