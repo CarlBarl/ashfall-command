@@ -5,6 +5,7 @@ export type WeaponId = string
 export interface Position {
   lng: number
   lat: number
+  elevation_m?: number
 }
 
 export interface GameTime {
@@ -112,6 +113,7 @@ export interface Sensor {
   type: 'radar' | 'irst' | 'sonar' | 'ew'
   range_km: number
   detection_prob: number // 0-1
+  antenna_height_m?: number // height above ground level, defaults vary by system
 }
 
 export type ROE = 'weapons_free' | 'weapons_tight' | 'hold_fire'
