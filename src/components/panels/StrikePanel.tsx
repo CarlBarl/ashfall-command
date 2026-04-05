@@ -8,6 +8,8 @@ import { sendCommand } from '@/store/bridge'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import { computeAttackPlan } from '@/engine/attack-planner'
 import { computeRouteDistance } from '@/components/map/layers/RouteLayer'
+import { getMainThreadGrid } from '@/components/map/layers/LOSLayer'
+import { findAutoRoute } from '@/engine/systems/route-planner'
 import { haversine } from '@/engine/utils/geo'
 import type { UnitCategory } from '@/types/game'
 import type { AttackPriority, Severity, TimingMode, PlannedStrike, AttackPlan } from '@/types/attack-plan'
@@ -143,6 +145,7 @@ function DirectFireTab() {
   const [selectedRouteWeaponId, setSelectedRouteWeaponId] = useState<string | null>(null)
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [clusterQty, setClusterQty] = useState<Record<string, number>>({})
+  const [autoRouteStatus, setAutoRouteStatus] = useState<string | null>(null)
 
   const target = units.find((u) => u.id === targetUnitId)
 
@@ -517,8 +520,67 @@ function DirectFireTab() {
                   fontSize: '0.55rem', color: 'var(--text-muted)',
                   marginBottom: 6, fontStyle: 'italic',
                 }}>
-                  Click on the map to add waypoints. Route is shown color-coded by threat exposure.
+                  Click on the map to add waypoints, or use AUTO-ROUTE for A* pathfinding.
                 </div>
+
+                {/* Auto-route button */}
+                <button
+                  onClick={() => {
+                    if (!launcher || !target) return
+                    const grid = getMainThreadGrid()
+                    if (!grid) {
+                      setAutoRouteStatus('Elevation grid not loaded')
+                      return
+                    }
+                    setAutoRouteStatus('Computing...')
+                    // Run in a microtask to allow UI to update
+                    Promise.resolve().then(() => {
+                      const route = findAutoRoute(
+                        launcher.position,
+                        target.position,
+                        allRadars,
+                        grid,
+                        maxRange,
+                      )
+                      if (route === null) {
+                        setAutoRouteStatus('No route found (out of range or blocked)')
+                      } else {
+                        // Set waypoints in store: clear, then add each
+                        clearRouteWaypoints()
+                        for (const wp of route) {
+                          useStrikeStore.getState().addRouteWaypoint(wp)
+                        }
+                        setAutoRouteStatus(
+                          route.length === 0
+                            ? 'Direct route is optimal (no waypoints needed)'
+                            : `Route found: ${route.length} waypoints`,
+                        )
+                      }
+                    })
+                  }}
+                  style={{
+                    width: '100%', padding: '5px 8px', marginBottom: 6,
+                    background: 'transparent',
+                    border: '1px dashed var(--usa-accent, #4488cc)', borderRadius: 4,
+                    color: 'var(--usa-accent, #4488cc)', cursor: 'pointer',
+                    fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)',
+                    fontWeight: 600,
+                  }}
+                >
+                  AUTO-ROUTE (A* PATHFINDER)
+                </button>
+                {autoRouteStatus && (
+                  <div style={{
+                    fontSize: '0.55rem', marginBottom: 6, fontStyle: 'italic',
+                    color: autoRouteStatus.startsWith('No route')
+                      ? 'var(--status-damaged)'
+                      : autoRouteStatus === 'Computing...'
+                        ? 'var(--text-muted)'
+                        : 'var(--status-ready)',
+                  }}>
+                    {autoRouteStatus}
+                  </div>
+                )}
 
                 {/* Waypoint list */}
                 {routeWaypoints.length > 0 && (
