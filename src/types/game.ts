@@ -114,6 +114,7 @@ export interface Sensor {
   range_km: number
   detection_prob: number // 0-1
   antenna_height_m?: number // height above ground level, defaults vary by system
+  sector_deg?: number // coverage arc in degrees, default 360 = omnidirectional
 }
 
 export type ROE = 'weapons_free' | 'weapons_tight' | 'hold_fire'
