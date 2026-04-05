@@ -212,6 +212,27 @@ export default function TopBar() {
                   gap: 2,
                   minWidth: 80,
                 }}>
+
+                  {/* Fine speed slider */}
+                  <div style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={time.speed <= 0 ? 0 : Math.round(1 + 99 * Math.log(time.speed / 0.1) / Math.log(36000))}
+                      onChange={(e) => {
+                        const val = Number(e.target.value)
+                        const speed = val === 0 ? 0 : 0.1 * Math.pow(36000, (val - 1) / 99)
+                        sendCommand({ type: 'SET_SPEED', speed })
+                      }}
+                      style={{ flex: 1, height: 4, cursor: 'pointer', accentColor: 'var(--text-accent)' }}
+                    />
+                    <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', minWidth: 35, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                      {time.speed <= 0 ? '||' : time.speed < 6 ? `${Math.round(time.speed * 10)}s/s` : time.speed < 300 ? `${Math.round(time.speed / 6)}m/s` : `${(time.speed / 360).toFixed(1)}h/s`}
+                    </span>
+                  </div>
+                  <div style={{ height: 1, background: 'var(--border-default)', margin: '2px 0' }} />
+
                   {ALL_SPEEDS.map((s) => (
                     <button
                       key={s}

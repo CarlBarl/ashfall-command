@@ -112,17 +112,20 @@ export default function GameMap() {
 
   const showIntelCoverage = useUIStore((s) => s.showIntelCoverage)
 
-  // Compute radar coverage circles for estimated intel units (only when toggle on)
-  const intelCoverageData = useMemo(() => {
-    if (!showIntelCoverage) return { type: 'FeatureCollection' as const, features: [] }
-    const features = estimatedUnits
-      .filter((u) => u.sensors.some((s) => s.type === 'radar'))
-      .map((u) => {
-        const radar = u.sensors.find((s) => s.type === 'radar')!
-        return circle([u.position.lng, u.position.lat], radar.range_km, { units: 'kilometers', steps: 64 })
+  // Compute terrain-masked LOS for estimated intel units (only when toggle on)
+  const intelLOSPolygons = useMemo(() => {
+    if (!showIntelCoverage || !gridReady) return []
+    return estimatedUnits
+      .filter(u => u.sensors.some(s => s.type === 'radar'))
+      .map(u => {
+        const radar = u.sensors.find(s => s.type === 'radar')!
+        return getLOSPolygon(
+          `intel_${u.id}`, u.position, radar.range_km,
+          radar.antenna_height_m ?? 15, 0, radar.sector_deg ?? 360,
+        )
       })
-    return { type: 'FeatureCollection' as const, features }
-  }, [estimatedUnits, showIntelCoverage])
+      .filter(Boolean) as NonNullable<ReturnType<typeof getLOSPolygon>>[]
+  }, [estimatedUnits, showIntelCoverage, gridReady])
 
   // Compute LOS polygon(s) for hovered or selected radar unit(s)
   // Handles clusters: hovering a cluster shows LOS for all radar units in it
@@ -520,10 +523,10 @@ export default function GameMap() {
           </Source>
         )}
 
-        {intelCoverageData.features.length > 0 && (
-          <Source id="intel-coverage" type="geojson" data={intelCoverageData}>
+        {intelLOSPolygons.map((poly, i) => (
+          <Source key={`intel-los-${i}`} id={`intel-los-${i}`} type="geojson" data={poly}>
             <Layer
-              id="intel-coverage-fill"
+              id={`intel-los-fill-${i}`}
               type="fill"
               paint={{
                 'fill-color': '#ff8800',
@@ -531,7 +534,7 @@ export default function GameMap() {
               }}
             />
             <Layer
-              id="intel-coverage-line"
+              id={`intel-los-line-${i}`}
               type="line"
               paint={{
                 'line-color': '#ff8800',
@@ -541,7 +544,7 @@ export default function GameMap() {
               }}
             />
           </Source>
-        )}
+        ))}
 
         {geoData && (
           <Source id="countries" type="geojson" data={geoData}>
