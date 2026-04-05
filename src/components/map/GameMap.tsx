@@ -122,15 +122,13 @@ export default function GameMap() {
     return { type: 'FeatureCollection' as const, features }
   }, [estimatedUnits])
 
-  // Compute LOS polygon for hovered/selected radar unit
+  // Compute LOS polygon(s)
+  // 1. Selected unit — always show its LOS (regardless of toggle)
+  // 2. LOS toggle on — show ALL radar coverage for enemy AND friendly as range circles
   const losPolygon = useMemo(() => {
     if (!gridReady) return null
 
-    // Determine which unit to show LOS for:
-    // 1. Hovered radar unit — when showRadarLOS toggle is on (takes priority for responsiveness)
-    // 2. Selected radar unit — always show regardless of toggle
-    // We try hovered first so that hovering over other radar units while one is selected
-    // still shows the hovered unit's coverage.
+    // Priority: hovered unit (when LOS toggle on) > selected unit
     const candidates: (string | null)[] = [
       showRadarLOS ? hoveredUnitId : null,
       selectedUnitId,
@@ -151,6 +149,23 @@ export default function GameMap() {
 
     return null
   }, [gridReady, selectedUnitId, hoveredUnitId, showRadarLOS, units])
+
+  // Map-wide radar coverage when LOS toggle is on — show all radar ranges as circles
+  const allRadarCoverage = useMemo(() => {
+    if (!showRadarLOS) return null
+    const pNation = useGameStore.getState().viewState.playerNation
+    const features = units
+      .filter(u => u.status !== 'destroyed' && u.sensors?.some(s => s.type === 'radar'))
+      .map(u => {
+        const radar = u.sensors!.find(s => s.type === 'radar')!
+        const isEnemy = u.nation !== pNation
+        return {
+          ...circle([u.position.lng, u.position.lat], radar.range_km, { units: 'kilometers', steps: 64 }),
+          properties: { isEnemy },
+        }
+      })
+    return { type: 'FeatureCollection' as const, features }
+  }, [showRadarLOS, units])
 
   const onLoad = useCallback(() => {
     mapRef.current?.getMap()?.resize()
@@ -400,6 +415,49 @@ export default function GameMap() {
               type="line"
               paint={{
                 'line-color': '#22cc44',
+                'line-opacity': 0.3,
+                'line-width': 1,
+              }}
+            />
+          </Source>
+        )}
+
+        {allRadarCoverage && allRadarCoverage.features.length > 0 && (
+          <Source id="all-radar-coverage" type="geojson" data={allRadarCoverage as GeoJSON.FeatureCollection}>
+            <Layer
+              id="radar-coverage-friendly"
+              type="fill"
+              filter={['==', ['get', 'isEnemy'], false]}
+              paint={{
+                'fill-color': '#4488cc',
+                'fill-opacity': 0.06,
+              }}
+            />
+            <Layer
+              id="radar-coverage-enemy"
+              type="fill"
+              filter={['==', ['get', 'isEnemy'], true]}
+              paint={{
+                'fill-color': '#cc4444',
+                'fill-opacity': 0.08,
+              }}
+            />
+            <Layer
+              id="radar-coverage-outline-friendly"
+              type="line"
+              filter={['==', ['get', 'isEnemy'], false]}
+              paint={{
+                'line-color': '#4488cc',
+                'line-opacity': 0.2,
+                'line-width': 1,
+              }}
+            />
+            <Layer
+              id="radar-coverage-outline-enemy"
+              type="line"
+              filter={['==', ['get', 'isEnemy'], true]}
+              paint={{
+                'line-color': '#cc4444',
                 'line-opacity': 0.3,
                 'line-width': 1,
               }}

@@ -205,22 +205,32 @@ function DirectFireTab() {
 
     // Auto-route by default (unless direct fire toggled)
     if (!directFire && launcher && target) {
-      const grid = getMainThreadGrid()
       const spec = weaponSpecs[weaponId]
-      if (grid && spec && spec.type !== 'sam') {
-        // Collect enemy radars for threat avoidance
-        const threats = units
-          .filter(u => u.nation !== playerNation && u.status !== 'destroyed')
-          .flatMap(u => (u.sensors ?? [])
-            .filter(s => s.type === 'radar')
-            .map(s => ({ position: u.position, range_km: s.range_km })))
+      if (spec && spec.type !== 'sam') {
+        // Ensure elevation grid is loaded (wait if needed)
+        let grid = getMainThreadGrid()
+        if (!grid) {
+          try {
+            const { ensureMainThreadGrid } = await import('@/components/map/layers/LOSLayer')
+            grid = await ensureMainThreadGrid()
+          } catch { /* grid unavailable — fire direct */ }
+        }
 
-        const route = findAutoRoute(
-          launcher.position, target.position,
-          threats, grid, spec.range_km,
-        )
-        if (route && route.length > 0) {
-          waypoints = route
+        if (grid) {
+          // Collect enemy radars for threat avoidance
+          const threats = units
+            .filter(u => u.nation !== playerNation && u.status !== 'destroyed')
+            .flatMap(u => (u.sensors ?? [])
+              .filter(s => s.type === 'radar')
+              .map(s => ({ position: u.position, range_km: s.range_km })))
+
+          const route = findAutoRoute(
+            launcher.position, target.position,
+            threats, grid, spec.range_km,
+          )
+          if (route && route.length > 0) {
+            waypoints = route
+          }
         }
       }
     }
