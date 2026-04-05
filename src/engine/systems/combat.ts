@@ -89,6 +89,24 @@ export function computeInterceptPoint(
   }
 }
 
+/**
+ * Get a missile's current heading from its last two path points.
+ *
+ * IMPORTANT: Do NOT compute heading from path[length-2] to getCurrentMissilePosition().
+ * Because updateMissilePositions appends at timestamp T+1000, querying at T returns
+ * path[length-2] exactly — giving a zero-length vector and heading = 0° (north).
+ * Always use the last two PATH points instead.
+ */
+export function getMissileHeading(missile: Missile): number {
+  if (missile.path.length < 2) return 0
+  const prev = missile.path[missile.path.length - 2]
+  const curr = missile.path[missile.path.length - 1]
+  return bearing(
+    { lat: prev[1], lng: prev[0] },
+    { lat: curr[1], lng: curr[0] },
+  )
+}
+
 /** Reset module-level state — must be called on save/load */
 export function resetCombatState(): void {
   missileCounter = 0
@@ -459,15 +477,8 @@ function runADEngagement(state: GameState, _rng: SeededRNG, elevationGrid?: Elev
         const threatPos = getCurrentMissilePosition(threat.missile, state.time.timestamp)
         if (!threatPos) continue
 
-        // Compute threat heading from path history
-        let threatHeading = 0
-        if (threat.missile.path.length >= 2) {
-          const prevPt = threat.missile.path[Math.max(0, threat.missile.path.length - 2)]
-          threatHeading = bearing(
-            { lat: prevPt[1], lng: prevPt[0] },
-            { lat: threatPos[1], lng: threatPos[0] },
-          )
-        }
+        // Heading from last two path points (NOT from path to interpolated pos — see getMissileHeading)
+        const threatHeading = getMissileHeading(threat.missile)
 
         // Quadratic intercept solve: exact time + point where interceptor meets threat
         const threatSpeedKmh = machToKmh(threat.missile.speed_current_mach)
@@ -622,12 +633,8 @@ function updateInterceptors(state: GameState, rng: SeededRNG): void {
     // Proportional navigation: steer toward quadratic intercept point each tick
     const intKmPerSec = machToKmh(interceptor.speed_current_mach) / 3600
 
-    // Get target's heading from its last two path points
-    let targetHeading = 0
-    if (targetMissile.path.length >= 2) {
-      const prev = targetMissile.path[Math.max(0, targetMissile.path.length - 2)]
-      targetHeading = bearing({ lat: prev[1], lng: prev[0] }, { lat: targetPos[1], lng: targetPos[0] })
-    }
+    // Heading from last two path points (NOT from path to interpolated pos — see getMissileHeading)
+    const targetHeading = getMissileHeading(targetMissile)
 
     // Quadratic intercept solve from current interceptor position
     const intSpeedKmh = machToKmh(interceptor.speed_current_mach)
@@ -906,15 +913,8 @@ export function launchSAM(
   const threatPos = getCurrentMissilePosition(targetMissile, state.time.timestamp)
   if (!threatPos) return null
 
-  // Compute threat heading from path history
-  let threatHeading = 0
-  if (targetMissile.path.length >= 2) {
-    const prevPt = targetMissile.path[Math.max(0, targetMissile.path.length - 2)]
-    threatHeading = bearing(
-      { lat: prevPt[1], lng: prevPt[0] },
-      { lat: threatPos[1], lng: threatPos[0] },
-    )
-  }
+  // Heading from last two path points (NOT from path to interpolated pos — see getMissileHeading)
+  const threatHeading = getMissileHeading(targetMissile)
 
   // Quadratic intercept solve
   const threatSpeedKmh = machToKmh(targetMissile.speed_current_mach)
