@@ -106,7 +106,7 @@ export default function ContextMenu({ x, y, lngLat, shiftKey, onClose }: Context
 
     // Auto-orient radar toward nearest enemy unit
     const enemies = units.filter(u => u.nation !== unit.nation && u.status !== 'destroyed')
-    if (enemies.length > 0 && hasSectorRadar) {
+    if (enemies.length > 0 && hasRadar) {
       let nearestEnemy = enemies[0]
       let nearestDist = Infinity
       const pos = bestPos !== unit.position ? bestPos : unit.position
