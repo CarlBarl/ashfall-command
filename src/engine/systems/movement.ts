@@ -4,6 +4,7 @@ import { haversine, bearing, destination, ktsToKmh } from '../utils/geo'
 import { weaponSpecs } from '@/data/weapons/missiles'
 
 const ARRIVAL_THRESHOLD_KM = 0.5
+const NAVAL_CATEGORIES = new Set(['ship', 'submarine', 'carrier_group', 'naval_base'])
 
 /** Process movement for all units with waypoints. Called each tick (= 1 game second). */
 export function processMovement(state: GameState, elevationGrid?: ElevationGrid | null): void {
@@ -14,6 +15,7 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
     // Skip units that are packing or deploying — they can't move during transitions
     if (unit.readiness === 'packing' || unit.readiness === 'deploying') continue
 
+    const isNaval = NAVAL_CATEGORIES.has(unit.category)
     const target = unit.waypoints[0]
     const dist = haversine(unit.position, target)
 
@@ -40,7 +42,32 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
     } else {
       // Move toward waypoint
       const brng = bearing(unit.position, target)
-      unit.position = destination(unit.position, brng, speedKmPerSec)
+      const nextPos = destination(unit.position, brng, speedKmPerSec)
+
+      // Terrain validation: ships stay on water, land units stay on land
+      if (elevationGrid) {
+        const nextIsWater = elevationGrid.isWater(nextPos.lat, nextPos.lng)
+        if (isNaval && !nextIsWater) {
+          // Ship hitting land — skip this waypoint
+          unit.waypoints.shift()
+          if (unit.waypoints.length === 0) {
+            unit.status = 'ready'
+            unit.speed_kts = 0
+          }
+          continue
+        }
+        if (!isNaval && nextIsWater) {
+          // Land unit hitting water — skip this waypoint
+          unit.waypoints.shift()
+          if (unit.waypoints.length === 0) {
+            unit.status = 'ready'
+            unit.speed_kts = 0
+          }
+          continue
+        }
+      }
+
+      unit.position = nextPos
       unit.heading = brng
       unit.status = 'moving'
       if (unit.speed_kts === 0) {
