@@ -14,10 +14,12 @@ function scoreLOS(lat: number, lng: number, antennaHeightM: number, rangeKm: num
   const grid = getMainThreadGrid()
   if (!grid) return 0
 
-  const radarAlt = grid.getElevation(lat, lng) + antennaHeightM
-  if (radarAlt <= 0) return -1 // don't place in water
+  if (grid.isWater(lat, lng)) return -Infinity // never place on water
+  const groundElev = grid.getElevation(lat, lng)
+  const radarAlt = groundElev + antennaHeightM
 
-  let score = 0
+  // Elevation bonus — higher ground gives inherently better radar coverage
+  let score = groundElev * 0.5
   const numRays = 36
   const steps = 10
 
