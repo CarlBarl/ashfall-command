@@ -191,15 +191,15 @@ function DirectFireTab() {
   const getQty = (key: string, max: number) => Math.min(quantities[key] ?? 1, max)
   const setQty = (key: string, val: number) => setQuantities(prev => ({ ...prev, [key]: Math.max(1, val) }))
 
-  const fire = (weaponId: string, count: number) => {
+  const fire = async (weaponId: string, count: number) => {
     if (!targetUnitId || !selectedLauncherId) return
     for (let i = 0; i < count; i++) {
-      sendCommand({ type: 'LAUNCH_MISSILE', launcherId: selectedLauncherId, weaponId, targetId: targetUnitId })
+      await sendCommand({ type: 'LAUNCH_MISSILE', launcherId: selectedLauncherId, weaponId, targetId: targetUnitId })
     }
   }
 
   // Cluster fire handler — distributes missiles evenly across cluster targets
-  const fireCluster = () => {
+  const fireCluster = async () => {
     if (!selectedLauncherId || clusterTargets.length === 0) return
     for (const ct of clusterTargets) {
       if (!ct) continue
@@ -214,7 +214,7 @@ function DirectFireTab() {
                  haversine(launcher.position, ct.position) <= spec.range_km
         })
         if (wpn) {
-          sendCommand({ type: 'LAUNCH_MISSILE', launcherId: selectedLauncherId, weaponId: wpn.weaponId, targetId: ct.id })
+          await sendCommand({ type: 'LAUNCH_MISSILE', launcherId: selectedLauncherId, weaponId: wpn.weaponId, targetId: ct.id })
         }
       }
     }
