@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { UnitId } from '@/types/game'
+import type { UnitId, Position } from '@/types/game'
 import type { AttackPriority, TimingMode, AttackPlan } from '@/types/attack-plan'
 
 export type StrikeMode = 'direct' | 'plan'
@@ -26,6 +26,10 @@ interface StrikeStore {
   planName: string
   computedPlan: AttackPlan | null
 
+  // Route planning
+  routingMode: boolean
+  routeWaypoints: Position[]
+
   // Execution
   executing: boolean
   executionProgress: number
@@ -48,6 +52,12 @@ interface StrikeStore {
   setPlanTiming: (t: TimingMode) => void
   setComputedPlan: (plan: AttackPlan | null) => void
 
+  // Actions — route planning
+  setRoutingMode: (on: boolean) => void
+  addRouteWaypoint: (pos: Position) => void
+  removeRouteWaypoint: (index: number) => void
+  clearRouteWaypoints: () => void
+
   // Actions — execution
   startExecution: () => void
   updateProgress: (p: number) => void
@@ -63,6 +73,8 @@ const INITIAL_STATE = {
   targetUnitId: null,
   targetingMode: false,
   strikeClusterUnits: [] as ClusterTarget[],
+  routingMode: false,
+  routeWaypoints: [] as Position[],
   planPriorities: [],
   planTiming: 'simultaneous' as TimingMode,
   planName: 'Strike Plan Alpha',
@@ -107,6 +119,14 @@ export const useStrikeStore = create<StrikeStore>((set) => ({
   }),
   setPlanTiming: (planTiming) => set({ planTiming }),
   setComputedPlan: (computedPlan) => set({ computedPlan }),
+
+  // Route planning
+  setRoutingMode: (on) => set({ routingMode: on, routeWaypoints: [] }),
+  addRouteWaypoint: (pos) => set((s) => ({ routeWaypoints: [...s.routeWaypoints, pos] })),
+  removeRouteWaypoint: (index) => set((s) => ({
+    routeWaypoints: s.routeWaypoints.filter((_, i) => i !== index),
+  })),
+  clearRouteWaypoints: () => set({ routeWaypoints: [] }),
 
   // Execution
   startExecution: () => set({ executing: true, executionProgress: 0 }),

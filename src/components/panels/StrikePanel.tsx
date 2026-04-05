@@ -3,9 +3,11 @@ import Panel from '@/components/common/Panel'
 import StatBar from '@/components/common/StatBar'
 import { useStrikeStore, type StrikeMode } from '@/store/strike-store'
 import { useGameStore } from '@/store/game-store'
+import { useIntelStore } from '@/store/intel-store'
 import { sendCommand } from '@/store/bridge'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import { computeAttackPlan } from '@/engine/attack-planner'
+import { computeRouteDistance } from '@/components/map/layers/RouteLayer'
 import { haversine } from '@/engine/utils/geo'
 import type { UnitCategory } from '@/types/game'
 import type { AttackPriority, Severity, TimingMode, PlannedStrike, AttackPlan } from '@/types/attack-plan'
@@ -130,8 +132,15 @@ function DirectFireTab() {
   const setTargetingMode = useStrikeStore((s) => s.setTargetingMode)
   const strikeClusterUnits = useStrikeStore((s) => s.strikeClusterUnits)
   const setStrikeCluster = useStrikeStore((s) => s.setStrikeCluster)
+  const routingMode = useStrikeStore((s) => s.routingMode)
+  const routeWaypoints = useStrikeStore((s) => s.routeWaypoints)
+  const setRoutingMode = useStrikeStore((s) => s.setRoutingMode)
+  const removeRouteWaypoint = useStrikeStore((s) => s.removeRouteWaypoint)
+  const clearRouteWaypoints = useStrikeStore((s) => s.clearRouteWaypoints)
+  const estimatedUnits = useIntelStore((s) => s.estimatedUnits)
 
   const [selectedLauncherId, setSelectedLauncherId] = useState<string | null>(null)
+  const [selectedRouteWeaponId, setSelectedRouteWeaponId] = useState<string | null>(null)
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [clusterQty, setClusterQty] = useState<Record<string, number>>({})
 
@@ -389,6 +398,231 @@ function DirectFireTab() {
               </div>
             )
           })}
+
+          {/* PLAN ROUTE button — only for cruise missiles / loitering munitions */}
+          {(() => {
+            const routableWeapons = launcherWeapons.filter(w => {
+              const spec = weaponSpecs[w.weaponId]
+              return spec && (spec.type === 'cruise_missile' || spec.type === 'loitering_munition')
+            })
+            if (routableWeapons.length === 0) return null
+
+            if (!routingMode) {
+              return (
+                <button
+                  onClick={() => {
+                    setRoutingMode(true)
+                    setSelectedRouteWeaponId(routableWeapons[0].weaponId)
+                  }}
+                  style={{
+                    width: '100%', padding: '5px 8px', marginTop: 6,
+                    background: 'transparent',
+                    border: '1px dashed var(--border-accent)', borderRadius: 4,
+                    color: 'var(--text-accent)', cursor: 'pointer',
+                    fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)',
+                    fontWeight: 600,
+                  }}
+                >
+                  PLAN ROUTE
+                </button>
+              )
+            }
+
+            // Routing mode active — show route planner
+            const activeRouteWeapon = selectedRouteWeaponId ?? routableWeapons[0].weaponId
+            const routeSpec = weaponSpecs[activeRouteWeapon]
+            const routeDist = launcher && target
+              ? Math.round(computeRouteDistance(launcher.position, routeWaypoints, target.position))
+              : 0
+            const maxRange = routeSpec?.range_km ?? 0
+            const remaining = maxRange - routeDist
+            const rangeColor = remaining < 0
+              ? 'var(--status-damaged)'
+              : remaining < maxRange * 0.2
+                ? 'var(--status-engaged)'
+                : 'var(--status-ready)'
+
+            // Collect enemy radars from both detected units and intel estimates
+            const enemyRadarUnits = units
+              .filter(u => u.nation !== playerNation && u.status !== 'destroyed')
+              .flatMap(u => (u.sensors ?? [])
+                .filter(s => s.type === 'radar')
+                .map(s => ({ position: u.position, range_km: s.range_km })))
+            const intelRadars = estimatedUnits
+              .flatMap(u => u.sensors
+                .filter(s => s.type === 'radar')
+                .map(s => ({ position: u.position, range_km: s.range_km })))
+            const allRadars = [...enemyRadarUnits, ...intelRadars]
+
+            // Count exposed segments
+            const allPoints = launcher && target
+              ? [launcher.position, ...routeWaypoints, target.position]
+              : []
+            let exposedCount = 0
+            for (let i = 0; i < allPoints.length - 1; i++) {
+              const from = allPoints[i]
+              const to = allPoints[i + 1]
+              const midPos = { lat: (from.lat + to.lat) / 2, lng: (from.lng + to.lng) / 2 }
+              if (allRadars.some(r => haversine(midPos, r.position) <= r.range_km)) {
+                exposedCount++
+              }
+            }
+            const totalSegments = Math.max(allPoints.length - 1, 1)
+
+            const fireWithRoute = async () => {
+              if (!targetUnitId || !activeLauncherId || remaining < 0) return
+              await sendCommand({
+                type: 'LAUNCH_MISSILE',
+                launcherId: activeLauncherId,
+                weaponId: activeRouteWeapon,
+                targetId: targetUnitId,
+                waypoints: routeWaypoints,
+              })
+              setRoutingMode(false)
+            }
+
+            return (
+              <div style={{
+                marginTop: 8, padding: '8px',
+                border: '1px solid var(--border-accent)',
+                borderRadius: 4, background: 'rgba(68, 136, 204, 0.08)',
+              }}>
+                <SectionLabel>Route Planner</SectionLabel>
+
+                {/* Weapon selector for route */}
+                {routableWeapons.length > 1 && (
+                  <select
+                    value={activeRouteWeapon}
+                    onChange={(e) => setSelectedRouteWeaponId(e.target.value)}
+                    style={{ ...selectStyle, marginBottom: 6 }}
+                  >
+                    {routableWeapons.map(w => (
+                      <option key={w.weaponId} value={w.weaponId}>
+                        {w.name} ({w.count}/{w.maxCount})
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {routableWeapons.length === 1 && (
+                  <div style={{
+                    fontSize: 'var(--font-size-xs)', color: 'var(--text-primary)',
+                    marginBottom: 6, fontWeight: 600,
+                  }}>
+                    {routableWeapons[0].name}
+                  </div>
+                )}
+
+                {/* Instructions */}
+                <div style={{
+                  fontSize: '0.55rem', color: 'var(--text-muted)',
+                  marginBottom: 6, fontStyle: 'italic',
+                }}>
+                  Click on the map to add waypoints. Route is shown color-coded by threat exposure.
+                </div>
+
+                {/* Waypoint list */}
+                {routeWaypoints.length > 0 && (
+                  <div style={{ marginBottom: 6 }}>
+                    {routeWaypoints.map((wp, i) => (
+                      <div key={i} style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '2px 4px', fontSize: '0.55rem',
+                        borderBottom: '1px solid var(--border-default)',
+                      }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>
+                          WP{i + 1}: {wp.lat.toFixed(2)}N {wp.lng.toFixed(2)}E
+                        </span>
+                        <button
+                          onClick={() => removeRouteWaypoint(i)}
+                          style={{
+                            background: 'none', border: 'none',
+                            color: 'var(--status-damaged)', cursor: 'pointer',
+                            fontFamily: 'var(--font-mono)', fontSize: '0.6rem',
+                            padding: '0 4px',
+                          }}
+                        >
+                          X
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Fuel / range display */}
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  marginBottom: 4, fontSize: 'var(--font-size-xs)',
+                }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Range:</span>
+                  <span style={{ color: rangeColor, fontWeight: 700 }}>
+                    {routeDist} / {maxRange} km
+                  </span>
+                </div>
+                {remaining >= 0 && (
+                  <div style={{
+                    height: 4, background: 'var(--bg-hover)', borderRadius: 2, marginBottom: 6,
+                  }}>
+                    <div style={{
+                      width: `${Math.min((routeDist / maxRange) * 100, 100)}%`,
+                      height: '100%', background: rangeColor, borderRadius: 2,
+                    }} />
+                  </div>
+                )}
+                {remaining < 0 && (
+                  <div style={{
+                    color: 'var(--status-damaged)', fontSize: '0.55rem', marginBottom: 6,
+                  }}>
+                    Route exceeds weapon range by {Math.abs(remaining)} km
+                  </div>
+                )}
+
+                {/* Threat exposure summary */}
+                <div style={{
+                  fontSize: '0.55rem', color: 'var(--text-muted)', marginBottom: 6,
+                }}>
+                  Threat exposure: <span style={{
+                    color: exposedCount === 0
+                      ? 'var(--status-ready)'
+                      : exposedCount < totalSegments
+                        ? 'var(--status-engaged)'
+                        : 'var(--status-damaged)',
+                    fontWeight: 600,
+                  }}>
+                    {exposedCount}/{totalSegments} segments exposed
+                  </span>
+                </div>
+
+                {/* Action buttons */}
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button
+                    onClick={() => setRoutingMode(false)}
+                    style={{ ...btnStyle, flex: 1, fontSize: '0.55rem', padding: '4px 6px', color: 'var(--text-muted)' }}
+                  >
+                    CANCEL
+                  </button>
+                  <button
+                    onClick={clearRouteWaypoints}
+                    style={{ ...btnStyle, flex: 1, fontSize: '0.55rem', padding: '4px 6px' }}
+                  >
+                    CLEAR
+                  </button>
+                  <button
+                    onClick={fireWithRoute}
+                    disabled={remaining < 0}
+                    style={{
+                      ...btnStyle, flex: 2, fontSize: '0.55rem', padding: '4px 6px',
+                      background: remaining >= 0 ? 'var(--iran-primary)' : 'var(--bg-hover)',
+                      color: remaining >= 0 ? '#fff' : 'var(--text-muted)',
+                      fontWeight: 700,
+                      opacity: remaining >= 0 ? 1 : 0.5,
+                    }}
+                  >
+                    CONFIRM ROUTE
+                  </button>
+                </div>
+              </div>
+            )
+          })()}
         </>
       )}
     </>

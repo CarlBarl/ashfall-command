@@ -11,6 +11,7 @@ import { createMissileLayers } from './layers/MissileLayer'
 import { createImpactLayers } from './layers/ImpactLayer'
 import { createWaypointLayers } from './layers/WaypointLayer'
 import { createIntelUnitLayers } from './layers/IntelLayer'
+import { createRouteLayers } from './layers/RouteLayer'
 import circle from '@turf/circle'
 import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
 import { createSupplyLineGeoJSON } from './layers/SupplyLineLayer'
@@ -72,6 +73,9 @@ export default function GameMap() {
   const targetUnitId = useStrikeStore((s) => s.targetUnitId)
   const targetingMode = useStrikeStore((s) => s.targetingMode)
   const setTarget = useStrikeStore((s) => s.setTargetUnitId)
+  const routingMode = useStrikeStore((s) => s.routingMode)
+  const routeWaypoints = useStrikeStore((s) => s.routeWaypoints)
+  const addRouteWaypoint = useStrikeStore((s) => s.addRouteWaypoint)
 
   // Intel placement mode + estimated units
   const placingCatalogId = useIntelStore((s) => s.placingCatalogId)
@@ -162,6 +166,13 @@ export default function GameMap() {
   const onMapClick = useCallback((e: MapLayerMouseEvent) => {
     setCtxMenu(null)
 
+    // Route planning mode: add waypoint on map click
+    const strikeState = useStrikeStore.getState()
+    if (strikeState.routingMode && e.lngLat) {
+      addRouteWaypoint({ lat: e.lngLat.lat, lng: e.lngLat.lng })
+      return // Don't do normal click processing
+    }
+
     // Intel placement mode: if placingCatalogId is set, place an estimate
     const intelState = useIntelStore.getState()
     if (intelState.placingCatalogId) {
@@ -173,7 +184,7 @@ export default function GameMap() {
       }
       return // Don't do normal click processing
     }
-  }, [])
+  }, [addRouteWaypoint])
 
   const onMove = useCallback((evt: { viewState: { zoom: number }; lngLat?: { lat: number; lng: number } }) => {
     setZoom(evt.viewState.zoom)
@@ -254,13 +265,45 @@ export default function GameMap() {
     ? missiles.find(m => m.id === followedMissileId && m.status === 'inflight') ?? null
     : null
 
+  // Compute route layers when in routing mode
+  const routeLayers = useMemo(() => {
+    if (!routingMode) return []
+    const pNation = useGameStore.getState().viewState.playerNation
+    // Find launcher and target for the route
+    const strikeState = useStrikeStore.getState()
+    const launcherUnit = units.find(u => u.id === (useUIStore.getState().selectedUnitId))
+    const targetUnit = units.find(u => u.id === strikeState.targetUnitId)
+    if (!launcherUnit || !targetUnit) return []
+
+    // Collect enemy radars: detected enemy units + intel estimates
+    const enemyRadars: { position: { lat: number; lng: number }; range_km: number }[] = []
+    for (const u of units) {
+      if (u.nation === pNation || u.status === 'destroyed') continue
+      for (const s of u.sensors ?? []) {
+        if (s.type === 'radar') {
+          enemyRadars.push({ position: u.position, range_km: s.range_km })
+        }
+      }
+    }
+    for (const eu of estimatedUnits) {
+      for (const s of eu.sensors) {
+        if (s.type === 'radar') {
+          enemyRadars.push({ position: eu.position, range_km: s.range_km })
+        }
+      }
+    }
+
+    return createRouteLayers(launcherUnit.position, routeWaypoints, targetUnit.position, enemyRadars)
+  }, [routingMode, routeWaypoints, units, estimatedUnits])
+
   const layers = useMemo(() => [
     ...createUnitLayer(units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation, zoom),
     ...createMissileLayers(missiles, currentTime, units, handleHover, handleMissileClick),
     ...createImpactLayers(allEvents, units, currentTick),
     ...createWaypointLayers(units, selectedUnitIds),
     ...createIntelUnitLayers(estimatedUnits),
-  ], [units, selectedUnitId, selectedUnitIds, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, handleMissileClick, setTarget, selectedNation, zoom, missiles, currentTime, allEvents, currentTick, estimatedUnits])
+    ...routeLayers,
+  ], [units, selectedUnitId, selectedUnitIds, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, handleMissileClick, setTarget, selectedNation, zoom, missiles, currentTime, allEvents, currentTick, estimatedUnits, routeLayers])
 
   return (
     <>
@@ -277,7 +320,7 @@ export default function GameMap() {
         attributionControl={false}
         maxZoom={12}
         minZoom={2}
-        cursor={placingCatalogId ? 'crosshair' : targetingMode ? 'crosshair' : hoveredUnitId ? 'pointer' : 'grab'}
+        cursor={routingMode ? 'crosshair' : placingCatalogId ? 'crosshair' : targetingMode ? 'crosshair' : hoveredUnitId ? 'pointer' : 'grab'}
       >
         <DeckOverlay layers={layers} />
 
