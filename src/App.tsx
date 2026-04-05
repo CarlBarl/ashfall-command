@@ -8,6 +8,7 @@ import UnitInfoPanel from '@/components/panels/UnitInfoPanel'
 import EconomyPanel from '@/components/panels/EconomyPanel'
 import OrbatPanel from '@/components/panels/OrbatPanel'
 import StatsPanel from '@/components/panels/StatsPanel'
+import IntelPanel from '@/components/panels/IntelPanel'
 import StartScreen from '@/components/menu/StartScreen'
 import ScenarioSelect from '@/components/menu/ScenarioSelect'
 import FreeModeLobby from '@/components/menu/FreeModeLobby'
@@ -56,6 +57,7 @@ export default function App() {
   const showOrbat = useUIStore((s) => s.showOrbat)
   const showStats = useUIStore((s) => s.showStats)
   const showEconomy = useUIStore((s) => s.showEconomy)
+  const showIntel = useUIStore((s) => s.showIntel)
   // StrikePanel manages its own visibility via useStrikeStore
 
   useEffect(() => {
@@ -96,6 +98,7 @@ export default function App() {
       {showOrbat && <OrbatPanel />}
       {showStats && <StatsPanel />}
       {showEconomy && <EconomyPanel />}
+      {showIntel && <IntelPanel />}
     </div>
   )
 }

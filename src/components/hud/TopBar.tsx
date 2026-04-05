@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
+import { useIntelStore } from '@/store/intel-store'
 import { sendCommand, getFullState, loadState } from '@/store/bridge'
 import { saveToSlot, loadFromSlot } from '@/store/save-load'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -47,6 +48,9 @@ export default function TopBar() {
   const showOrbat = useUIStore((s) => s.showOrbat)
   const showStats = useUIStore((s) => s.showStats)
   const showEconomy = useUIStore((s) => s.showEconomy)
+  const showIntel = useUIStore((s) => s.showIntel)
+  const toggleIntel = useUIStore((s) => s.toggleIntel)
+  const placingCatalogId = useIntelStore((s) => s.placingCatalogId)
 
   const units = useGameStore((s) => s.viewState.units)
   const nations = useGameStore((s) => s.viewState.nations)
@@ -257,6 +261,11 @@ export default function TopBar() {
 
         {/* Strike planner shortcut */}
         <StrikeBtn compact={isMobile} />
+
+        <Sep />
+
+        {/* Intel panel toggle */}
+        <IntelBtn active={showIntel || !!placingCatalogId} onClick={toggleIntel} compact={isMobile} />
 
         <Sep />
 
@@ -660,6 +669,31 @@ function SaveLoadButtons({ compact }: { compact: boolean }) {
       <ToggleBtn active={false} onClick={handleSave} label={compact ? 'SAV' : 'SAVE'} compact={compact} />
       <ToggleBtn active={false} onClick={handleLoad} label={compact ? 'LD' : 'LOAD'} compact={compact} />
     </>
+  )
+}
+
+function IntelBtn({ active, onClick, compact }: { active: boolean; onClick: () => void; compact: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: active ? 'var(--bg-hover)' : 'none',
+        border: `1px solid ${active ? 'var(--border-accent)' : 'transparent'}`,
+        borderRadius: 3,
+        color: active ? 'var(--text-accent)' : 'var(--text-muted)',
+        cursor: 'pointer',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--font-size-xs)',
+        padding: compact ? '2px 4px' : '2px 4px',
+        textTransform: 'uppercase',
+        fontWeight: 600,
+        letterSpacing: '0.03em',
+        whiteSpace: 'nowrap',
+        opacity: active ? 1 : 0.55,
+      }}
+    >
+      {compact ? 'INT' : 'INTEL'}
+    </button>
   )
 }
 

@@ -26,6 +26,9 @@ interface UIState {
   showStats: boolean
   showEconomy: boolean
 
+  // Right-side panels (independent toggles)
+  showIntel: boolean
+
   // Actions — selection
   selectUnit: (id: UnitId | null) => void
   toggleUnitSelection: (id: UnitId) => void
@@ -43,6 +46,9 @@ interface UIState {
   setLeftPanel: (panel: LeftPanel) => void
   toggleLeftPanel: (panel: 'orbat' | 'stats' | 'economy') => void
 
+  // Right-side panels
+  toggleIntel: () => void
+
   // Legacy compat — togglePanel still used by TopBar for left panels
   togglePanel: (panel: string) => void
 }
@@ -59,6 +65,7 @@ export const useUIStore = create<UIState>((set) => ({
   showOrbat: false,
   showStats: false,
   showEconomy: false,
+  showIntel: false,
 
   // Selection
   selectUnit: (id) => set({
@@ -91,6 +98,8 @@ export const useUIStore = create<UIState>((set) => ({
   cycleMapMode: () => set((s) => ({ mapMode: (s.mapMode === 'dark' ? 'satellite' : 'dark') as MapMode })),
   toggleElevation: () => set((s) => ({ showElevation: !s.showElevation })),
   toggleRadarLOS: () => set((s) => ({ showRadarLOS: !s.showRadarLOS })),
+
+  toggleIntel: () => set((s) => ({ showIntel: !s.showIntel })),
 
   togglePanel: (panel) => {
     if (panel === 'orbat' || panel === 'stats' || panel === 'economy') {

@@ -19,8 +19,11 @@ import MissileTracker from './MissileTracker'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
+import { useIntelStore } from '@/store/intel-store'
 import { getMapStyle } from '@/styles/map-providers'
 import { weaponSpecs } from '@/data/weapons/missiles'
+import { iranCatalog } from '@/data/catalog/iran-catalog'
+import { usaCatalog } from '@/data/catalog/usa-catalog'
 
 const INITIAL_VIEW = {
   longitude: 51.4,
@@ -67,6 +70,9 @@ export default function GameMap() {
   const targetUnitId = useStrikeStore((s) => s.targetUnitId)
   const targetingMode = useStrikeStore((s) => s.targetingMode)
   const setTarget = useStrikeStore((s) => s.setTargetUnitId)
+
+  // Intel placement mode
+  const placingCatalogId = useIntelStore((s) => s.placingCatalogId)
 
   // Get selected unit's nation for targeting
   const units = useGameStore((s) => s.viewState.units)
@@ -139,8 +145,20 @@ export default function GameMap() {
     }
   }, [selectedUnitId])
 
-  const onMapClick = useCallback(() => {
+  const onMapClick = useCallback((e: MapLayerMouseEvent) => {
     setCtxMenu(null)
+
+    // Intel placement mode: if placingCatalogId is set, place an estimate
+    const intelState = useIntelStore.getState()
+    if (intelState.placingCatalogId) {
+      const pNation = useGameStore.getState().viewState.playerNation
+      const catalog = pNation === 'usa' ? iranCatalog : usaCatalog
+      const entry = catalog.find((c) => c.id === intelState.placingCatalogId)
+      if (entry && e.lngLat) {
+        intelState.addEstimate(entry, { lat: e.lngLat.lat, lng: e.lngLat.lng })
+      }
+      return // Don't do normal click processing
+    }
   }, [])
 
   const onMove = useCallback((evt: { viewState: { zoom: number }; lngLat?: { lat: number; lng: number } }) => {
@@ -244,7 +262,7 @@ export default function GameMap() {
         attributionControl={false}
         maxZoom={12}
         minZoom={2}
-        cursor={targetingMode ? 'crosshair' : hoveredUnitId ? 'pointer' : 'grab'}
+        cursor={placingCatalogId ? 'crosshair' : targetingMode ? 'crosshair' : hoveredUnitId ? 'pointer' : 'grab'}
       >
         <DeckOverlay layers={layers} />
 
