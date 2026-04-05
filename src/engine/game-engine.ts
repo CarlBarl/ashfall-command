@@ -282,7 +282,7 @@ export class GameEngine {
 
         let declaredWar = false
         for (let i = 0; i < cmd.count; i++) {
-          const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId)
+          const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId, cmd.waypoints)
           if (!event) break
 
           if (!declaredWar) {

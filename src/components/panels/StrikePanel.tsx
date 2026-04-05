@@ -196,10 +196,43 @@ function DirectFireTab() {
 
   const getQty = (key: string, max: number) => Math.min(quantities[key] ?? 1, max)
   const setQty = (key: string, val: number) => setQuantities(prev => ({ ...prev, [key]: Math.max(1, val) }))
+  const [directFire, setDirectFire] = useState(false)
 
   const fire = async (weaponId: string, count: number) => {
     if (!targetUnitId || !activeLauncherId || count <= 0) return
-    await sendCommand({ type: 'LAUNCH_SALVO', launcherId: activeLauncherId, weaponId, targetId: targetUnitId, count })
+
+    let waypoints: import('@/types/game').Position[] | undefined
+
+    // Auto-route by default (unless direct fire toggled)
+    if (!directFire && launcher && target) {
+      const grid = getMainThreadGrid()
+      const spec = weaponSpecs[weaponId]
+      if (grid && spec && spec.type !== 'sam') {
+        // Collect enemy radars for threat avoidance
+        const threats = units
+          .filter(u => u.nation !== playerNation && u.status !== 'destroyed')
+          .flatMap(u => (u.sensors ?? [])
+            .filter(s => s.type === 'radar')
+            .map(s => ({ position: u.position, range_km: s.range_km })))
+
+        const route = findAutoRoute(
+          launcher.position, target.position,
+          threats, grid, spec.range_km,
+        )
+        if (route && route.length > 0) {
+          waypoints = route
+        }
+      }
+    }
+
+    await sendCommand({
+      type: 'LAUNCH_SALVO',
+      launcherId: activeLauncherId,
+      weaponId,
+      targetId: targetUnitId,
+      count,
+      waypoints,
+    })
   }
 
   // Cluster fire handler — distributes missiles evenly across cluster targets
@@ -360,6 +393,30 @@ function DirectFireTab() {
               </option>
             ))}
           </select>
+
+          {/* Route mode toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+            <button
+              onClick={() => setDirectFire(!directFire)}
+              style={{
+                padding: '2px 8px',
+                background: directFire ? 'var(--status-damaged)' : 'var(--status-ready)',
+                border: '1px solid var(--border-default)',
+                borderRadius: 3,
+                color: '#fff',
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.55rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+              }}
+            >
+              {directFire ? 'DIRECT' : 'AUTO-ROUTE'}
+            </button>
+            <span style={{ fontSize: '0.55rem', color: 'var(--text-muted)' }}>
+              {directFire ? 'Straight line — no radar avoidance' : 'Avoids enemy radar coverage'}
+            </span>
+          </div>
 
           {/* Selected launcher's weapons */}
           {launcherWeapons.map((w) => {
