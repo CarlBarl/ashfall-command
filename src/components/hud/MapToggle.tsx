@@ -1,11 +1,21 @@
 import { useState } from 'react'
 import { useUIStore } from '@/store/ui-store'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import type { CSSProperties } from 'react'
 
 const container: CSSProperties = {
   position: 'fixed',
   bottom: 80,
   left: 16,
+  display: 'flex',
+  gap: 0,
+  zIndex: 10,
+}
+
+const mobileContainer: CSSProperties = {
+  position: 'fixed',
+  bottom: 44,
+  right: 8,
   display: 'flex',
   gap: 0,
   zIndex: 10,
@@ -55,6 +65,7 @@ const active: CSSProperties = { borderColor: 'var(--border-accent)', color: 'var
 type OpenSub = null | 'rng' | 'los' | 'int'
 
 export default function MapToggle() {
+  const isMobile = useIsMobile()
   const mapMode = useUIStore(s => s.mapMode)
   const showElevation = useUIStore(s => s.showElevation)
   const rngFilter = useUIStore(s => s.rngFilter)
@@ -81,7 +92,7 @@ export default function MapToggle() {
   }
 
   return (
-    <div style={container}>
+    <div style={isMobile ? mobileContainer : container}>
       {/* Main button column */}
       <div style={mainCol}>
         <button onClick={cycleMapMode} style={{ ...btnFirst, ...(isSat ? active : {}) }} title="Toggle map style">

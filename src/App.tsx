@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import GameMap from '@/components/map/GameMap'
-import TimeControls from '@/components/hud/TimeControls'
 import TopBar from '@/components/hud/TopBar'
 import AlertFeed from '@/components/hud/AlertFeed'
 import StrikePanel from '@/components/panels/StrikePanel'
@@ -21,7 +20,7 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { initBridge, initFromData, sendCommand } from '@/store/bridge'
 import { getScenario } from '@/data/scenarios/index'
 
-type MobilePanel = null | 'unit' | 'strike' | 'orbat' | 'stats' | 'econ' | 'events'
+type MobilePanel = null | 'unit' | 'strike' | 'orbat' | 'stats' | 'econ' | 'events' | 'intel'
 
 export default function App() {
   const isMobile = useIsMobile()
@@ -116,13 +115,14 @@ export default function App() {
     return (
       <div style={{ width: '100%', height: '100%', position: 'relative' }}>
         <GameMap />
-        <TimeControls />
+        <TopBar />
         {mobilePanel === 'unit' && <UnitInfoPanel units={units} />}
         {mobilePanel === 'strike' && <StrikePanel />}
         {mobilePanel === 'orbat' && <OrbatPanel />}
         {mobilePanel === 'stats' && <StatsPanel />}
         {mobilePanel === 'econ' && <EconomyPanel />}
         {mobilePanel === 'events' && <AlertFeed />}
+        {mobilePanel === 'intel' && <IntelPanel />}
         <MobileNav active={mobilePanel} onSelect={setMobilePanel} hasSelection={!!selectedUnitId} />
       </div>
     )
@@ -152,13 +152,17 @@ function MobileNav({
   onSelect: (p: MobilePanel) => void
   hasSelection: boolean
 }) {
-  const tabs: { key: MobilePanel; label: string; show?: boolean }[] = [
+  const tabs: { key: MobilePanel; label: string; show?: boolean; accent?: string }[] = [
     { key: 'orbat', label: 'OOB' },
     { key: 'unit', label: 'UNIT', show: hasSelection },
-    { key: 'strike', label: 'FIRE', show: hasSelection },
+    { key: 'strike', label: 'FIRE', show: hasSelection, accent: 'var(--iran-primary)' },
+    { key: 'stats', label: 'SIT' },
     { key: 'econ', label: 'ECON' },
+    { key: 'intel', label: 'INTEL' },
     { key: 'events', label: 'LOG' },
   ]
+
+  const visible = tabs.filter(t => t.show !== false)
 
   return (
     <div style={{
@@ -170,30 +174,34 @@ function MobileNav({
       background: 'var(--bg-panel)',
       borderTop: '1px solid var(--border-default)',
       zIndex: 40,
-      padding: '0 2px',
+      padding: '0',
       paddingBottom: 'env(safe-area-inset-bottom, 0px)',
     }}>
-      {tabs.filter(t => t.show !== false).map(t => (
-        <button
-          key={t.key}
-          onClick={() => onSelect(active === t.key ? null : t.key)}
-          style={{
-            flex: 1,
-            padding: '10px 0 8px',
-            background: active === t.key ? 'var(--bg-hover)' : 'transparent',
-            border: 'none',
-            borderTop: active === t.key ? '2px solid var(--border-accent)' : '2px solid transparent',
-            color: active === t.key ? 'var(--text-accent)' : 'var(--text-muted)',
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.6rem',
-            fontWeight: 700,
-            letterSpacing: '0.05em',
-            cursor: 'pointer',
-          }}
-        >
-          {t.label}
-        </button>
-      ))}
+      {visible.map(t => {
+        const isActive = active === t.key
+        const accentColor = t.accent && isActive ? t.accent : 'var(--border-accent)'
+        return (
+          <button
+            key={t.key}
+            onClick={() => onSelect(isActive ? null : t.key)}
+            style={{
+              flex: 1,
+              padding: '8px 0 6px',
+              background: isActive ? 'var(--bg-hover)' : 'transparent',
+              border: 'none',
+              borderTop: isActive ? `2px solid ${accentColor}` : '2px solid transparent',
+              color: isActive ? (t.accent ?? 'var(--text-accent)') : 'var(--text-muted)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.55rem',
+              fontWeight: 700,
+              letterSpacing: '0.05em',
+              cursor: 'pointer',
+            }}
+          >
+            {t.label}
+          </button>
+        )
+      })}
     </div>
   )
 }

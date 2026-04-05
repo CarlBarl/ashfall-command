@@ -122,88 +122,140 @@ export default function TopBar() {
     timeZone: 'UTC',
   })
 
-  return (
-    <>
-      <div
-        className={isMobile ? 'mobile-topbar' : undefined}
-        style={{
-          position: 'absolute',
-          top: 12,
-          left: 12,
-          zIndex: 10,
-          display: 'flex',
-          alignItems: 'center',
-          gap: isMobile ? 2 : 4,
-          background: 'var(--bar-bg)',
-          border: '1px solid var(--bar-border)',
-          borderRadius: 'var(--panel-radius)',
-          padding: isMobile ? '2px 4px' : '2px 4px',
-          backdropFilter: 'blur(4px)',
-          fontFamily: 'var(--font-mono)',
-          fontSize: 'var(--font-size-xs)',
-        }}
-      >
-        {/* ClockZone: date/time + inline speed buttons + speed dropdown */}
-        {!isMobile && (
-          <>
-            <span style={{
-              color: 'var(--text-accent)',
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-              padding: '0 2px',
-            }}>
-              {dateStr} {timeStr}Z
-            </span>
+  // ─── MOBILE LAYOUT ───────────────────────────────────────────
+  // Clean command bar: date/time + speed presets + war status + ROE
+  // Panel toggles are in MobileNav — not duplicated here.
+  if (isMobile) {
+    return (
+      <>
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 4,
+            background: 'var(--bg-panel)',
+            borderBottom: '1px solid var(--border-default)',
+            padding: '5px 8px',
+            paddingTop: 'max(5px, env(safe-area-inset-top, 5px))',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.65rem',
+          }}
+        >
+          {/* Left: date/time */}
+          <span style={{
+            color: 'var(--text-accent)',
+            fontWeight: 600,
+            whiteSpace: 'nowrap',
+            fontSize: '0.7rem',
+          }}>
+            {dateStr} {timeStr}Z
+          </span>
 
-            <Sep />
-
+          {/* Center: speed presets */}
+          <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
             {INLINE_SPEEDS.map((s) => (
               <button
                 key={s}
                 onClick={() => sendCommand({ type: 'SET_SPEED', speed: s })}
                 style={{
-                  background: time.speed === s ? 'var(--border-accent)' : 'none',
-                  border: `1px solid ${time.speed === s ? 'var(--border-accent)' : 'transparent'}`,
-                  borderRadius: 3,
-                  color: time.speed === s ? 'var(--text-primary)' : 'var(--text-muted)',
+                  background: time.speed === s ? 'var(--border-accent)' : 'var(--bg-hover)',
+                  border: `1px solid ${time.speed === s ? 'var(--border-accent)' : 'var(--border-default)'}`,
+                  borderRadius: 4,
+                  color: time.speed === s ? 'var(--text-primary)' : 'var(--text-secondary)',
                   cursor: 'pointer',
                   fontFamily: 'var(--font-mono)',
-                  fontSize: 'var(--font-size-xs)',
-                  padding: '2px 4px',
+                  fontSize: '0.65rem',
+                  padding: '4px 7px',
                   fontWeight: 600,
-                  whiteSpace: 'nowrap',
-                  opacity: time.speed === s ? 1 : 0.55,
+                  minWidth: 28,
                 }}
               >
                 {INLINE_LABELS[s]}
               </button>
             ))}
+          </div>
 
-            {/* Speed chevron dropdown */}
-            <div style={{ position: 'relative' }}>
+          {/* Right: war status + ROE */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {atWarWithPrimaryEnemy ? (
+              <span style={{
+                color: 'var(--status-damaged)',
+                fontWeight: 700,
+                fontSize: '0.6rem',
+                whiteSpace: 'nowrap',
+              }}>
+                WAR
+              </span>
+            ) : !warClickPending ? (
               <button
-                onClick={() => setSpeedDropdownOpen(!speedDropdownOpen)}
+                onClick={handleDeclareWar}
                 style={{
-                  background: 'none',
-                  border: '1px solid transparent',
-                  borderRadius: 3,
-                  color: 'var(--text-muted)',
+                  background: 'var(--iran-secondary)',
+                  border: '1px solid var(--iran-primary)',
+                  borderRadius: 4,
+                  color: 'var(--text-primary)',
                   cursor: 'pointer',
                   fontFamily: 'var(--font-mono)',
-                  fontSize: 'var(--font-size-xs)',
-                  padding: '2px 3px',
-                  fontWeight: 600,
-                  opacity: 0.55,
+                  fontSize: '0.55rem',
+                  padding: '3px 6px',
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap',
                 }}
               >
-                {'\u203A'}
+                WAR
+              </button>
+            ) : (
+              <button
+                onClick={handleDeclareWar}
+                onBlur={() => setWarClickPending(false)}
+                style={{
+                  background: 'var(--status-damaged)',
+                  border: '2px solid var(--status-damaged)',
+                  borderRadius: 4,
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.55rem',
+                  padding: '3px 6px',
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                CONFIRM
+              </button>
+            )}
+
+            {/* ROE dropdown */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setRoeOpen(!roeOpen)}
+                style={{
+                  background: 'var(--bg-hover)',
+                  border: `1px solid ${dominantRoeOption?.color ?? 'var(--border-default)'}`,
+                  borderRadius: 4,
+                  color: dominantRoeOption?.color ?? 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.55rem',
+                  padding: '3px 6px',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {dominantRoeOption?.shortLabel ?? 'ROE'}
               </button>
 
-              {speedDropdownOpen && (
+              {roeOpen && (
                 <div style={{
                   position: 'absolute',
                   top: '100%',
-                  left: 0,
+                  right: 0,
                   marginTop: 4,
                   background: 'var(--bg-panel)',
                   border: '1px solid var(--border-default)',
@@ -213,88 +265,216 @@ export default function TopBar() {
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 2,
-                  minWidth: 80,
+                  minWidth: 110,
                 }}>
-
-                  {/* Fine speed slider */}
-                  <div style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={time.speed <= 0 ? 0 : Math.round(1 + 99 * Math.log(time.speed / 0.1) / Math.log(36000))}
-                      onChange={(e) => {
-                        const val = Number(e.target.value)
-                        const speed = val === 0 ? 0 : 0.1 * Math.pow(36000, (val - 1) / 99)
-                        sendCommand({ type: 'SET_SPEED', speed })
-                      }}
-                      style={{ flex: 1, height: 4, cursor: 'pointer', accentColor: 'var(--text-accent)' }}
-                    />
-                    <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', minWidth: 35, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                      {time.speed <= 0 ? '||' : time.speed < 6 ? `${Math.round(time.speed * 10)}s/s` : time.speed < 300 ? `${Math.round(time.speed / 6)}m/s` : `${(time.speed / 360).toFixed(1)}h/s`}
-                    </span>
-                  </div>
-                  <div style={{ height: 1, background: 'var(--border-default)', margin: '2px 0' }} />
-
-                  {ALL_SPEEDS.map((s) => (
+                  {ROE_OPTIONS.map((opt) => (
                     <button
-                      key={s}
-                      onClick={() => {
-                        sendCommand({ type: 'SET_SPEED', speed: s })
-                        setSpeedDropdownOpen(false)
-                      }}
+                      key={opt.value}
+                      onClick={() => handleTheaterRoe(opt.value)}
                       style={{
-                        background: time.speed === s ? 'var(--border-accent)' : 'var(--bg-hover)',
-                        border: time.speed === s
-                          ? '1px solid var(--border-accent)'
+                        background: dominantRoe === opt.value ? opt.color : 'var(--bg-hover)',
+                        border: dominantRoe === opt.value
+                          ? `1px solid ${opt.color}`
                           : '1px solid var(--border-default)',
                         borderRadius: 3,
-                        color: time.speed === s ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        color: dominantRoe === opt.value ? 'var(--bg-primary)' : 'var(--text-secondary)',
                         cursor: 'pointer',
                         fontFamily: 'var(--font-mono)',
                         fontSize: 'var(--font-size-xs)',
-                        padding: '4px 8px',
-                        fontWeight: time.speed === s ? 700 : 400,
+                        padding: '6px 10px',
+                        fontWeight: dominantRoe === opt.value ? 700 : 400,
                         textAlign: 'left',
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      {ALL_SPEED_LABELS[s]}
+                      {opt.shortLabel}
                     </button>
                   ))}
                 </div>
               )}
             </div>
+          </div>
+        </div>
 
-            <Sep />
-          </>
+        {/* Close dropdown on outside click */}
+        {roeOpen && (
+          <div
+            onClick={() => setRoeOpen(false)}
+            style={{ position: 'fixed', inset: 0, zIndex: 9 }}
+          />
         )}
+      </>
+    )
+  }
+
+  // ─── DESKTOP LAYOUT ─────────────────────────────────────────
+  return (
+    <>
+      <div
+        style={{
+          position: 'absolute',
+          top: 12,
+          left: 12,
+          zIndex: 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          background: 'var(--bar-bg)',
+          border: '1px solid var(--bar-border)',
+          borderRadius: 'var(--panel-radius)',
+          padding: '2px 4px',
+          backdropFilter: 'blur(4px)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 'var(--font-size-xs)',
+        }}
+      >
+        {/* ClockZone: date/time + inline speed buttons + speed dropdown */}
+        <span style={{
+          color: 'var(--text-accent)',
+          fontWeight: 600,
+          whiteSpace: 'nowrap',
+          padding: '0 2px',
+        }}>
+          {dateStr} {timeStr}Z
+        </span>
+
+        <Sep />
+
+        {INLINE_SPEEDS.map((s) => (
+          <button
+            key={s}
+            onClick={() => sendCommand({ type: 'SET_SPEED', speed: s })}
+            style={{
+              background: time.speed === s ? 'var(--border-accent)' : 'none',
+              border: `1px solid ${time.speed === s ? 'var(--border-accent)' : 'transparent'}`,
+              borderRadius: 3,
+              color: time.speed === s ? 'var(--text-primary)' : 'var(--text-muted)',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--font-size-xs)',
+              padding: '2px 4px',
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+              opacity: time.speed === s ? 1 : 0.55,
+            }}
+          >
+            {INLINE_LABELS[s]}
+          </button>
+        ))}
+
+        {/* Speed chevron dropdown */}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setSpeedDropdownOpen(!speedDropdownOpen)}
+            style={{
+              background: 'none',
+              border: '1px solid transparent',
+              borderRadius: 3,
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--font-size-xs)',
+              padding: '2px 3px',
+              fontWeight: 600,
+              opacity: 0.55,
+            }}
+          >
+            {'\u203A'}
+          </button>
+
+          {speedDropdownOpen && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              marginTop: 4,
+              background: 'var(--bg-panel)',
+              border: '1px solid var(--border-default)',
+              borderRadius: 'var(--panel-radius)',
+              padding: 4,
+              zIndex: 30,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+              minWidth: 80,
+            }}>
+
+              {/* Fine speed slider */}
+              <div style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={time.speed <= 0 ? 0 : Math.round(1 + 99 * Math.log(time.speed / 0.1) / Math.log(36000))}
+                  onChange={(e) => {
+                    const val = Number(e.target.value)
+                    const speed = val === 0 ? 0 : 0.1 * Math.pow(36000, (val - 1) / 99)
+                    sendCommand({ type: 'SET_SPEED', speed })
+                  }}
+                  style={{ flex: 1, height: 4, cursor: 'pointer', accentColor: 'var(--text-accent)' }}
+                />
+                <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', minWidth: 35, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                  {time.speed <= 0 ? '||' : time.speed < 6 ? `${Math.round(time.speed * 10)}s/s` : time.speed < 300 ? `${Math.round(time.speed / 6)}m/s` : `${(time.speed / 360).toFixed(1)}h/s`}
+                </span>
+              </div>
+              <div style={{ height: 1, background: 'var(--border-default)', margin: '2px 0' }} />
+
+              {ALL_SPEEDS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => {
+                    sendCommand({ type: 'SET_SPEED', speed: s })
+                    setSpeedDropdownOpen(false)
+                  }}
+                  style={{
+                    background: time.speed === s ? 'var(--border-accent)' : 'var(--bg-hover)',
+                    border: time.speed === s
+                      ? '1px solid var(--border-accent)'
+                      : '1px solid var(--border-default)',
+                    borderRadius: 3,
+                    color: time.speed === s ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 'var(--font-size-xs)',
+                    padding: '4px 8px',
+                    fontWeight: time.speed === s ? 700 : 400,
+                    textAlign: 'left',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {ALL_SPEED_LABELS[s]}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <Sep />
 
         {/* Left panel radio group */}
-        {LEFT_PANELS.map(({ key, label, shortLabel }) => (
+        {LEFT_PANELS.map(({ key, label }) => (
           <ToggleBtn
             key={key}
             active={panelStates[key]}
             onClick={() => handlePanelToggle(key)}
-            label={isMobile ? shortLabel : label}
-            compact={isMobile}
+            label={label}
           />
         ))}
 
         <Sep />
 
         {/* Strike planner shortcut */}
-        <StrikeBtn compact={isMobile} />
+        <StrikeBtn compact={false} />
 
         <Sep />
 
         {/* Intel panel toggle */}
-        <IntelBtn active={showIntel || !!placingCatalogId} onClick={toggleIntel} compact={isMobile} />
+        <IntelBtn active={showIntel || !!placingCatalogId} onClick={toggleIntel} compact={false} />
 
         <Sep />
 
         {/* War status + ROE */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 2 : 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           {atWarWithPrimaryEnemy ? (
             <span style={{
               color: 'var(--status-damaged)',
@@ -302,7 +482,7 @@ export default function TopBar() {
               fontSize: 'var(--font-size-xs)',
               whiteSpace: 'nowrap',
             }}>
-              {isMobile ? 'WAR' : `WAR: ${primaryEnemyLabel}`}
+              {`WAR: ${primaryEnemyLabel}`}
             </span>
           ) : (
             <span style={{
@@ -327,14 +507,12 @@ export default function TopBar() {
                 cursor: 'pointer',
                 fontFamily: 'var(--font-mono)',
                 fontSize: 'var(--font-size-xs)',
-                padding: isMobile ? '2px 4px' : '2px 4px',
+                padding: '2px 4px',
                 fontWeight: 600,
                 whiteSpace: 'nowrap',
               }}
             >
-              {isMobile
-                ? (dominantRoeOption?.shortLabel ?? 'ROE')
-                : (dominantRoeOption?.label ?? 'ROE')}
+              {dominantRoeOption?.label ?? 'ROE'}
             </button>
 
             {roeOpen && (
@@ -351,7 +529,7 @@ export default function TopBar() {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 2,
-                minWidth: isMobile ? 100 : 140,
+                minWidth: 140,
               }}>
                 {ROE_OPTIONS.map((opt) => (
                   <button
@@ -373,7 +551,7 @@ export default function TopBar() {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {isMobile ? opt.shortLabel : opt.label}
+                    {opt.label}
                   </button>
                 ))}
               </div>
@@ -395,32 +573,18 @@ export default function TopBar() {
                 cursor: 'pointer',
                 fontFamily: 'var(--font-mono)',
                 fontSize: 'var(--font-size-xs)',
-                padding: isMobile ? '2px 4px' : '2px 4px',
+                padding: '2px 4px',
                 fontWeight: 700,
                 whiteSpace: 'nowrap',
               }}
             >
-              {warClickPending
-                ? (isMobile ? 'CONFIRM' : 'CONFIRM WAR')
-                : (isMobile ? 'WAR' : 'DECLARE WAR')}
+              {warClickPending ? 'CONFIRM WAR' : 'DECLARE WAR'}
             </button>
           )}
         </div>
 
-        {/* On mobile, keep inline buttons; on desktop, move to overflow */}
-        {isMobile && (
-          <>
-            <Sep />
-            <ToggleBtn active={showRangeRings} onClick={toggleRangeRings} label="RINGS" compact />
-            <Sep />
-            <ToggleBtn active={showHelp} onClick={() => setShowHelp(!showHelp)} label="?" compact />
-            <Sep />
-            <SaveLoadButtons compact />
-          </>
-        )}
-
         {/* Desktop overflow menu */}
-        {!isMobile && (
+        {(
           <>
             <Sep />
             <div style={{ position: 'relative' }}>
@@ -660,46 +824,6 @@ function OverflowSaveLoad({ onDone }: { onDone: () => void }) {
     <>
       <OverflowItem label="SAVE" active={false} onClick={handleSave} />
       <OverflowItem label="LOAD" active={false} onClick={handleLoad} />
-    </>
-  )
-}
-
-function SaveLoadButtons({ compact }: { compact: boolean }) {
-  const [feedback, setFeedback] = useState<string | null>(null)
-
-  const handleSave = async () => {
-    try {
-      const json = await getFullState()
-      await saveToSlot('quicksave', json)
-      setFeedback('Saved!')
-      setTimeout(() => setFeedback(null), 2000)
-    } catch {
-      setFeedback('Error!')
-      setTimeout(() => setFeedback(null), 2000)
-    }
-  }
-
-  const handleLoad = async () => {
-    try {
-      const json = await loadFromSlot('quicksave')
-      if (!json) { setFeedback('No save'); setTimeout(() => setFeedback(null), 2000); return }
-      await loadState(json)
-      setFeedback('Loaded!')
-      setTimeout(() => setFeedback(null), 2000)
-    } catch {
-      setFeedback('Error!')
-      setTimeout(() => setFeedback(null), 2000)
-    }
-  }
-
-  if (feedback) {
-    return <span style={{ color: 'var(--status-ready)', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>{feedback}</span>
-  }
-
-  return (
-    <>
-      <ToggleBtn active={false} onClick={handleSave} label={compact ? 'SAV' : 'SAVE'} compact={compact} />
-      <ToggleBtn active={false} onClick={handleLoad} label={compact ? 'LD' : 'LOAD'} compact={compact} />
     </>
   )
 }
