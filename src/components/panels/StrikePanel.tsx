@@ -123,6 +123,7 @@ function TabBar({ mode, onSetMode }: { mode: StrikeMode; onSetMode: (m: StrikeMo
 
 function DirectFireTab() {
   const units = useGameStore((s) => s.viewState.units)
+  const playerNation = useGameStore((s) => s.viewState.playerNation)
   const targetUnitId = useStrikeStore((s) => s.targetUnitId)
   const targetingMode = useStrikeStore((s) => s.targetingMode)
   const setTargetUnitId = useStrikeStore((s) => s.setTargetUnitId)
@@ -143,8 +144,8 @@ function DirectFireTab() {
   )
   const isClusterMode = clusterTargets.length > 1
   const enemies = useMemo(
-    () => units.filter((u) => u.nation !== 'usa' && u.status !== 'destroyed'),
-    [units],
+    () => units.filter((u) => u.nation !== playerNation && u.status !== 'destroyed'),
+    [units, playerNation],
   )
 
   // Units in range of target (or first cluster target), sorted by distance
@@ -152,7 +153,7 @@ function DirectFireTab() {
   const unitsInRange = useMemo(() => {
     if (!rangeRef) return []
     return units
-      .filter((u) => u.nation === 'usa' && u.status !== 'destroyed' &&
+      .filter((u) => u.nation === playerNation && u.status !== 'destroyed' &&
         u.weapons.some(w => {
           const spec = weaponSpecs[w.weaponId]
           return spec && spec.type !== 'sam' && w.count > 0 &&
@@ -411,6 +412,7 @@ function PlanAttackTab() {
   const strike = useStrikeStore()
   const setComputedPlan = useStrikeStore((s) => s.setComputedPlan)
   const units = useGameStore((s) => s.viewState.units)
+  const playerNation = useGameStore((s) => s.viewState.playerNation)
   const {
     planPriorities, planTiming, planName,
     computedPlan, executing, executionProgress,
@@ -419,12 +421,12 @@ function PlanAttackTab() {
   const [confirmExecute, setConfirmExecute] = useState(false)
 
   const friendlyUnits = useMemo(
-    () => units.filter((u) => u.nation === 'usa' && u.status !== 'destroyed'),
-    [units],
+    () => units.filter((u) => u.nation === playerNation && u.status !== 'destroyed'),
+    [units, playerNation],
   )
   const enemyUnits = useMemo(
-    () => units.filter((u) => u.nation !== 'usa' && u.status !== 'destroyed'),
-    [units],
+    () => units.filter((u) => u.nation !== playerNation && u.status !== 'destroyed'),
+    [units, playerNation],
   )
 
   // Recompute plan whenever draft changes
