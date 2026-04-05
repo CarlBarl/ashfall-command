@@ -11,7 +11,7 @@ beforeEach(() => {
   // Reset map toggles to false
   if (store.showRangeRings) store.toggleRangeRings()
   if (store.showElevation) store.toggleElevation()
-  if (store.showRadarLOS) store.toggleRadarLOS()
+  if (store.losFilter !== 'off') useUIStore.setState({ losFilter: 'off' })
   if (store.showIntel) store.toggleIntel()
   // Reset map mode to dark
   if (store.mapMode !== 'dark') store.cycleMapMode()
@@ -138,17 +138,17 @@ describe('toggleElevation', () => {
   })
 })
 
-describe('toggleRadarLOS', () => {
-  it('toggles radar LOS overlay on', () => {
-    expect(useUIStore.getState().showRadarLOS).toBe(false)
-    useUIStore.getState().toggleRadarLOS()
-    expect(useUIStore.getState().showRadarLOS).toBe(true)
-  })
-
-  it('toggles radar LOS overlay off', () => {
-    useUIStore.getState().toggleRadarLOS()
-    useUIStore.getState().toggleRadarLOS()
-    expect(useUIStore.getState().showRadarLOS).toBe(false)
+describe('cycleLOSFilter', () => {
+  it('cycles through off → both → friendly → enemy → off', () => {
+    expect(useUIStore.getState().losFilter).toBe('off')
+    useUIStore.getState().cycleLOSFilter()
+    expect(useUIStore.getState().losFilter).toBe('both')
+    useUIStore.getState().cycleLOSFilter()
+    expect(useUIStore.getState().losFilter).toBe('friendly')
+    useUIStore.getState().cycleLOSFilter()
+    expect(useUIStore.getState().losFilter).toBe('enemy')
+    useUIStore.getState().cycleLOSFilter()
+    expect(useUIStore.getState().losFilter).toBe('off')
   })
 })
 

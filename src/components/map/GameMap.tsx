@@ -158,6 +158,31 @@ export default function GameMap() {
     return results
   }, [gridReady, selectedUnitId, hoveredUnitId, units])
 
+  // Map-wide terrain-masked LOS when losFilter is not 'off'
+  const losFilter = useUIStore((s) => s.losFilter)
+  const allLOSPolygons = useMemo(() => {
+    if (losFilter === 'off' || !gridReady) return []
+    const pNation = useGameStore.getState().viewState.playerNation
+
+    return units
+      .filter(u => {
+        if (u.status === 'destroyed') return false
+        if (!u.sensors?.some(s => s.type === 'radar')) return false
+        if (losFilter === 'friendly' && u.nation !== pNation) return false
+        if (losFilter === 'enemy' && u.nation === pNation) return false
+        return true
+      })
+      .map(u => {
+        const radar = u.sensors!.find(s => s.type === 'radar')!
+        const poly = getLOSPolygon(
+          u.id, u.position, radar.range_km,
+          radar.antenna_height_m ?? 15, u.heading, radar.sector_deg ?? 360,
+        )
+        return poly ? { poly, isEnemy: u.nation !== pNation } : null
+      })
+      .filter(Boolean) as { poly: NonNullable<ReturnType<typeof getLOSPolygon>>; isEnemy: boolean }[]
+  }, [losFilter, gridReady, units])
+
   // Map-wide radar range circles when RNG toggle is on
   const allRadarCoverage = useMemo(() => {
     if (!showRangeRings) return null
@@ -424,6 +449,28 @@ export default function GameMap() {
               paint={{
                 'line-color': '#22cc44',
                 'line-opacity': 0.3,
+                'line-width': 1,
+              }}
+            />
+          </Source>
+        ))}
+
+        {allLOSPolygons.map((item, i) => (
+          <Source key={`maplos-${i}`} id={`maplos-${i}`} type="geojson" data={item.poly}>
+            <Layer
+              id={`maplos-fill-${i}`}
+              type="fill"
+              paint={{
+                'fill-color': item.isEnemy ? '#cc4444' : '#4488cc',
+                'fill-opacity': 0.08,
+              }}
+            />
+            <Layer
+              id={`maplos-line-${i}`}
+              type="line"
+              paint={{
+                'line-color': item.isEnemy ? '#cc4444' : '#4488cc',
+                'line-opacity': 0.25,
                 'line-width': 1,
               }}
             />

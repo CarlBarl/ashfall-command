@@ -7,7 +7,7 @@ describe('map toggle state', () => {
     useUIStore.setState({
       mapMode: 'dark',
       showElevation: false,
-      showRadarLOS: false,
+      losFilter: 'off',
       showIntelCoverage: false,
     })
   })
@@ -28,10 +28,16 @@ describe('map toggle state', () => {
     expect(useUIStore.getState().showElevation).toBe(false)
   })
 
-  it('toggleRadarLOS flips showRadarLOS', () => {
-    expect(useUIStore.getState().showRadarLOS).toBe(false)
-    useUIStore.getState().toggleRadarLOS()
-    expect(useUIStore.getState().showRadarLOS).toBe(true)
+  it('cycleLOSFilter cycles off → both → friendly → enemy → off', () => {
+    expect(useUIStore.getState().losFilter).toBe('off')
+    useUIStore.getState().cycleLOSFilter()
+    expect(useUIStore.getState().losFilter).toBe('both')
+    useUIStore.getState().cycleLOSFilter()
+    expect(useUIStore.getState().losFilter).toBe('friendly')
+    useUIStore.getState().cycleLOSFilter()
+    expect(useUIStore.getState().losFilter).toBe('enemy')
+    useUIStore.getState().cycleLOSFilter()
+    expect(useUIStore.getState().losFilter).toBe('off')
   })
 
   it('toggleIntelCoverage flips showIntelCoverage', () => {
@@ -44,12 +50,12 @@ describe('map toggle state', () => {
 
   it('all map toggles are independent', () => {
     useUIStore.getState().toggleElevation()
-    useUIStore.getState().toggleRadarLOS()
+    useUIStore.getState().cycleLOSFilter()
     useUIStore.getState().toggleIntelCoverage()
 
     const s = useUIStore.getState()
     expect(s.showElevation).toBe(true)
-    expect(s.showRadarLOS).toBe(true)
+    expect(s.losFilter).toBe('both') // cycled once from 'off'
     expect(s.showIntelCoverage).toBe(true)
     expect(s.mapMode).toBe('dark') // unchanged
   })

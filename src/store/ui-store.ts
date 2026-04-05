@@ -38,12 +38,13 @@ interface UIState {
 
   // Map overlays
   showIntelCoverage: boolean
+  losFilter: 'off' | 'friendly' | 'enemy' | 'both'
 
   // Actions — map
   toggleRangeRings: () => void
   cycleMapMode: () => void
   toggleElevation: () => void
-  toggleRadarLOS: () => void
+  cycleLOSFilter: () => void  // off → both → friendly → enemy → off
   toggleIntelCoverage: () => void
 
   // Actions — panels
@@ -66,6 +67,7 @@ export const useUIStore = create<UIState>((set) => ({
   showElevation: false,
   showRadarLOS: false,
   showIntelCoverage: false,
+  losFilter: 'off' as 'off' | 'friendly' | 'enemy' | 'both',
   leftPanel: null,
   showOrbat: false,
   showStats: false,
@@ -103,6 +105,11 @@ export const useUIStore = create<UIState>((set) => ({
   cycleMapMode: () => set((s) => ({ mapMode: (s.mapMode === 'dark' ? 'satellite' : 'dark') as MapMode })),
   toggleElevation: () => set((s) => ({ showElevation: !s.showElevation })),
   toggleRadarLOS: () => set((s) => ({ showRadarLOS: !s.showRadarLOS })),
+  cycleLOSFilter: () => set((s) => {
+    const order: ('off' | 'friendly' | 'enemy' | 'both')[] = ['off', 'both', 'friendly', 'enemy']
+    const idx = order.indexOf(s.losFilter)
+    return { losFilter: order[(idx + 1) % order.length] }
+  }),
   toggleIntelCoverage: () => set((s) => ({ showIntelCoverage: !s.showIntelCoverage })),
 
   toggleIntel: () => set((s) => ({ showIntel: !s.showIntel })),

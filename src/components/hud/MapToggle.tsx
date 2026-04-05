@@ -47,12 +47,12 @@ export default function MapToggle() {
   const mapMode = useUIStore((s) => s.mapMode)
   const showElevation = useUIStore((s) => s.showElevation)
   const showRangeRings = useUIStore((s) => s.showRangeRings)
-  const showRadarLOS = useUIStore((s) => s.showRadarLOS)
+  const losFilter = useUIStore((s) => s.losFilter)
   const showIntelCoverage = useUIStore((s) => s.showIntelCoverage)
   const cycleMapMode = useUIStore((s) => s.cycleMapMode)
   const toggleElevation = useUIStore((s) => s.toggleElevation)
   const toggleRangeRings = useUIStore((s) => s.toggleRangeRings)
-  const toggleRadarLOS = useUIStore((s) => s.toggleRadarLOS)
+  const cycleLOSFilter = useUIStore((s) => s.cycleLOSFilter)
   const toggleIntelCoverage = useUIStore((s) => s.toggleIntelCoverage)
 
   const isSat = mapMode === 'satellite'
@@ -90,14 +90,14 @@ export default function MapToggle() {
         RNG
       </button>
       <button
-        onClick={toggleRadarLOS}
+        onClick={cycleLOSFilter}
         style={{
           ...btn,
-          ...(showRadarLOS ? btnActive : {}),
+          ...(losFilter !== 'off' ? btnActive : {}),
         }}
-        title="Toggle terrain-masked LOS on hover/select"
+        title="Cycle terrain-masked LOS: off → both → friendly → enemy"
       >
-        LOS
+        {losFilter === 'off' ? 'LOS' : losFilter === 'both' ? 'ALL' : losFilter === 'friendly' ? 'FRD' : 'ENM'}
       </button>
       <button
         onClick={toggleIntelCoverage}
