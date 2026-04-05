@@ -38,6 +38,7 @@ interface RenderUnit {
   isCluster: boolean
   count: number
   health: number
+  heading: number
 }
 
 function toRenderUnit(item: ViewUnit | UnitCluster): RenderUnit {
@@ -53,6 +54,7 @@ function toRenderUnit(item: ViewUnit | UnitCluster): RenderUnit {
       isCluster: true,
       count: item.count,
       health: avgHealth,
+      heading: item.primary.heading,
     }
   }
   return {
@@ -65,6 +67,7 @@ function toRenderUnit(item: ViewUnit | UnitCluster): RenderUnit {
     isCluster: false,
     count: 1,
     health: item.health,
+    heading: item.heading,
   }
 }
 
@@ -98,6 +101,7 @@ export function createUnitLayer(
     iconAtlas: '/sprites/unit-atlas.svg',
     iconMapping: ICON_MAPPING,
     getIcon: (d) => d.category,
+    getAngle: (d) => -d.heading, // negative: deck.gl rotates counter-clockwise, heading is CW from north
     getPosition: (d) => [d.position.lng, d.position.lat],
     getSize: (d) => {
       if (d.id === targetId) return 48
@@ -139,6 +143,7 @@ export function createUnitLayer(
     updateTriggers: {
       getSize: [selectedId, hoveredId, targetId],
       getColor: [targetingMode, targetId, units.map(u => `${u.id}:${u.status}`).join(',')],
+      getAngle: [units.map(u => `${u.id}:${u.heading}`).join(',')],
     },
   })
 

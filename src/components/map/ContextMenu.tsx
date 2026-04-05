@@ -1,6 +1,7 @@
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { sendCommand } from '@/store/bridge'
+import { bearing } from '@/engine/utils/geo'
 
 interface ContextMenuProps {
   x: number
@@ -18,6 +19,9 @@ export default function ContextMenu({ x, y, lngLat, shiftKey, onClose }: Context
   if (!unit) return null
 
   const canMove = unit.category !== 'airbase' && unit.category !== 'sam_site'
+  const hasSectorRadar = unit.sensors?.some(
+    (s) => s.type === 'radar' && s.sector_deg != null && s.sector_deg < 360,
+  )
 
   return (
     <div
@@ -56,6 +60,16 @@ export default function ContextMenu({ x, y, lngLat, shiftKey, onClose }: Context
                 waypoints: [newWaypoint],
               })
             }
+            onClose()
+          }}
+        />
+      )}
+      {hasSectorRadar && (
+        <MenuItem
+          label="Orient radar here"
+          onClick={() => {
+            const hdg = bearing(unit.position, { lat: lngLat.lat, lng: lngLat.lng })
+            sendCommand({ type: 'SET_HEADING', unitId: unit.id, heading: hdg })
             onClose()
           }}
         />
