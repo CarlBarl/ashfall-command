@@ -1,5 +1,6 @@
 import type { UnitCluster } from './layers/cluster'
 import { useUIStore } from '@/store/ui-store'
+import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
 import type { MouseEvent } from 'react'
 
@@ -23,15 +24,16 @@ export default function ClusterPopup({ cluster, x, y, onClose }: ClusterPopupPro
   const toggleUnitSelection = useUIStore((s) => s.toggleUnitSelection)
   const selectMultipleUnits = useUIStore((s) => s.selectMultipleUnits)
   const selectedUnitIds = useUIStore((s) => s.selectedUnitIds)
+  const playerNation = useGameStore((s) => s.viewState.playerNation)
   const targetingMode = useStrikeStore((s) => s.targetingMode)
   const setTargetUnitId = useStrikeStore((s) => s.setTargetUnitId)
   const setStrikeCluster = useStrikeStore((s) => s.setStrikeCluster)
 
-  const friendlyUnits = cluster.units.filter(u => u.nation === 'usa')
+  const friendlyUnits = cluster.units.filter(u => u.nation === playerNation)
 
   const handleUnitClick = (unitId: string, e: MouseEvent) => {
     const clickedUnit = cluster.units.find(u => u.id === unitId)
-    const isEnemy = clickedUnit && clickedUnit.nation !== 'usa'
+    const isEnemy = clickedUnit && clickedUnit.nation !== playerNation
 
     if (targetingMode || isEnemy) {
       // Clicking any enemy unit sets it as target and opens strike panel
@@ -181,7 +183,7 @@ export default function ClusterPopup({ cluster, x, y, onClose }: ClusterPopupPro
         )}
 
         {/* TARGET GROUP — opens StrikePanel with all cluster units for multi-target fire */}
-        {cluster.units.length > 0 && cluster.units[0].nation !== 'usa' && (
+        {cluster.units.length > 0 && cluster.units[0].nation !== playerNation && (
           <button
             onClick={() => {
               if (cluster.count > 1) {

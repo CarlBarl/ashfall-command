@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Panel from '@/components/common/Panel'
 import StatBar from '@/components/common/StatBar'
 import { useUIStore } from '@/store/ui-store'
+import { useGameStore } from '@/store/game-store'
 import { sendCommand } from '@/store/bridge'
 import type { ViewUnit } from '@/types/view'
 import type { ROE } from '@/types/game'
@@ -29,12 +30,13 @@ const ROE_OPTIONS: { value: ROE; label: string; color: string }[] = [
 export default function UnitInfoPanel({ units }: UnitInfoPanelProps) {
   const selectedId = useUIStore((s) => s.selectedUnitId)
   const selectUnit = useUIStore((s) => s.selectUnit)
+  const playerNation = useGameStore((s) => s.viewState.playerNation)
   const [commandOpen, setCommandOpen] = useState(false)
 
   const unit = units.find((u) => u.id === selectedId)
   if (!unit) return null
 
-  const isFriendly = unit.nation === 'usa'
+  const isFriendly = unit.nation === playerNation
 
   return (
     <Panel

@@ -51,9 +51,14 @@ export default function TopBar() {
   const units = useGameStore((s) => s.viewState.units)
   const nations = useGameStore((s) => s.viewState.nations)
   const time = useGameStore((s) => s.viewState.time)
+  const playerNation = useGameStore((s) => s.viewState.playerNation)
 
-  const usaNation = nations.find((n) => n.id === 'usa')
-  const atWarWithIran = usaNation?.atWar.includes('iran') ?? false
+  const playerState = nations.find((n) => n.id === playerNation)
+  const primaryEnemyNation = nations.find((n) => n.id !== playerNation) ?? null
+  const atWarWithPrimaryEnemy = primaryEnemyNation
+    ? (playerState?.atWar.includes(primaryEnemyNation.id) ?? false)
+    : false
+  const primaryEnemyLabel = primaryEnemyNation?.name.split(' ').at(-1)?.toUpperCase() ?? 'ENEMY'
 
   const [showHelp, setShowHelp] = useState(false)
   const [warClickPending, setWarClickPending] = useState(false)
@@ -71,10 +76,10 @@ export default function TopBar() {
     useUIStore.getState().toggleLeftPanel(key)
   }
 
-  // Determine the "dominant" theater ROE by checking what most USA units have
-  const usaUnits = units.filter((u) => u.nation === 'usa' && u.status !== 'destroyed')
+  // Determine the "dominant" theater ROE by checking what most player-controlled units have
+  const playerUnits = units.filter((u) => u.nation === playerNation && u.status !== 'destroyed')
   const roeCounts: Record<ROE, number> = { weapons_free: 0, weapons_tight: 0, hold_fire: 0 }
-  for (const u of usaUnits) {
+  for (const u of playerUnits) {
     roeCounts[u.roe]++
   }
   const dominantRoe: ROE = (Object.entries(roeCounts) as [ROE, number][])
@@ -82,18 +87,19 @@ export default function TopBar() {
   const dominantRoeOption = ROE_OPTIONS.find((o) => o.value === dominantRoe)
 
   const handleTheaterRoe = (roe: ROE) => {
-    for (const u of usaUnits) {
+    for (const u of playerUnits) {
       sendCommand({ type: 'SET_ROE', unitId: u.id, roe })
     }
     setRoeOpen(false)
   }
 
   const handleDeclareWar = () => {
+    if (!primaryEnemyNation) return
     if (!warClickPending) {
       setWarClickPending(true)
       return
     }
-    sendCommand({ type: 'DECLARE_WAR', target: 'iran' })
+    sendCommand({ type: 'DECLARE_WAR', target: primaryEnemyNation.id })
     setWarClickPending(false)
   }
 
@@ -256,14 +262,14 @@ export default function TopBar() {
 
         {/* War status + ROE */}
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 2 : 4 }}>
-          {atWarWithIran ? (
+          {atWarWithPrimaryEnemy ? (
             <span style={{
               color: 'var(--status-damaged)',
               fontWeight: 700,
               fontSize: 'var(--font-size-xs)',
               whiteSpace: 'nowrap',
             }}>
-              {isMobile ? 'WAR' : 'WAR: IRAN'}
+              {isMobile ? 'WAR' : `WAR: ${primaryEnemyLabel}`}
             </span>
           ) : (
             <span style={{
@@ -342,7 +348,7 @@ export default function TopBar() {
           </div>
 
           {/* Declare war button (only at peace) */}
-          {!atWarWithIran && (
+          {!atWarWithPrimaryEnemy && primaryEnemyNation && (
             <button
               onClick={handleDeclareWar}
               onBlur={() => setWarClickPending(false)}

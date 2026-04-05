@@ -1,4 +1,4 @@
-import type { GameState } from '@/types/game'
+import type { GameState, GameEvent } from '@/types/game'
 import type { ElevationGrid } from './elevation'
 import { haversine, bearing, destination, ktsToKmh } from '../utils/geo'
 import { weaponSpecs } from '@/data/weapons/missiles'
@@ -41,11 +41,15 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
   // Terrain following for cruise-phase missiles
   if (elevationGrid) {
     const missilesToDelete: string[] = []
+    const events: GameEvent[] = []
     for (const missile of state.missiles.values()) {
       if (missile.status !== 'inflight') continue
       if (missile.phase !== 'cruise') continue
       if (missile.path.length === 0) continue
 
+      // Use current missile position (last appended path point)
+      // NOTE: on the very first tick after launch the path still has the pre-computed great-circle
+      // points; we check the most recent point which is the missile's actual current location.
       const lastPt = missile.path[missile.path.length - 1]
       const terrainElev = elevationGrid.getElevation(lastPt[1], lastPt[0]) // path is [lng, lat]
       const spec = weaponSpecs[missile.weaponId]
@@ -55,25 +59,42 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
       const requiredAlt = Math.max(cruiseAltM, terrainElev + clearance)
 
       if (missile.altitude_m < requiredAlt) {
-        // Climbing — costs extra fuel
-        const climbRate = Math.min(requiredAlt - missile.altitude_m, 30) // max 30m/tick climb
+        // Terrain-following climb — cruise missiles can climb rapidly (up to 150m/s)
+        // This altitude gain is preserved by updateMissileAltitudes (which takes max of spec/current)
+        const climbRate = Math.min(requiredAlt - missile.altitude_m, 150) // max 150m/tick climb
         missile.altitude_m += climbRate
         if (missile.fuel_remaining_sec > 0) {
-          missile.fuel_remaining_sec -= climbRate * 0.001 // climb fuel penalty
+          missile.fuel_remaining_sec -= climbRate * 0.001 // small climb fuel penalty
         }
-      } else if (missile.altitude_m > requiredAlt + 200) {
-        // Descend back to optimal altitude
-        missile.altitude_m = Math.max(requiredAlt, missile.altitude_m - 20)
+      } else if (missile.altitude_m > requiredAlt + 100) {
+        // Descend back toward cruise altitude — don't descend below required
+        missile.altitude_m = Math.max(requiredAlt, missile.altitude_m - 50)
       }
 
-      // Crash into terrain check
+      // Crash into terrain check — only crash if still below terrain after climb attempt
       if (missile.altitude_m < terrainElev) {
-        missile.status = 'intercepted' // neutralized — won't impact target
+        missile.status = 'intercepted'
         missilesToDelete.push(missile.id)
+        // Emit MISSILE_IMPACT event so the player can see what happened
+        events.push({
+          type: 'MISSILE_IMPACT',
+          missileId: missile.id,
+          targetId: missile.targetId,
+          damage: 0, // terrain crash — no damage to target
+          tick: state.time.tick,
+        })
       }
     }
     for (const id of missilesToDelete) {
       state.missiles.delete(id)
+    }
+    // Emit events
+    if (events.length > 0) {
+      state.events.push(...events)
+      if (state.events.length > 2000) {
+        state.events.splice(0, state.events.length - 2000)
+      }
+      state.pendingEvents.push(...events)
     }
   }
 }

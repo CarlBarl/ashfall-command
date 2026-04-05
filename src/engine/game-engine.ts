@@ -213,19 +213,7 @@ export class GameEngine {
         state.time.speed = cmd.speed
         break
       case 'DECLARE_WAR': {
-        const player = state.playerNation
-        if (!state.nations[player].atWar.includes(cmd.target)) {
-          state.nations[player].atWar.push(cmd.target)
-        }
-        if (!state.nations[cmd.target].atWar.includes(player)) {
-          state.nations[cmd.target].atWar.push(player)
-        }
-        this.emitEvent({
-          type: 'WAR_DECLARED',
-          attacker: player,
-          defender: cmd.target,
-          tick: state.time.tick,
-        })
+        this.declareWar(state.playerNation, cmd.target)
         break
       }
       case 'SET_ROE': {
@@ -243,7 +231,15 @@ export class GameEngine {
       }
       case 'LAUNCH_MISSILE': {
         const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId)
-        if (event) this.emitEvent(event)
+        if (event) {
+          const launcher = state.units.get(cmd.launcherId)
+          const target = state.units.get(cmd.targetId)
+          // A successful offensive launch is a hostile act; enter war state immediately.
+          if (launcher && target && launcher.nation !== target.nation) {
+            this.declareWar(launcher.nation, target.nation)
+          }
+          this.emitEvent(event)
+        }
         break
       }
       case 'LAUNCH_SAM': {
@@ -322,6 +318,29 @@ export class GameEngine {
       this.state.events.splice(0, this.state.events.length - 2000)
     }
     this.state.pendingEvents.push(event)
+  }
+
+  private declareWar(attacker: NationId, defender: NationId): void {
+    if (attacker === defender) return
+    if (!this.state.nations[attacker] || !this.state.nations[defender]) return
+
+    let changed = false
+    if (!this.state.nations[attacker].atWar.includes(defender)) {
+      this.state.nations[attacker].atWar.push(defender)
+      changed = true
+    }
+    if (!this.state.nations[defender].atWar.includes(attacker)) {
+      this.state.nations[defender].atWar.push(attacker)
+      changed = true
+    }
+    if (!changed) return
+
+    this.emitEvent({
+      type: 'WAR_DECLARED',
+      attacker,
+      defender,
+      tick: this.state.time.tick,
+    })
   }
 }
 

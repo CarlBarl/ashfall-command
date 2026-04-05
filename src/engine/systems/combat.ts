@@ -57,7 +57,6 @@ function updateMissileFuel(state: GameState): void {
         // Cruise missiles: speed decays and altitude drops (handled in speed/altitude updates)
         // If altitude has reached 0 or below, crash
         if (missile.altitude_m <= 0) {
-          console.log(`[MISSILE CRASH] tick=${state.time.tick} id=${missile.id} weapon=${missile.weaponId} fuel=0 alt=${missile.altitude_m}`)
           toRemove.push(missile.id)
         }
       }
@@ -186,7 +185,9 @@ function updateMissileAltitudes(state: GameState): void {
       // Cruise missiles fly at constant low altitude while fueled
       missile.phase = 'cruise'
       if (missile.fuel_remaining_sec > 0) {
-        missile.altitude_m = spec.flight_altitude_ft * 0.3048
+        // Use max of spec altitude and current altitude to preserve terrain-following climbs
+        const specAltM = spec.flight_altitude_ft * 0.3048
+        missile.altitude_m = Math.max(specAltM, missile.altitude_m)
       } else {
         // Fuel exhausted: altitude drops 10 m/sec
         missile.altitude_m = Math.max(0, missile.altitude_m - 10)
@@ -198,9 +199,6 @@ function updateMissileAltitudes(state: GameState): void {
 // ===============================================
 //  POSITION UPDATE — uses speed_current_mach
 // ===============================================
-
-// Debug: track missile position every 100 ticks
-const _missileDebugInterval = 100
 
 function updateMissilePositions(state: GameState): void {
   for (const missile of state.missiles.values()) {
@@ -231,14 +229,8 @@ function updateMissilePositions(state: GameState): void {
       target.position,
     )
 
-    // DEBUG: log every 100 ticks
-    if (state.time.tick % _missileDebugInterval === 0) {
-      console.log(`[MISSILE DEBUG] tick=${state.time.tick} id=${missile.id} weapon=${missile.weaponId} dist=${distToTarget.toFixed(2)}km fuel=${missile.fuel_remaining_sec.toFixed(0)}s speed=${missile.speed_current_mach} pathLen=${missile.path.length} eta_delta=${((missile.eta - state.time.timestamp)/1000).toFixed(0)}s`)
-    }
-
     // If close enough or past ETA, mark as impact
     if (distToTarget <= kmPerSec || state.time.timestamp >= missile.eta) {
-      console.log(`[MISSILE IMPACT] tick=${state.time.tick} id=${missile.id} dist=${distToTarget.toFixed(3)}km target=${missile.targetId}`)
       missile.status = 'impact'
       continue
     }
@@ -797,7 +789,6 @@ function resolveImpacts(state: GameState): void {
     const spec = weaponSpecs[missile.weaponId]
 
     if (target && target.status !== 'destroyed' && spec) {
-      console.log(`[RESOLVE IMPACT] tick=${state.time.tick} id=${missile.id} weapon=${missile.weaponId} target=${missile.targetId} targetHealth=${target.health}`)
       const damage = computeDamage(spec, target.hardness)
       const healthBefore = target.health
       target.health = Math.max(0, target.health - damage)
