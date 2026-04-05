@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Panel from '@/components/common/Panel'
+import IntelBudgetPanel from '@/components/panels/IntelBudgetPanel'
 import { useIntelStore } from '@/store/intel-store'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
@@ -274,6 +275,9 @@ export default function IntelPanel() {
         overflowY: 'auto',
       }}
     >
+      {/* Section 0: Budget Allocation */}
+      <IntelBudgetPanel />
+
       {/* Section A: Enemy Catalog Browser */}
       <div style={{ marginBottom: 8 }}>
         <div
