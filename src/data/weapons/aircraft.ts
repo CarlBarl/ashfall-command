@@ -5,7 +5,7 @@ export const aircraftSpecs: Record<string, AircraftSpec> = {
   f35a: {
     id: 'f35a',
     name: 'F-35A Lightning II',
-    combat_radius_km: 1093,
+    combat_radius_km: 1240, // per USAF/Lockheed Martin
     max_speed_mach: 1.6,
     ceiling_ft: 50000,
     loadout: ['jassm_er', 'jassm_er'],

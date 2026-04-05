@@ -169,7 +169,7 @@ export const ZOLFAGHAR = reg({
   type: 'ballistic_missile',
   range_km: 700,
   speed_mach: 5.0,
-  warhead_kg: 450,
+  warhead_kg: 590, // per CSIS Missile Threat
   cep_m: 200,
   pk: {},
   flight_altitude_ft: 250000,
@@ -182,7 +182,7 @@ export const KHALIJ_FARS = reg({
   type: 'ballistic_missile', // ASBM — Fateh-110 derivative, ballistic arc with terminal seeker
   range_km: 300,
   speed_mach: 3.5,
-  warhead_kg: 450,
+  warhead_kg: 650, // per Wikipedia/Iranian sources
   cep_m: 8,
   pk: { ashm: 0.85 },
   flight_altitude_ft: 250000, // ~76 km apogee for 300 km SRBM
@@ -258,7 +258,7 @@ export const KHORDAD15_INT = reg({
   warhead_kg: 80,
   cep_m: 0,
   pk: { cruise_missile: 0.65, aam: 0.60 },
-  flight_altitude_ft: 80000,
+  flight_altitude_ft: 88500, // 27 km per published sources
   guidance: 'semi-active radar',
 })
 

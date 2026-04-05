@@ -25,7 +25,7 @@ export const adSystems: Record<string, ADSystemSpec> = {
   aegis_bmd: {
     id: 'aegis_bmd',
     name: 'Aegis BMD (SM-3)',
-    radar_range_km: 500,
+    radar_range_km: 370, // SPY-1D organic range for BM targets
     engagement_range_km: 1200, // SM-3 IIA per CSIS; was 700
     max_altitude_m: 500000,
     fire_channels: 18,
@@ -35,7 +35,7 @@ export const adSystems: Record<string, ADSystemSpec> = {
   aegis_aaw: {
     id: 'aegis_aaw',
     name: 'Aegis AAW (SM-6)',
-    radar_range_km: 500,
+    radar_range_km: 370, // SPY-1D organic range
     engagement_range_km: 370, // per CSIS; was 460
     max_altitude_m: 33000,
     fire_channels: 18,

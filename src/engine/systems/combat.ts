@@ -532,6 +532,14 @@ function updateInterceptors(state: GameState, rng: SeededRNG): void {
       kmPerSec,
     )
 
+    // Truncate initial great-circle path points that are in the future
+    // (they have non-monotonic timestamps that break interpolation)
+    while (interceptor.timestamps.length > 1 &&
+           interceptor.timestamps[interceptor.timestamps.length - 1] > state.time.timestamp + 2000) {
+      interceptor.path.pop()
+      interceptor.timestamps.pop()
+    }
+
     interceptor.path.push([newPos.lng, newPos.lat])
     interceptor.timestamps.push(state.time.timestamp + 1000)
     if (interceptor.path.length > 500) {
