@@ -127,6 +127,116 @@ class MinHeap {
 }
 
 /**
+ * Find a water-only route for naval units from start to goal using A*.
+ * Returns intermediate waypoints that keep the ship on water cells.
+ * Returns null if no water route exists (e.g., target is landlocked).
+ */
+export function findNavalRoute(
+  start: Position,
+  goal: Position,
+  grid: ElevationGrid,
+): Position[] | null {
+  const startGrid = posToGrid(start)
+  const goalGrid = posToGrid(goal)
+  if (!startGrid || !goalGrid) return null
+
+  const rows = Math.round((GRID_LAT_MAX - GRID_LAT_MIN) / RESOLUTION)
+  const cols = Math.round((GRID_LNG_MAX - GRID_LNG_MIN) / RESOLUTION)
+
+  const startKey = encodeKey(startGrid.row, startGrid.col)
+  const goalKey = encodeKey(goalGrid.row, goalGrid.col)
+
+  if (startKey === goalKey) return []
+
+  // Check if straight line is all water — skip A* if so
+  const directDist = haversine(start, goal)
+  const steps = Math.ceil(directDist / (RESOLUTION * 111))
+  let allWater = true
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps
+    const lat = start.lat + (goal.lat - start.lat) * t
+    const lng = start.lng + (goal.lng - start.lng) * t
+    if (!grid.isWater(lat, lng)) { allWater = false; break }
+  }
+  if (allWater) return []
+
+  const goalPos = gridToPos(goalGrid.row, goalGrid.col)
+  const gScore = new Map<number, number>()
+  const cameFrom = new Map<number, number>()
+  const closedSet = new Set<number>()
+
+  gScore.set(startKey, 0)
+  const openHeap = new MinHeap()
+  openHeap.push(startKey, haversine(gridToPos(startGrid.row, startGrid.col), goalPos))
+
+  let iterations = 0
+
+  while (openHeap.size > 0 && iterations < MAX_ITERATIONS) {
+    iterations++
+    const currentKey = openHeap.pop()
+    if (currentKey === goalKey) {
+      return reconstructNavalPath(cameFrom, currentKey)
+    }
+    if (closedSet.has(currentKey)) continue
+    closedSet.add(currentKey)
+
+    const currentRow = (currentKey / 1024) | 0
+    const currentCol = currentKey % 1024
+    const currentG = gScore.get(currentKey)!
+
+    for (const [dr, dc] of NEIGHBORS) {
+      const nr = currentRow + dr
+      const nc = currentCol + dc
+      if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue
+
+      const nKey = encodeKey(nr, nc)
+      if (closedSet.has(nKey)) continue
+
+      const neighborLat = GRID_LAT_MIN + nr * RESOLUTION
+      const neighborLng = GRID_LNG_MIN + nc * RESOLUTION
+
+      // Naval: only traverse water cells (allow goal even if on land — port/base)
+      if (nKey !== goalKey && !grid.isWater(neighborLat, neighborLng)) continue
+
+      const isDiagonal = dr !== 0 && dc !== 0
+      const cellDist = isDiagonal ? RESOLUTION * 111 * Math.SQRT2 : RESOLUTION * 111
+      const tentativeG = currentG + cellDist
+
+      const existingG = gScore.get(nKey)
+      if (existingG !== undefined && tentativeG >= existingG) continue
+
+      gScore.set(nKey, tentativeG)
+      cameFrom.set(nKey, currentKey)
+      const h = haversine({ lat: neighborLat, lng: neighborLng }, goalPos)
+      openHeap.push(nKey, tentativeG + h)
+    }
+  }
+
+  return null // no water route found
+}
+
+/** Reconstruct and simplify a naval A* path into waypoints */
+function reconstructNavalPath(cameFrom: Map<number, number>, goalKey: number): Position[] {
+  const pathKeys: number[] = []
+  let current = goalKey
+  while (cameFrom.has(current)) {
+    pathKeys.push(current)
+    current = cameFrom.get(current)!
+  }
+  pathKeys.push(current)
+  pathKeys.reverse()
+
+  // Simplify: keep every Nth point, skip first/last (start/goal)
+  const intermediates: Position[] = []
+  for (let i = SIMPLIFY_EVERY_N; i < pathKeys.length - SIMPLIFY_EVERY_N; i += SIMPLIFY_EVERY_N) {
+    const row = (pathKeys[i] / 1024) | 0
+    const col = pathKeys[i] % 1024
+    intermediates.push(gridToPos(row, col))
+  }
+  return intermediates
+}
+
+/**
  * Find a low-exposure route from start to goal using A* on the elevation grid.
  * Returns simplified waypoints (not every grid cell) — just the intermediates
  * (excluding start and goal).

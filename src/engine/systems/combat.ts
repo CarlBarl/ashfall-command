@@ -381,14 +381,38 @@ function runADEngagement(state: GameState, _rng: SeededRNG, elevationGrid?: Elev
         // Compute interceptor flight parameters
         const intSpeedKmh = machToKmh(interceptorSpec.speed_mach)
         const fuelSec = adSpec.engagement_range_km / (intSpeedKmh / 3600)
-        const flightTimeMs = (threat.distKm / intSpeedKmh) * 3600 * 1000
 
-        // Predict intercept point: approximate where the threat will be
         const threatPos = getCurrentMissilePosition(threat.missile, state.time.timestamp)
         if (!threatPos) continue
 
-        const interceptPoint = { lng: threatPos[0], lat: threatPos[1] }
-        const numSegments = Math.max(5, Math.ceil(threat.distKm / 5))
+        // --- Lead intercept prediction ---
+        // Compute threat's heading from its path (direction of travel)
+        let threatHeading = 0
+        if (threat.missile.path.length >= 2) {
+          const prevPt = threat.missile.path[Math.max(0, threat.missile.path.length - 2)]
+          threatHeading = bearing(
+            { lat: prevPt[1], lng: prevPt[0] },
+            { lat: threatPos[1], lng: threatPos[0] },
+          )
+        }
+
+        // Estimate time for interceptor to reach threat's current position
+        const distToThreat = haversine(unit.position, { lng: threatPos[0], lat: threatPos[1] })
+        const timeToReachSec = (distToThreat / intSpeedKmh) * 3600
+
+        // Predict where threat will be when interceptor arrives
+        const threatSpeedKmh = machToKmh(threat.missile.speed_current_mach)
+        const leadDistKm = (threatSpeedKmh * timeToReachSec) / 3600
+
+        const interceptPoint = destination(
+          { lat: threatPos[1], lng: threatPos[0] },
+          threatHeading,
+          leadDistKm,
+        )
+
+        const dist = haversine(unit.position, interceptPoint)
+        const flightTimeMs = (dist / intSpeedKmh) * 3600 * 1000
+        const numSegments = Math.max(5, Math.ceil(dist / 5))
         const path = greatCirclePath(unit.position, interceptPoint, numSegments)
         const timestamps = generateTimestamps(state.time.timestamp, flightTimeMs, numSegments)
 

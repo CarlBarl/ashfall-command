@@ -54,6 +54,32 @@ describe('intercept prediction geometry', () => {
     expect(lead2).toBeGreaterThan(lead1)
   })
 
+  it('AD launch intercept point is ahead of moving target, not at current position', () => {
+    // Simulates the runADEngagement launch logic:
+    // AD unit at launcher position, threat flying north at Mach 2
+    // Interceptor at Mach 4 — lead point must be north of current threat position
+
+    const launcherPos = { lat: 26.0, lng: 52.0 }
+    const threatCurrentPos = { lat: 27.0, lng: 52.0 } // ~111km north of launcher
+    const threatSpeedKmh = 2 * 343 * 3.6 // Mach 2
+    const intSpeedKmh = 4 * 343 * 3.6 // Mach 4
+
+    const distToThreat = haversine(launcherPos, threatCurrentPos)
+    const timeToReachSec = (distToThreat / intSpeedKmh) * 3600
+
+    // Lead prediction: threat moves north during interceptor flight
+    const leadDistKm = (threatSpeedKmh * timeToReachSec) / 3600
+    const predictedLat = threatCurrentPos.lat + (leadDistKm / 111)
+
+    // Intercept point must be AHEAD (north) of the threat's current position
+    expect(predictedLat).toBeGreaterThan(threatCurrentPos.lat)
+    expect(leadDistKm).toBeGreaterThan(10) // significant lead distance
+
+    // The interceptor path to the predicted point is longer than to current pos
+    const distToPredicted = haversine(launcherPos, { lat: predictedLat, lng: 52.0 })
+    expect(distToPredicted).toBeGreaterThan(distToThreat)
+  })
+
   it('lead distance is zero for stationary targets', () => {
     const dist_km = 100
     const intSpeed_kmh = 4 * 343 * 3.6
