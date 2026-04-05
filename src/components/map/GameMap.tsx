@@ -103,7 +103,8 @@ export default function GameMap() {
     if (!radarSensor) return null
 
     const antennaHeight = radarSensor.antenna_height_m ?? 15 // default 15m
-    return getLOSPolygon(losUnitId, unit.position, radarSensor.range_km, antennaHeight)
+    const sectorDeg = radarSensor.sector_deg ?? 360
+    return getLOSPolygon(losUnitId, unit.position, radarSensor.range_km, antennaHeight, unit.heading, sectorDeg)
   }, [gridReady, selectedUnitId, hoveredUnitId, showRadarLOS, units])
 
   const onLoad = useCallback(() => {

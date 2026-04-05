@@ -49,6 +49,8 @@ interface LOSInput {
   radarRange_km: number
   antennaHeight_m: number
   elevationGrid: ElevationGrid
+  heading: number      // unit heading in degrees (0-360)
+  sectorDeg: number    // coverage arc (360 = omnidirectional)
 }
 
 /** Earth radius in km */
@@ -78,7 +80,7 @@ const STEP_KM = 2
  * where R = 6371km, k = 4/3 (atmospheric refraction)
  */
 export function computeLOSPolygon(input: LOSInput): Feature<Polygon> {
-  const { position, radarRange_km, antennaHeight_m, elevationGrid } = input
+  const { position, radarRange_km, antennaHeight_m, elevationGrid, heading, sectorDeg } = input
 
   const origin: [number, number] = [position.lng, position.lat]
   const radarGroundElev = elevationGrid.getElevation(position.lat, position.lng)
@@ -86,11 +88,8 @@ export function computeLOSPolygon(input: LOSInput): Feature<Polygon> {
 
   const numSteps = Math.max(1, Math.ceil(radarRange_km / STEP_KM))
 
-  const ring: [number, number][] = []
-
-  for (let ray = 0; ray < NUM_RAYS; ray++) {
-    const bearing = ray // 0-359 degrees
-
+  /** Raycast a single bearing and return the farthest visible point */
+  const castRay = (bearing: number): [number, number] => {
     let maxVisibleDist_km = 0
 
     for (let step = 1; step <= numSteps; step++) {
@@ -116,18 +115,40 @@ export function computeLOSPolygon(input: LOSInput): Feature<Polygon> {
       maxVisibleDist_km = dist_km
     }
 
-    // Compute the endpoint for this ray
     if (maxVisibleDist_km <= 0) {
-      // Blocked immediately — place point very close to origin
-      ring.push(origin)
-    } else {
-      const ep = destination(origin, maxVisibleDist_km, bearing, { units: 'kilometers' })
-      ring.push(ep.geometry.coordinates as [number, number])
+      return origin
     }
+    const ep = destination(origin, maxVisibleDist_km, bearing, { units: 'kilometers' })
+    return ep.geometry.coordinates as [number, number]
   }
 
-  // Close the polygon ring
-  ring.push(ring[0])
+  const ring: [number, number][] = []
+
+  if (sectorDeg >= 360) {
+    // Full circle — existing 360° behavior
+    for (let ray = 0; ray < NUM_RAYS; ray++) {
+      const bearing = (ray * 360) / NUM_RAYS
+      ring.push(castRay(bearing))
+    }
+    // Close the polygon ring
+    ring.push(ring[0])
+  } else {
+    // Sector wedge
+    const startAngle = heading - sectorDeg / 2
+    const endAngle = heading + sectorDeg / 2
+    const numRays = Math.max(3, Math.round(sectorDeg)) // ~1 ray per degree within sector
+
+    // Start at radar position (center of wedge)
+    ring.push(origin)
+
+    for (let i = 0; i <= numRays; i++) {
+      const azimuth = startAngle + (i / numRays) * (endAngle - startAngle)
+      ring.push(castRay(azimuth))
+    }
+
+    // Close back to radar position
+    ring.push(origin)
+  }
 
   return {
     type: 'Feature',
@@ -143,13 +164,11 @@ export function computeLOSPolygon(input: LOSInput): Feature<Polygon> {
 //  Cached computation (avoid recomputing every frame)
 // ────────────────────────────────────────────────
 
-let cachedUnitId: string | null = null
-let cachedLat = 0
-let cachedLng = 0
+let cachedKey: string | null = null
 let cachedPolygon: Feature<Polygon> | null = null
 
 /**
- * Get the LOS polygon for a unit, using a cache keyed on unit ID + position.
+ * Get the LOS polygon for a unit, using a cache keyed on unit ID + position + heading + sector.
  * Returns null if the grid isn't loaded yet.
  */
 export function getLOSPolygon(
@@ -157,29 +176,27 @@ export function getLOSPolygon(
   position: Position,
   radarRange_km: number,
   antennaHeight_m: number,
+  heading: number,
+  sectorDeg: number,
 ): Feature<Polygon> | null {
   const grid = getMainThreadGrid()
   if (!grid) return null
 
-  // Check cache — reuse if unit and position haven't changed
-  if (
-    cachedPolygon &&
-    cachedUnitId === unitId &&
-    cachedLat === position.lat &&
-    cachedLng === position.lng
-  ) {
+  // Check cache — reuse if unit, position, heading, and sector haven't changed
+  const cacheKey = `${unitId}_${position.lat}_${position.lng}_${heading}_${sectorDeg}`
+  if (cachedPolygon && cachedKey === cacheKey) {
     return cachedPolygon
   }
 
-  cachedUnitId = unitId
-  cachedLat = position.lat
-  cachedLng = position.lng
+  cachedKey = cacheKey
 
   cachedPolygon = computeLOSPolygon({
     position,
     radarRange_km,
     antennaHeight_m,
     elevationGrid: grid,
+    heading,
+    sectorDeg,
   })
 
   return cachedPolygon
