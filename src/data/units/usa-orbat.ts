@@ -211,6 +211,7 @@ export const usaUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 180, detection_prob: 0.95, antenna_height_m: 8, sector_deg: 120 }],
     roe: 'weapons_free',
+    readiness: 'deployed', deploy_time_sec: 1800, pack_time_sec: 900,
   }),
 
   u({
@@ -222,6 +223,7 @@ export const usaUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 180, detection_prob: 0.95, antenna_height_m: 8, sector_deg: 120 }],
     roe: 'weapons_free',
+    readiness: 'deployed', deploy_time_sec: 1800, pack_time_sec: 900,
   }),
 
   u({
@@ -233,6 +235,7 @@ export const usaUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 180, detection_prob: 0.95, antenna_height_m: 8, sector_deg: 120 }],
     roe: 'weapons_free',
+    readiness: 'deployed', deploy_time_sec: 1800, pack_time_sec: 900,
   }),
 
   u({
@@ -244,6 +247,7 @@ export const usaUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 180, detection_prob: 0.95, antenna_height_m: 8, sector_deg: 120 }],
     roe: 'weapons_free',
+    readiness: 'deployed', deploy_time_sec: 1800, pack_time_sec: 900,
   }),
 
   // THAAD in UAE
@@ -256,6 +260,7 @@ export const usaUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 1000, detection_prob: 0.98, antenna_height_m: 10, sector_deg: 120 }],
     roe: 'weapons_free',
+    readiness: 'deployed', deploy_time_sec: 1200, pack_time_sec: 600,
   }),
 
   // ═══════════════════════════════════════════════

@@ -305,6 +305,8 @@ function runADEngagement(state: GameState, _rng: SeededRNG, elevationGrid?: Elev
   for (const unit of state.units.values()) {
     if (unit.status === 'destroyed') continue
     if (unit.roe === 'hold_fire') continue
+    // Skip units that are not deployed (packing, moving, deploying)
+    if (unit.readiness && unit.readiness !== 'deployed') continue
 
     // Find ALL AD systems this unit can use (one per SAM weapon type)
     const unitADSystems = findAllADSystems(unit)
@@ -608,6 +610,9 @@ export function launchMissile(
   const target = state.units.get(targetId)
   if (!launcher || !target) return null
 
+  // Non-deployed units cannot launch missiles
+  if (launcher.readiness && launcher.readiness !== 'deployed') return null
+
   const loadout = launcher.weapons.find(w => w.weaponId === weaponId)
   if (!loadout || loadout.count <= 0) return null
 
@@ -721,6 +726,9 @@ export function launchSAM(
 ): GameEvent | null {
   const launcher = state.units.get(launcherId)
   if (!launcher) return null
+
+  // Non-deployed units cannot launch SAMs
+  if (launcher.readiness && launcher.readiness !== 'deployed') return null
 
   const loadout = launcher.weapons.find(w => w.weaponId === weaponId)
   if (!loadout || loadout.count <= 0) return null

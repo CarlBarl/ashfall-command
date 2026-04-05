@@ -89,6 +89,14 @@ export interface Unit {
   subordinateIds: UnitId[]
   /** Hub units only — range of datalink to share detection data */
   datalink_range_km?: number
+  /** Readiness state for mobile SAMs/TELs. undefined = always operational (ships, airbases) */
+  readiness?: 'deployed' | 'packing' | 'deploying' | 'moving'
+  /** Seconds remaining in current transition (packing or deploying) */
+  readinessTimer?: number
+  /** Time in seconds to deploy (set up and become operational) */
+  deploy_time_sec?: number
+  /** Time in seconds to pack up before moving */
+  pack_time_sec?: number
 }
 
 export interface WeaponStock {

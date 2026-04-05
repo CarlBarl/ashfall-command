@@ -27,6 +27,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.92, antenna_height_m: 12, sector_deg: 90 }],
     roe: 'weapons_free',
+    readiness: 'deployed', deploy_time_sec: 300, pack_time_sec: 300,
   }),
 
   u({
@@ -38,6 +39,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.92, antenna_height_m: 12, sector_deg: 90 }],
     roe: 'weapons_free',
+    readiness: 'deployed', deploy_time_sec: 300, pack_time_sec: 300,
   }),
 
   u({
@@ -49,6 +51,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.92, antenna_height_m: 12, sector_deg: 90 }],
     roe: 'weapons_free',
+    readiness: 'deployed', deploy_time_sec: 300, pack_time_sec: 300,
   }),
 
   u({
@@ -60,6 +63,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 350, detection_prob: 0.90, antenna_height_m: 12, sector_deg: 90 }],
     roe: 'weapons_free',
+    readiness: 'deployed', deploy_time_sec: 300, pack_time_sec: 300,
   }),
 
   u({
@@ -71,6 +75,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 350, detection_prob: 0.90, antenna_height_m: 12, sector_deg: 90 }],
     roe: 'weapons_free',
+    readiness: 'deployed', deploy_time_sec: 300, pack_time_sec: 300,
   }),
 
   // Medium Range SAMs
@@ -83,6 +88,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 150, detection_prob: 0.85, antenna_height_m: 8, sector_deg: 90 }],
     roe: 'weapons_free',
+    readiness: 'deployed', deploy_time_sec: 300, pack_time_sec: 180,
   }),
 
   u({
@@ -94,6 +100,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 150, detection_prob: 0.85, antenna_height_m: 8, sector_deg: 90 }],
     roe: 'weapons_free',
+    readiness: 'deployed', deploy_time_sec: 300, pack_time_sec: 180,
   }),
 
   // Short Range — Tor-M1
@@ -106,6 +113,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 25, detection_prob: 0.88, antenna_height_m: 5 }],
     roe: 'weapons_free',
+    readiness: 'deployed', deploy_time_sec: 180, pack_time_sec: 120,
   }),
 
   u({
@@ -117,6 +125,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 25, detection_prob: 0.88, antenna_height_m: 5 }],
     roe: 'weapons_free',
+    readiness: 'deployed', deploy_time_sec: 180, pack_time_sec: 120,
   }),
 
   // ═══════════════════════════════════════════════
@@ -132,6 +141,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [],
     roe: 'weapons_tight',
+    readiness: 'deployed', deploy_time_sec: 600, pack_time_sec: 300,
   }),
 
   u({
@@ -143,6 +153,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [],
     roe: 'weapons_tight',
+    readiness: 'deployed', deploy_time_sec: 600, pack_time_sec: 300,
   }),
 
   u({
@@ -154,6 +165,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [],
     roe: 'weapons_tight',
+    readiness: 'deployed', deploy_time_sec: 600, pack_time_sec: 300,
   }),
 
   u({
@@ -165,6 +177,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [],
     roe: 'weapons_tight',
+    readiness: 'deployed', deploy_time_sec: 600, pack_time_sec: 300,
   }),
 
   u({
@@ -176,6 +189,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [],
     roe: 'weapons_tight',
+    readiness: 'deployed', deploy_time_sec: 600, pack_time_sec: 300,
   }),
 
   u({
@@ -187,6 +201,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [],
     roe: 'weapons_tight',
+    readiness: 'deployed', deploy_time_sec: 600, pack_time_sec: 300,
   }),
 
   u({
@@ -328,6 +343,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [],
     roe: 'weapons_tight',
+    readiness: 'deployed', deploy_time_sec: 600, pack_time_sec: 300,
   }),
 
   u({
@@ -339,6 +355,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [],
     roe: 'weapons_tight',
+    readiness: 'deployed', deploy_time_sec: 600, pack_time_sec: 300,
   }),
 
   u({
@@ -351,6 +368,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [],
     roe: 'weapons_tight',
+    readiness: 'deployed', deploy_time_sec: 600, pack_time_sec: 300,
   }),
 
   // Shahed-238 jet-powered — faster, harder to intercept
@@ -364,6 +382,7 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [],
     roe: 'weapons_tight',
+    readiness: 'deployed', deploy_time_sec: 600, pack_time_sec: 300,
   }),
 
   // ═══════════════════════════════════════════════
@@ -388,5 +407,6 @@ export const iranUnits: Unit[] = [
     sensors: [{ type: 'radar', range_km: 100, detection_prob: 0.80, antenna_height_m: 10 }],
     roe: 'weapons_free',
     datalink_range_km: 300,
+    readiness: 'deployed', deploy_time_sec: 600, pack_time_sec: 300,
   }),
 ]

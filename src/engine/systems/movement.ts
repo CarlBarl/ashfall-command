@@ -11,6 +11,9 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
     if (unit.waypoints.length === 0 || unit.status === 'destroyed') continue
     if (unit.maxSpeed_kts === 0) continue // static installations
 
+    // Skip units that are packing or deploying — they can't move during transitions
+    if (unit.readiness === 'packing' || unit.readiness === 'deploying') continue
+
     const target = unit.waypoints[0]
     const dist = haversine(unit.position, target)
 
@@ -23,8 +26,16 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
       unit.waypoints.shift()
 
       if (unit.waypoints.length === 0) {
-        unit.status = 'ready'
-        unit.speed_kts = 0
+        if (unit.deploy_time_sec != null) {
+          // Unit has readiness lifecycle — begin deploying
+          unit.readiness = 'deploying'
+          unit.readinessTimer = unit.deploy_time_sec
+          unit.status = 'ready'
+          unit.speed_kts = 0
+        } else {
+          unit.status = 'ready'
+          unit.speed_kts = 0
+        }
       }
     } else {
       // Move toward waypoint

@@ -13,6 +13,7 @@ import { processFriendlyAI, resetFriendlyAIState } from './systems/friendly-ai'
 import { processLogistics, resetLogisticsState } from './systems/logistics'
 import { processPointDefense, resetPointDefenseState } from './systems/point-defense'
 import { processRepair, resetRepairState } from './systems/repair'
+import { processReadiness } from './systems/readiness'
 import { usaBaseSupply, usaSupplyLines } from '@/data/supply/usa-supply'
 import { iranBaseSupply, iranSupplyLines } from '@/data/supply/iran-supply'
 // Register drone weapon specs + patch interceptor pK values
@@ -209,6 +210,7 @@ export class GameEngine {
     state.time.timestamp += TICK_MS
 
     processMovement(state, this.elevationGrid)
+    processReadiness(state)
 
     // Build sensor network graph for this tick (used by combat for networked detection)
     this.sensorNetwork = buildSensorNetwork(state, this.elevationGrid)
@@ -259,8 +261,24 @@ export class GameEngine {
       case 'MOVE_UNIT': {
         const unit = state.units.get(cmd.unitId)
         if (unit) {
-          unit.waypoints = cmd.waypoints
-          unit.status = 'moving'
+          if (unit.deploy_time_sec != null) {
+            // Unit has readiness lifecycle (mobile SAMs, TELs)
+            if (unit.readiness === 'deployed') {
+              // Start packing — store waypoints but don't move yet
+              unit.readiness = 'packing'
+              unit.readinessTimer = unit.pack_time_sec ?? 300
+              unit.waypoints = cmd.waypoints
+            } else if (unit.readiness === 'moving') {
+              // Already moving — just update waypoints
+              unit.waypoints = cmd.waypoints
+              unit.status = 'moving'
+            }
+            // If packing or deploying, reject silently (unit is transitioning)
+          } else {
+            // No readiness lifecycle (ships, aircraft, etc.) — move immediately
+            unit.waypoints = cmd.waypoints
+            unit.status = 'moving'
+          }
         }
         break
       }
@@ -350,6 +368,10 @@ export class GameEngine {
     for (const unit of units.values()) {
       if (unit.maxHealth == null) unit.maxHealth = 100
       if (unit.pointDefense == null) unit.pointDefense = []
+      // Backfill readiness for units that have deploy_time_sec but were saved before readiness existed
+      if (unit.deploy_time_sec != null && unit.readiness == null) {
+        unit.readiness = 'deployed'
+      }
     }
     this.state = {
       playerNation: raw.playerNation ?? 'usa',
@@ -490,5 +512,7 @@ function toViewUnit(u: Unit): ViewUnit {
     waypoints: u.waypoints.map(w => ({ ...w })),
     parentId: u.parentId,
     subordinateIds: [...u.subordinateIds],
+    readiness: u.readiness,
+    readinessTimer: u.readinessTimer,
   }
 }

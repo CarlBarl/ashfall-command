@@ -52,4 +52,6 @@ export interface ViewUnit {
   waypoints: Position[]
   parentId?: UnitId
   subordinateIds: UnitId[]
+  readiness?: 'deployed' | 'packing' | 'deploying' | 'moving'
+  readinessTimer?: number
 }
