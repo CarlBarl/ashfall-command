@@ -36,11 +36,15 @@ interface UIState {
   clearSelection: () => void
   hoverUnit: (id: UnitId | null) => void
 
+  // Map overlays
+  showIntelCoverage: boolean
+
   // Actions — map
   toggleRangeRings: () => void
   cycleMapMode: () => void
   toggleElevation: () => void
   toggleRadarLOS: () => void
+  toggleIntelCoverage: () => void
 
   // Actions — panels
   setLeftPanel: (panel: LeftPanel) => void
@@ -61,6 +65,7 @@ export const useUIStore = create<UIState>((set) => ({
   mapMode: 'dark' as MapMode,
   showElevation: false,
   showRadarLOS: false,
+  showIntelCoverage: false,
   leftPanel: null,
   showOrbat: false,
   showStats: false,
@@ -98,6 +103,7 @@ export const useUIStore = create<UIState>((set) => ({
   cycleMapMode: () => set((s) => ({ mapMode: (s.mapMode === 'dark' ? 'satellite' : 'dark') as MapMode })),
   toggleElevation: () => set((s) => ({ showElevation: !s.showElevation })),
   toggleRadarLOS: () => set((s) => ({ showRadarLOS: !s.showRadarLOS })),
+  toggleIntelCoverage: () => set((s) => ({ showIntelCoverage: !s.showIntelCoverage })),
 
   toggleIntel: () => set((s) => ({ showIntel: !s.showIntel })),
 

@@ -47,9 +47,11 @@ export default function MapToggle() {
   const mapMode = useUIStore((s) => s.mapMode)
   const showElevation = useUIStore((s) => s.showElevation)
   const showRadarLOS = useUIStore((s) => s.showRadarLOS)
+  const showIntelCoverage = useUIStore((s) => s.showIntelCoverage)
   const cycleMapMode = useUIStore((s) => s.cycleMapMode)
   const toggleElevation = useUIStore((s) => s.toggleElevation)
   const toggleRadarLOS = useUIStore((s) => s.toggleRadarLOS)
+  const toggleIntelCoverage = useUIStore((s) => s.toggleIntelCoverage)
 
   const isSat = mapMode === 'satellite'
 
@@ -81,9 +83,19 @@ export default function MapToggle() {
           ...btn,
           ...(showRadarLOS ? btnActive : {}),
         }}
-        title="Toggle radar line-of-sight on hover"
+        title="Toggle radar coverage (friendly blue, enemy red)"
       >
         LOS
+      </button>
+      <button
+        onClick={toggleIntelCoverage}
+        style={{
+          ...btn,
+          ...(showIntelCoverage ? { ...btnActive, color: '#ffaa33' } : {}),
+        }}
+        title="Toggle estimated intel coverage (amber)"
+      >
+        INT
       </button>
     </div>
   )

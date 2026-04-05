@@ -111,8 +111,11 @@ export default function GameMap() {
     return generateElevationOverlay(grid)
   }, [gridReady, showElevation])
 
-  // Compute radar coverage circles for estimated intel units
+  const showIntelCoverage = useUIStore((s) => s.showIntelCoverage)
+
+  // Compute radar coverage circles for estimated intel units (only when toggle on)
   const intelCoverageData = useMemo(() => {
+    if (!showIntelCoverage) return { type: 'FeatureCollection' as const, features: [] }
     const features = estimatedUnits
       .filter((u) => u.sensors.some((s) => s.type === 'radar'))
       .map((u) => {
@@ -120,7 +123,7 @@ export default function GameMap() {
         return circle([u.position.lng, u.position.lat], radar.range_km, { units: 'kilometers', steps: 64 })
       })
     return { type: 'FeatureCollection' as const, features }
-  }, [estimatedUnits])
+  }, [estimatedUnits, showIntelCoverage])
 
   // Compute LOS polygon(s)
   // 1. Selected unit — always show its LOS (regardless of toggle)
