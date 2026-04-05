@@ -162,17 +162,10 @@ function DirectFireTab() {
       )
       .map(u => ({ ...u, distance: Math.round(haversine(u.position, rangeRef.position)) }))
       .sort((a, b) => a.distance - b.distance)
-  }, [units, rangeRef])
+  }, [units, rangeRef, playerNation])
 
-  // Auto-select nearest unit when target changes
-  useEffect(() => {
-    if (unitsInRange.length > 0 && !unitsInRange.find(u => u.id === selectedLauncherId)) {
-      setSelectedLauncherId(unitsInRange[0].id)
-    }
-    if (unitsInRange.length === 0) setSelectedLauncherId(null)
-  }, [unitsInRange, selectedLauncherId])
-
-  const launcher = unitsInRange.find(u => u.id === selectedLauncherId)
+  const activeLauncherId = selectedLauncherId ?? unitsInRange[0]?.id ?? null
+  const launcher = unitsInRange.find(u => u.id === activeLauncherId)
   const launcherWeapons = useMemo(() => {
     if (!launcher || !target) return []
     return launcher.weapons
@@ -193,30 +186,26 @@ function DirectFireTab() {
   const setQty = (key: string, val: number) => setQuantities(prev => ({ ...prev, [key]: Math.max(1, val) }))
 
   const fire = async (weaponId: string, count: number) => {
-    if (!targetUnitId || !selectedLauncherId) return
-    for (let i = 0; i < count; i++) {
-      await sendCommand({ type: 'LAUNCH_MISSILE', launcherId: selectedLauncherId, weaponId, targetId: targetUnitId })
-    }
+    if (!targetUnitId || !activeLauncherId || count <= 0) return
+    await sendCommand({ type: 'LAUNCH_SALVO', launcherId: activeLauncherId, weaponId, targetId: targetUnitId, count })
   }
 
   // Cluster fire handler — distributes missiles evenly across cluster targets
   const fireCluster = async () => {
-    if (!selectedLauncherId || clusterTargets.length === 0) return
+    if (!activeLauncherId || clusterTargets.length === 0) return
     for (const ct of clusterTargets) {
       if (!ct) continue
       const qty = clusterQty[ct.id] ?? 1
-      for (let i = 0; i < qty; i++) {
-        // Find first offensive weapon on launcher that can reach this target
-        const launcher = unitsInRange.find(u => u.id === selectedLauncherId)
-        if (!launcher) continue
-        const wpn = launcher.weapons.find(w => {
-          const spec = weaponSpecs[w.weaponId]
-          return spec && spec.type !== 'sam' && w.count > 0 &&
-                 haversine(launcher.position, ct.position) <= spec.range_km
-        })
-        if (wpn) {
-          await sendCommand({ type: 'LAUNCH_MISSILE', launcherId: selectedLauncherId, weaponId: wpn.weaponId, targetId: ct.id })
-        }
+      // Find first offensive weapon on launcher that can reach this target
+      const launcher = unitsInRange.find(u => u.id === activeLauncherId)
+      if (!launcher) continue
+      const wpn = launcher.weapons.find(w => {
+        const spec = weaponSpecs[w.weaponId]
+        return spec && spec.type !== 'sam' && w.count > 0 &&
+               haversine(launcher.position, ct.position) <= spec.range_km
+      })
+      if (wpn && qty > 0) {
+        await sendCommand({ type: 'LAUNCH_SALVO', launcherId: activeLauncherId, weaponId: wpn.weaponId, targetId: ct.id, count: qty })
       }
     }
   }
@@ -259,7 +248,7 @@ function DirectFireTab() {
           <>
             <SectionLabel>Fire from</SectionLabel>
             <select
-              value={selectedLauncherId ?? ''}
+              value={activeLauncherId ?? ''}
               onChange={(e) => setSelectedLauncherId(e.target.value || null)}
               style={{ ...selectStyle, marginBottom: 6 }}
             >
@@ -270,11 +259,13 @@ function DirectFireTab() {
 
             <button
               onClick={fireCluster}
+              disabled={!activeLauncherId}
               style={{
                 width: '100%', padding: '6px',
                 background: 'var(--iran-primary)', border: '1px solid var(--iran-primary)',
                 borderRadius: 4, color: '#fff', cursor: 'pointer',
                 fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', fontWeight: 700,
+                opacity: activeLauncherId ? 1 : 0.5,
               }}
             >
               FIRE {clusterTargets.reduce((s, ct) => s + (clusterQty[ct!.id] ?? 1), 0)} MISSILES
@@ -347,7 +338,7 @@ function DirectFireTab() {
         <>
           <SectionLabel>Fire from</SectionLabel>
           <select
-            value={selectedLauncherId ?? ''}
+            value={activeLauncherId ?? ''}
             onChange={(e) => setSelectedLauncherId(e.target.value || null)}
             style={{ ...selectStyle, marginBottom: 8 }}
           >
@@ -418,8 +409,6 @@ function PlanAttackTab() {
     computedPlan, executing, executionProgress,
   } = strike
 
-  const [confirmExecute, setConfirmExecute] = useState(false)
-
   const friendlyUnits = useMemo(
     () => units.filter((u) => u.nation === playerNation && u.status !== 'destroyed'),
     [units, playerNation],
@@ -476,21 +465,19 @@ function PlanAttackTab() {
         }
       }
       for (const stk of tierStrikes) {
-        for (let i = 0; i < stk.count; i++) {
-          await sendCommand({
-            type: 'LAUNCH_MISSILE',
-            launcherId: stk.launcherId,
-            weaponId: stk.weaponId,
-            targetId: stk.targetId,
-          })
-          fired++
-          strike.updateProgress(fired / total)
-        }
+        await sendCommand({
+          type: 'LAUNCH_SALVO',
+          launcherId: stk.launcherId,
+          weaponId: stk.weaponId,
+          targetId: stk.targetId,
+          count: stk.count,
+        })
+        fired += stk.count
+        strike.updateProgress(fired / total)
       }
     }
 
     strike.finishExecution()
-    setConfirmExecute(false)
   }, [computedPlan, executing, planTiming, strike])
 
   const availableCategories = TARGET_CATEGORIES.filter(
@@ -600,22 +587,15 @@ function PlanAttackTab() {
         ) : (
           <button
             disabled={!computedPlan || computedPlan.strikes.length === 0}
-            onClick={() => {
-              if (confirmExecute) {
-                handleExecute()
-              } else {
-                setConfirmExecute(true)
-                setTimeout(() => setConfirmExecute(false), 3000)
-              }
-            }}
+            onClick={handleExecute}
             style={{
               ...btnStyle, flex: 2,
-              background: confirmExecute ? '#cc2222' : 'var(--iran-secondary)',
+              background: 'var(--iran-secondary)',
               color: '#fff', fontWeight: 700,
               opacity: computedPlan && computedPlan.strikes.length > 0 ? 1 : 0.4,
             }}
           >
-            {confirmExecute ? 'CONFIRM \u2014 AUTHORIZE STRIKE' : 'AUTHORIZE STRIKE'}
+            AUTHORIZE STRIKE
           </button>
         )}
       </div>

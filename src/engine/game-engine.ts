@@ -242,6 +242,28 @@ export class GameEngine {
         }
         break
       }
+      case 'LAUNCH_SALVO': {
+        if (cmd.count <= 0) break
+
+        let declaredWar = false
+        for (let i = 0; i < cmd.count; i++) {
+          const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId)
+          if (!event) break
+
+          if (!declaredWar) {
+            const launcher = state.units.get(cmd.launcherId)
+            const target = state.units.get(cmd.targetId)
+            // The first successful shot in a salvo is enough to transition both nations to war.
+            if (launcher && target && launcher.nation !== target.nation) {
+              this.declareWar(launcher.nation, target.nation)
+              declaredWar = true
+            }
+          }
+
+          this.emitEvent(event)
+        }
+        break
+      }
       case 'LAUNCH_SAM': {
         launchSAM(state, cmd.launcherId, cmd.weaponId, cmd.missileId, this.rng)
         break
