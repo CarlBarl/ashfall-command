@@ -12,7 +12,7 @@ import { createImpactLayers } from './layers/ImpactLayer'
 import { createWaypointLayers } from './layers/WaypointLayer'
 import { createIntelUnitLayers } from './layers/IntelLayer'
 import { createRouteLayers } from './layers/RouteLayer'
-import circle from '@turf/circle'
+// circle import removed — range rings handled by RangeRingLayer
 import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
 import { createSupplyLineGeoJSON } from './layers/SupplyLineLayer'
 import { ensureMainThreadGrid, getMainThreadGrid, getLOSPolygon } from './layers/LOSLayer'
@@ -62,7 +62,7 @@ export default function GameMap() {
   const hoveredUnitId = useUIStore((s) => s.hoveredUnitId)
   const selectUnit = useUIStore((s) => s.selectUnit)
   const hoverUnit = useUIStore((s) => s.hoverUnit)
-  const showRangeRings = useUIStore((s) => s.showRangeRings)
+  const rngFilter = useUIStore((s) => s.rngFilter)
   const showElevation = useUIStore((s) => s.showElevation)
   const mapMode = useUIStore((s) => s.mapMode)
 
@@ -185,23 +185,6 @@ export default function GameMap() {
       })
       .filter(Boolean) as { poly: NonNullable<ReturnType<typeof getLOSPolygon>>; isEnemy: boolean }[]
   }, [losFilter, gridReady, units])
-
-  // Map-wide radar range circles when RNG toggle is on
-  const allRadarCoverage = useMemo(() => {
-    if (!showRangeRings) return null
-    const pNation = useGameStore.getState().viewState.playerNation
-    const features = units
-      .filter(u => u.status !== 'destroyed' && u.sensors?.some(s => s.type === 'radar'))
-      .map(u => {
-        const radar = u.sensors!.find(s => s.type === 'radar')!
-        const isEnemy = u.nation !== pNation
-        return {
-          ...circle([u.position.lng, u.position.lat], radar.range_km, { units: 'kilometers', steps: 64 }),
-          properties: { isEnemy },
-        }
-      })
-    return { type: 'FeatureCollection' as const, features }
-  }, [showRangeRings, units])
 
   const onLoad = useCallback(() => {
     mapRef.current?.getMap()?.resize()
@@ -480,48 +463,7 @@ export default function GameMap() {
           </Source>
         ))}
 
-        {allRadarCoverage && allRadarCoverage.features.length > 0 && (
-          <Source id="all-radar-coverage" type="geojson" data={allRadarCoverage as GeoJSON.FeatureCollection}>
-            <Layer
-              id="radar-coverage-friendly"
-              type="fill"
-              filter={['==', ['get', 'isEnemy'], false]}
-              paint={{
-                'fill-color': '#4488cc',
-                'fill-opacity': 0.06,
-              }}
-            />
-            <Layer
-              id="radar-coverage-enemy"
-              type="fill"
-              filter={['==', ['get', 'isEnemy'], true]}
-              paint={{
-                'fill-color': '#cc4444',
-                'fill-opacity': 0.08,
-              }}
-            />
-            <Layer
-              id="radar-coverage-outline-friendly"
-              type="line"
-              filter={['==', ['get', 'isEnemy'], false]}
-              paint={{
-                'line-color': '#4488cc',
-                'line-opacity': 0.2,
-                'line-width': 1,
-              }}
-            />
-            <Layer
-              id="radar-coverage-outline-enemy"
-              type="line"
-              filter={['==', ['get', 'isEnemy'], true]}
-              paint={{
-                'line-color': '#cc4444',
-                'line-opacity': 0.3,
-                'line-width': 1,
-              }}
-            />
-          </Source>
-        )}
+        {/* allRadarCoverage removed — RNG range rings handle this now */}
 
         {intelLOSPolygons.map((poly, i) => (
           <Source key={`intel-los-${i}`} id={`intel-los-${i}`} type="geojson" data={poly}>
@@ -591,8 +533,12 @@ export default function GameMap() {
             />
           </Source>
         )}
-        {showRangeRings && (() => {
-          const rangeData = createRangeRingGeoJSON(units)
+        {rngFilter !== 'off' && (() => {
+          const pNation = useGameStore.getState().viewState.playerNation
+          const filteredUnits = rngFilter === 'both' ? units
+            : rngFilter === 'friendly' ? units.filter(u => u.nation === pNation)
+            : units.filter(u => u.nation !== pNation)
+          const rangeData = createRangeRingGeoJSON(filteredUnits)
           return (
             <Source id="range-rings" type="geojson" data={rangeData}>
               {/* Fill — very subtle for both types */}

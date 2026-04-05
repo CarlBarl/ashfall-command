@@ -52,25 +52,29 @@ const btn: CSSProperties = {
 const btnFirst: CSSProperties = { ...btn, borderTop: 'none' }
 const active: CSSProperties = { borderColor: 'var(--border-accent)', color: 'var(--text-accent)', boxShadow: 'inset 0 0 0 1px var(--border-accent)' }
 
-type OpenSub = null | 'los' | 'int'
+type OpenSub = null | 'rng' | 'los' | 'int'
 
 export default function MapToggle() {
   const mapMode = useUIStore(s => s.mapMode)
   const showElevation = useUIStore(s => s.showElevation)
-  const showRangeRings = useUIStore(s => s.showRangeRings)
+  const rngFilter = useUIStore(s => s.rngFilter)
   const losFilter = useUIStore(s => s.losFilter)
   const showIntelCoverage = useUIStore(s => s.showIntelCoverage)
   const cycleMapMode = useUIStore(s => s.cycleMapMode)
   const toggleElevation = useUIStore(s => s.toggleElevation)
-  const toggleRangeRings = useUIStore(s => s.toggleRangeRings)
   const toggleIntelCoverage = useUIStore(s => s.toggleIntelCoverage)
 
   const [openSub, setOpenSub] = useState<OpenSub>(null)
 
   const isSat = mapMode === 'satellite'
+  const rngOn = rngFilter !== 'off'
   const losOn = losFilter !== 'off'
 
   const toggleSub = (sub: OpenSub) => setOpenSub(prev => prev === sub ? null : sub)
+
+  const setRNG = (filter: 'off' | 'friendly' | 'enemy' | 'both') => {
+    useUIStore.setState({ rngFilter: filter })
+  }
 
   const setLOS = (filter: typeof losFilter) => {
     useUIStore.setState({ losFilter: filter })
@@ -86,7 +90,7 @@ export default function MapToggle() {
         <button onClick={toggleElevation} style={{ ...btn, ...(showElevation ? active : {}) }} title="Elevation overlay">
           ELV
         </button>
-        <button onClick={toggleRangeRings} style={{ ...btn, ...(showRangeRings ? active : {}) }} title="Range circles">
+        <button onClick={() => toggleSub('rng')} style={{ ...btn, ...(rngOn ? active : {}), ...(openSub === 'rng' ? { background: 'var(--bg-hover)' } : {}) }} title="Range circles">
           RNG
         </button>
         <button onClick={() => toggleSub('los')} style={{ ...btn, ...(losOn ? active : {}), ...(openSub === 'los' ? { background: 'var(--bg-hover)' } : {}) }} title="Line of sight">
@@ -97,7 +101,24 @@ export default function MapToggle() {
         </button>
       </div>
 
-      {/* Sub-menu panel */}
+      {/* Sub-menu panels */}
+      {openSub === 'rng' && (
+        <div style={subMenu}>
+          <button onClick={() => setRNG('both')} style={{ ...btnFirst, ...(rngFilter === 'both' ? active : {}), minWidth: 64 }}>
+            ALL
+          </button>
+          <button onClick={() => setRNG('friendly')} style={{ ...btn, ...(rngFilter === 'friendly' ? active : {}), color: rngFilter === 'friendly' ? '#4488cc' : undefined }}>
+            FRD
+          </button>
+          <button onClick={() => setRNG('enemy')} style={{ ...btn, ...(rngFilter === 'enemy' ? active : {}), color: rngFilter === 'enemy' ? '#cc4444' : undefined }}>
+            ENM
+          </button>
+          <button onClick={() => setRNG('off')} style={{ ...btn, color: 'var(--text-muted)' }}>
+            OFF
+          </button>
+        </div>
+      )}
+
       {openSub === 'los' && (
         <div style={subMenu}>
           <button onClick={() => setLOS('both')} style={{ ...btnFirst, ...(losFilter === 'both' ? active : {}), minWidth: 64 }}>

@@ -12,6 +12,7 @@ interface UIState {
 
   // Map overlays
   showRangeRings: boolean
+  rngFilter: 'off' | 'friendly' | 'enemy' | 'both'
 
   // Map display
   mapMode: MapMode
@@ -68,6 +69,7 @@ export const useUIStore = create<UIState>((set) => ({
   showRadarLOS: false,
   showIntelCoverage: false,
   losFilter: 'off' as 'off' | 'friendly' | 'enemy' | 'both',
+  rngFilter: 'off' as 'off' | 'friendly' | 'enemy' | 'both',
   leftPanel: null,
   showOrbat: false,
   showStats: false,
