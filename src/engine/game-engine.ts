@@ -176,7 +176,7 @@ export class GameEngine {
     state.time.tick++
     state.time.timestamp += TICK_MS
 
-    processMovement(state)
+    processMovement(state, this.elevationGrid)
 
     // ROE enforcement + command queue before combat
     const orderCmds = processOrders(state)
