@@ -20,6 +20,7 @@ import '@/data/weapons/drones'
 import { patchDronePK } from '@/data/weapons/drone-pk-patch'
 import { resetDroneAIState } from './systems/drone-ai'
 import { ElevationGrid } from './systems/elevation'
+import { buildSensorNetwork, type SensorNetwork } from './systems/sensor-network'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
 const SCENARIO_START = new Date('2026-06-15T06:00:00Z').getTime()
@@ -46,6 +47,7 @@ export class GameEngine {
   state: GameState
   rng: SeededRNG
   elevationGrid: ElevationGrid | null = null
+  sensorNetwork: SensorNetwork | null = null
 
   constructor() {
     this.rng = new SeededRNG(42)
@@ -183,6 +185,9 @@ export class GameEngine {
     state.time.timestamp += TICK_MS
 
     processMovement(state, this.elevationGrid)
+
+    // Build sensor network graph for this tick (used by combat for networked detection)
+    this.sensorNetwork = buildSensorNetwork(state, this.elevationGrid)
 
     // ROE enforcement + command queue before combat
     const orderCmds = processOrders(state, this.elevationGrid)
