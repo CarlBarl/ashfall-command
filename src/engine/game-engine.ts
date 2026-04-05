@@ -330,6 +330,7 @@ function toViewUnit(u: Unit): ViewUnit {
     supplyStocks: u.supplyStocks.map(s => ({ ...s })),
     weapons: u.weapons.map(w => ({ ...w })),
     pointDefense: u.pointDefense.map(pd => ({ ...pd })),
+    sensors: u.sensors.map(s => ({ ...s })),
     roe: u.roe,
     waypoints: u.waypoints.map(w => ({ ...w })),
     parentId: u.parentId,

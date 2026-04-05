@@ -12,6 +12,7 @@ import { createImpactLayers } from './layers/ImpactLayer'
 import { createWaypointLayers } from './layers/WaypointLayer'
 import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
 import { createSupplyLineGeoJSON } from './layers/SupplyLineLayer'
+import { ensureMainThreadGrid, getLOSPolygon } from './layers/LOSLayer'
 import InfoTooltip from './InfoTooltip'
 import MissileTracker from './MissileTracker'
 import { useUIStore } from '@/store/ui-store'
@@ -52,6 +53,7 @@ export default function GameMap() {
   const selectUnit = useUIStore((s) => s.selectUnit)
   const hoverUnit = useUIStore((s) => s.hoverUnit)
   const showRangeRings = useUIStore((s) => s.showRangeRings)
+  const showRadarLOS = useUIStore((s) => s.showRadarLOS)
   const mapMode = useUIStore((s) => s.mapMode)
 
   const mapStyle = useMemo(() => getMapStyle(mapMode), [mapMode])
@@ -76,6 +78,36 @@ export default function GameMap() {
       .then(r => r.json())
       .then(setGeoData)
   }, [])
+
+  // Load elevation grid on main thread for LOS visualization
+  const [gridReady, setGridReady] = useState(false)
+  useEffect(() => {
+    ensureMainThreadGrid().then(() => setGridReady(true)).catch(() => {})
+  }, [])
+
+  // Compute LOS polygon for hovered/selected radar unit
+  const losPolygon = useMemo(() => {
+    if (!gridReady) return null
+
+    // Determine which unit to show LOS for:
+    // 1. Selected radar unit — always show
+    // 2. Hovered radar unit — only when showRadarLOS toggle is on
+    const losUnitId = selectedUnitId ?? (showRadarLOS ? hoveredUnitId : null)
+    if (!losUnitId) return null
+
+    const unit = units.find((u) => u.id === losUnitId)
+    if (!unit || unit.status === 'destroyed') return null
+
+    // Find the best radar sensor on this unit
+    const radarSensor = unit.sensors?.find((s) => s.type === 'radar')
+    if (!radarSensor) return null
+
+    // Only show for selected if it has radar, or hovered when toggle is on
+    if (losUnitId === hoveredUnitId && !showRadarLOS) return null
+
+    const antennaHeight = radarSensor.antenna_height_m ?? 15 // default 15m
+    return getLOSPolygon(losUnitId, unit.position, radarSensor.range_km, antennaHeight)
+  }, [gridReady, selectedUnitId, hoveredUnitId, showRadarLOS, units])
 
   const onLoad = useCallback(() => {
     mapRef.current?.getMap()?.resize()
@@ -216,6 +248,28 @@ export default function GameMap() {
                 'line-width': 0.5,
                 'line-opacity': 0.3,
                 'line-dasharray': [1, 4],
+              }}
+            />
+          </Source>
+        )}
+
+        {losPolygon && (
+          <Source id="los-coverage" type="geojson" data={losPolygon}>
+            <Layer
+              id="los-fill"
+              type="fill"
+              paint={{
+                'fill-color': '#22cc44',
+                'fill-opacity': 0.12,
+              }}
+            />
+            <Layer
+              id="los-outline"
+              type="line"
+              paint={{
+                'line-color': '#22cc44',
+                'line-opacity': 0.3,
+                'line-width': 1,
               }}
             />
           </Source>

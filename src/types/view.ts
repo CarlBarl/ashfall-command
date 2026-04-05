@@ -7,6 +7,7 @@ import type {
   PointDefenseSystem,
   Position,
   ROE,
+  Sensor,
   SupplyLine,
   UnitCategory,
   UnitId,
@@ -44,6 +45,7 @@ export interface ViewUnit {
   supplyStocks: WeaponStock[]
   weapons: WeaponLoadout[]
   pointDefense: PointDefenseSystem[]
+  sensors: Sensor[]
   roe: ROE
   waypoints: Position[]
   parentId?: UnitId
