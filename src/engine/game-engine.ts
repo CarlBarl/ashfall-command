@@ -250,6 +250,11 @@ export class GameEngine {
         state.nations[cmd.target].atWar = state.nations[cmd.target].atWar.filter(n => n !== player)
         break
       }
+      case 'SET_HEADING': {
+        const unit = state.units.get(cmd.unitId)
+        if (unit) unit.heading = cmd.heading
+        break
+      }
     }
   }
 

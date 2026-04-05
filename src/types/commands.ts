@@ -8,3 +8,4 @@ export type Command =
   | { type: 'DECLARE_WAR'; target: NationId }
   | { type: 'CEASE_FIRE'; target: NationId }
   | { type: 'LAUNCH_SAM'; launcherId: UnitId; weaponId: WeaponId; missileId: string }
+  | { type: 'SET_HEADING'; unitId: UnitId; heading: number }
