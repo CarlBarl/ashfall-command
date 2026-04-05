@@ -2,6 +2,7 @@ import type { GameState, NationId, ROE, UnitId } from '@/types/game'
 import type { Command } from '@/types/commands'
 import { haversine } from '../utils/geo'
 import { detectThreats } from './detection'
+import type { ElevationGrid } from './elevation'
 
 /** Module-level command queue — units can have pending commands */
 const commandQueues = new Map<UnitId, Command[]>()
@@ -45,7 +46,7 @@ const WEAPONS_TIGHT_RANGE_KM = 50
  *
  * Returns commands to be executed by the engine.
  */
-export function processOrders(state: GameState): Command[] {
+export function processOrders(state: GameState, elevationGrid?: ElevationGrid | null): Command[] {
   // Clear per-tick suppression state before re-evaluating
   suppressedMissiles.clear()
 
@@ -54,7 +55,7 @@ export function processOrders(state: GameState): Command[] {
 
   // Enforce weapons_tight ROE constraints
   // (hold_fire is enforced in combat.ts; weapons_free needs no filtering)
-  enforceWeaponsTight(state)
+  enforceWeaponsTight(state, elevationGrid)
 
   return commands
 }
@@ -65,7 +66,7 @@ export function processOrders(state: GameState): Command[] {
  *   - The unit itself
  *   - Any friendly unit within 50km of the AD unit
  */
-function enforceWeaponsTight(state: GameState): void {
+function enforceWeaponsTight(state: GameState, elevationGrid?: ElevationGrid | null): void {
   for (const unit of state.units.values()) {
     if (unit.status === 'destroyed') continue
     if (unit.roe !== 'weapons_tight') continue
@@ -83,7 +84,7 @@ function enforceWeaponsTight(state: GameState): void {
     }
 
     // Check detected threats — filter out those not targeting nearby friendlies
-    const threats = detectThreats(state, unit)
+    const threats = detectThreats(state, unit, elevationGrid)
     for (const threat of threats) {
       if (!nearbyFriendlyIds.has(threat.missile.targetId)) {
         // Not a local threat — mark missile so combat skips engagement

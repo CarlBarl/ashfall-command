@@ -179,7 +179,7 @@ export class GameEngine {
     processMovement(state, this.elevationGrid)
 
     // ROE enforcement + command queue before combat
-    const orderCmds = processOrders(state)
+    const orderCmds = processOrders(state, this.elevationGrid)
     for (const cmd of orderCmds) {
       this.executeCommand(cmd)
     }
