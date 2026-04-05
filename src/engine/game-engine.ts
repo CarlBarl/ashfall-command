@@ -22,6 +22,7 @@ import { resetDroneAIState } from './systems/drone-ai'
 import { ElevationGrid } from './systems/elevation'
 import { buildSensorNetwork, type SensorNetwork } from './systems/sensor-network'
 import { processSatellites, resetSatelliteState, getSatelliteDetections } from './systems/satellites'
+import { processEspionage, type EspionageResult } from './systems/espionage'
 import type { SatellitePass } from '@/types/game'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
@@ -50,6 +51,7 @@ export class GameEngine {
   rng: SeededRNG
   elevationGrid: ElevationGrid | null = null
   sensorNetwork: SensorNetwork | null = null
+  lastEspionageResult: EspionageResult | null = null
 
   constructor() {
     this.rng = new SeededRNG(42)
@@ -131,6 +133,12 @@ export class GameEngine {
       this.state.supplyLines.set(line.id, { ...line })
     }
 
+    // Initialize intel budgets
+    // USA: 15% total, balanced allocation
+    this.state.nations.usa.intelBudget = { total_pct: 15, humint_pct: 33, sigint_pct: 34, satellite_pct: 33 }
+    // Iran: 10% total, more HUMINT focused
+    this.state.nations.iran.intelBudget = { total_pct: 10, humint_pct: 50, sigint_pct: 30, satellite_pct: 20 }
+
     // Orient sector-limited SAMs toward enemy before first tick
     orientSAMRadars(this.state)
 
@@ -178,6 +186,14 @@ export class GameEngine {
       this.state.supplyLines.set(line.id, { ...line })
     }
 
+    // Initialize intel budgets (only if not already set from scenario data)
+    if (!this.state.nations.usa.intelBudget) {
+      this.state.nations.usa.intelBudget = { total_pct: 15, humint_pct: 33, sigint_pct: 34, satellite_pct: 33 }
+    }
+    if (!this.state.nations.iran.intelBudget) {
+      this.state.nations.iran.intelBudget = { total_pct: 10, humint_pct: 50, sigint_pct: 30, satellite_pct: 20 }
+    }
+
     // Orient sector-limited SAMs toward enemy before first tick
     orientSAMRadars(this.state)
 
@@ -219,6 +235,9 @@ export class GameEngine {
 
     // Satellite reconnaissance passes
     processSatellites(state)
+
+    // Espionage: HUMINT reveals + SIGINT multiplier
+    this.lastEspionageResult = processEspionage(state, this.rng)
   }
 
   /** Execute a player command */
@@ -293,6 +312,11 @@ export class GameEngine {
       case 'SET_HEADING': {
         const unit = state.units.get(cmd.unitId)
         if (unit) unit.heading = cmd.heading
+        break
+      }
+      case 'SET_INTEL_BUDGET': {
+        const nation = state.nations[state.playerNation]
+        if (nation) nation.intelBudget = cmd.budget
         break
       }
     }

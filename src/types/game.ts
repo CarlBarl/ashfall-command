@@ -33,6 +33,13 @@ export interface SatellitePass {
   }
 }
 
+export interface IntelBudget {
+  total_pct: number        // % of military budget on intel (0-30)
+  humint_pct: number       // % of intel budget on HUMINT (0-100, sums with others to 100)
+  sigint_pct: number       // % of intel budget on SIGINT
+  satellite_pct: number    // % of intel budget on satellite recon
+}
+
 export interface Nation {
   id: NationId
   name: string
@@ -40,6 +47,7 @@ export interface Nation {
   relations: Record<NationId, number> // -100..+100
   atWar: NationId[]
   satellites?: SatellitePass[]
+  intelBudget?: IntelBudget
 }
 
 export interface Economy {

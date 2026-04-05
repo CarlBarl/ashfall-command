@@ -1,4 +1,4 @@
-import type { GameTime, NationId, Position, ROE, UnitId, WeaponId } from './game'
+import type { GameTime, IntelBudget, NationId, Position, ROE, UnitId, WeaponId } from './game'
 
 export type Command =
   | { type: 'MOVE_UNIT'; unitId: UnitId; waypoints: Position[] }
@@ -10,3 +10,4 @@ export type Command =
   | { type: 'CEASE_FIRE'; target: NationId }
   | { type: 'LAUNCH_SAM'; launcherId: UnitId; weaponId: WeaponId; missileId: string }
   | { type: 'SET_HEADING'; unitId: UnitId; heading: number }
+  | { type: 'SET_INTEL_BUDGET'; budget: IntelBudget }
