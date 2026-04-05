@@ -60,15 +60,21 @@ export default function App() {
   const showIntel = useUIStore((s) => s.showIntel)
   // StrikePanel manages its own visibility via useStrikeStore
 
+  // On mobile: auto-open UNIT panel on select, close all on deselect (map tap)
   useEffect(() => {
     if (!isMobile) return
     if (selectedUnitId) {
       setMobilePanel('unit')
-    } else {
-      // Deselected: close unit/strike panels, keep data panels open
-      setMobilePanel(prev => (prev === 'unit' || prev === 'strike') ? null : prev)
     }
   }, [isMobile, selectedUnitId])
+
+  // When desktop panel state is cleared (map click), sync mobile panel
+  useEffect(() => {
+    if (!isMobile) return
+    if (!showOrbat && !showStats && !showEconomy && !showIntel && !selectedUnitId) {
+      setMobilePanel(null)
+    }
+  }, [isMobile, showOrbat, showStats, showEconomy, showIntel, selectedUnitId])
 
   // Global keyboard shortcuts
   const handleKeyDown = useCallback((e: KeyboardEvent) => {

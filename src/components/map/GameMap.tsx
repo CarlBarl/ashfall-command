@@ -220,8 +220,11 @@ export default function GameMap() {
       return // Don't do normal click processing
     }
 
-    // Clicking empty map: deselect units and close panels
+    // Clicking empty map: deselect units and close all panels
     useUIStore.getState().clearSelection()
+    // Close desktop panels
+    useUIStore.setState({ leftPanel: null, showOrbat: false, showStats: false, showEconomy: false, showIntel: false })
+    useStrikeStore.getState().closeStrike()
   }, [addRouteWaypoint])
 
   const onMove = useCallback((evt: { viewState: { zoom: number }; lngLat?: { lat: number; lng: number } }) => {
