@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import { launchMissile, processCombat, resetCombatState } from '../combat'
-import { processMovement } from '../movement'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import { SeededRNG } from '../../utils/rng'
 import { haversine } from '../../utils/geo'

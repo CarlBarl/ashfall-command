@@ -22,11 +22,11 @@ const ROE_OPTIONS: { value: ROE; label: string; shortLabel: string; color: strin
   { value: 'hold_fire', label: 'HOLD FIRE', shortLabel: 'HOLD', color: 'var(--status-damaged)' },
 ]
 
-const INLINE_SPEEDS = [0, 6, 60, 600] as const
+const INLINE_SPEEDS = [0, 0.1, 6, 600] as const
 const INLINE_LABELS: Record<number, string> = {
   0: '||',
+  0.1: '1s',
   6: '1m',
-  60: '10m',
   600: '1h',
 }
 
