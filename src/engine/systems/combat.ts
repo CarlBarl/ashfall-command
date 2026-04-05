@@ -520,16 +520,37 @@ function updateInterceptors(state: GameState, rng: SeededRNG): void {
       continue
     }
 
-    // Pursuit: update interceptor position toward target
+    // Lead pursuit (proportional navigation approximation):
+    // Fly toward where the target WILL BE, not where it IS now.
+    const intKmPerSec = machToKmh(interceptor.speed_current_mach) / 3600
+
+    // Get target's heading from its last two path points
+    let targetHeading = 0
+    if (targetMissile.path.length >= 2) {
+      const prev = targetMissile.path[Math.max(0, targetMissile.path.length - 2)]
+      targetHeading = bearing({ lat: prev[1], lng: prev[0] }, { lat: targetPos[1], lng: targetPos[0] })
+    }
+
+    // Estimate time-to-intercept from current closing geometry
+    const targetKmPerSec = machToKmh(targetMissile.speed_current_mach) / 3600
+    const timeToInterceptSec = dist / (intKmPerSec + targetKmPerSec * 0.5) // rough closing rate
+
+    // Predict where target will be at intercept time
+    const leadDist = targetKmPerSec * Math.min(timeToInterceptSec, 30) // cap lead at 30s ahead
+    const predictedTarget = destination(
+      { lat: targetPos[1], lng: targetPos[0] },
+      targetHeading,
+      leadDist,
+    )
+
     const brng = bearing(
       { lng: intPos[0], lat: intPos[1] },
-      { lng: targetPos[0], lat: targetPos[1] },
+      predictedTarget,
     )
-    const kmPerSec = machToKmh(interceptor.speed_current_mach) / 3600
     const newPos = destination(
       { lng: intPos[0], lat: intPos[1] },
       brng,
-      kmPerSec,
+      intKmPerSec,
     )
 
     // Truncate initial great-circle path points that are in the future
