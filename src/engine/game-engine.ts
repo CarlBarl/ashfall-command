@@ -246,7 +246,7 @@ export class GameEngine {
         break
       }
       case 'LAUNCH_MISSILE': {
-        const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId)
+        const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId, cmd.waypoints)
         if (event) {
           const launcher = state.units.get(cmd.launcherId)
           const target = state.units.get(cmd.targetId)

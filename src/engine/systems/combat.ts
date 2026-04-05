@@ -602,6 +602,7 @@ export function launchMissile(
   launcherId: string,
   weaponId: string,
   targetId: string,
+  waypoints?: import('@/types/game').Position[],
 ): GameEvent | null {
   const launcher = state.units.get(launcherId)
   const target = state.units.get(targetId)
@@ -613,8 +614,8 @@ export function launchMissile(
   const spec = weaponSpecs[weaponId]
   if (!spec) return null
 
-  const dist = haversine(launcher.position, target.position)
-  if (dist > spec.range_km) return null
+  const directDist = haversine(launcher.position, target.position)
+  if (directDist > spec.range_km) return null
 
   loadout.count--
 
@@ -627,10 +628,53 @@ export function launchMissile(
     }])
   }
 
-  const flightTimeMs = computeFlightTime(dist, spec)
-  const numSegments = Math.max(20, Math.ceil(dist / 10))
-  const path = greatCirclePath(launcher.position, target.position, numSegments)
-  const timestamps = generateTimestamps(state.time.timestamp, flightTimeMs, numSegments)
+  const numSegments = Math.max(20, Math.ceil(directDist / 10))
+
+  let path: [number, number][]
+  let timestamps: number[]
+  let flightTimeMs: number
+
+  if (waypoints && waypoints.length > 0) {
+    // Build list of all route points: launcher → wp1 → wp2 → ... → target
+    const points = [launcher.position, ...waypoints, target.position]
+    let totalDist = 0
+    for (let i = 0; i < points.length - 1; i++) {
+      totalDist += haversine(points[i], points[i + 1])
+    }
+
+    if (totalDist > spec.range_km) {
+      // Waypoint route too long — fall back to direct path
+      flightTimeMs = computeFlightTime(directDist, spec)
+      path = greatCirclePath(launcher.position, target.position, numSegments)
+      timestamps = generateTimestamps(state.time.timestamp, flightTimeMs, numSegments)
+    } else {
+      // Build path through waypoints
+      flightTimeMs = computeFlightTime(totalDist, spec)
+      path = []
+      timestamps = []
+      let cumDist = 0
+      for (let i = 0; i < points.length - 1; i++) {
+        const segDist = haversine(points[i], points[i + 1])
+        const segSegments = Math.max(3, Math.ceil((segDist / totalDist) * numSegments))
+        const segPath = greatCirclePath(points[i], points[i + 1], segSegments)
+        // Skip first point of each segment (except the first) to avoid duplicates
+        path.push(...(i === 0 ? segPath : segPath.slice(1)))
+        // Generate timestamps proportional to distance
+        const segStartTime = state.time.timestamp + (cumDist / totalDist) * flightTimeMs
+        const segEndTime = state.time.timestamp + ((cumDist + segDist) / totalDist) * flightTimeMs
+        const segTimestamps = segPath.map((_, j) =>
+          segStartTime + (j / (segPath.length - 1)) * (segEndTime - segStartTime)
+        )
+        timestamps.push(...(i === 0 ? segTimestamps : segTimestamps.slice(1)))
+        cumDist += segDist
+      }
+    }
+  } else {
+    // No waypoints — direct path
+    flightTimeMs = computeFlightTime(directDist, spec)
+    path = greatCirclePath(launcher.position, target.position, numSegments)
+    timestamps = generateTimestamps(state.time.timestamp, flightTimeMs, numSegments)
+  }
 
   // Fuel duration: range_km / (speed_kmh / 3600) = seconds of burn
   const speedKmPerSec = machToKmh(spec.speed_mach) / 3600
