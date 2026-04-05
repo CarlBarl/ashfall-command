@@ -2,7 +2,7 @@ import type { GameState, NationId, UnitId } from '@/types/game'
 import type { Command } from '@/types/commands'
 import type { SeededRNG } from '../utils/rng'
 import { weaponSpecs } from '@/data/weapons/missiles'
-import { haversine } from '../utils/geo'
+import { haversine, bearing } from '../utils/geo'
 import { processDroneSwarm, getDroneAmmo } from './drone-ai'
 
 type AIPhase = 'PEACETIME' | 'ALERT' | 'DEFENSIVE' | 'OFFENSIVE' | 'ATTRITION'
@@ -31,9 +31,45 @@ function getAIState(nation: NationId): AIState {
   return s
 }
 
+/** Orient sector-limited SAM radars toward the nearest enemy concentration */
+function orientSAMRadars(state: GameState, excludeNation?: NationId): void {
+  for (const unit of state.units.values()) {
+    if (unit.status === 'destroyed') continue
+    if (excludeNation && unit.nation === excludeNation) continue
+
+    // Only orient units with sector-limited radar
+    const radar = unit.sensors.find(s => s.type === 'radar' && s.sector_deg != null && s.sector_deg < 360)
+    if (!radar) continue
+
+    // Find centroid of enemy units as threat axis
+    let sumLat = 0, sumLng = 0, count = 0
+    for (const other of state.units.values()) {
+      if (other.nation === unit.nation) continue
+      if (other.status === 'destroyed') continue
+      sumLat += other.position.lat
+      sumLng += other.position.lng
+      count++
+    }
+
+    if (count === 0) continue
+
+    const enemyCentroid = { lat: sumLat / count, lng: sumLng / count }
+    unit.heading = bearing(unit.position, enemyCentroid)
+  }
+}
+
 /** Process AI for all non-player nations. Returns commands to execute. */
 export function processAI(state: GameState, rng: SeededRNG): Command[] {
   const commands: Command[] = []
+
+  // Orient SAM radars toward threats
+  if (state.time.tick === 1) {
+    // Orient ALL sector-limited SAMs at game start
+    orientSAMRadars(state)
+  } else if (state.time.tick % 60 === 0) {
+    // Re-orient only enemy (non-player) SAMs periodically
+    orientSAMRadars(state, state.playerNation)
+  }
 
   for (const nation of Object.values(state.nations)) {
     if (nation.id === state.playerNation) continue // player-controlled
