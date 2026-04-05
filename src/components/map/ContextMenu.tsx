@@ -103,6 +103,23 @@ export default function ContextMenu({ x, y, lngLat, shiftKey, onClose }: Context
         waypoints: [bestPos],
       })
     }
+
+    // Auto-orient radar toward nearest enemy unit
+    const enemies = units.filter(u => u.nation !== unit.nation && u.status !== 'destroyed')
+    if (enemies.length > 0 && hasSectorRadar) {
+      let nearestEnemy = enemies[0]
+      let nearestDist = Infinity
+      const pos = bestPos !== unit.position ? bestPos : unit.position
+      for (const e of enemies) {
+        const dLat = e.position.lat - pos.lat
+        const dLng = e.position.lng - pos.lng
+        const d = dLat * dLat + dLng * dLng
+        if (d < nearestDist) { nearestDist = d; nearestEnemy = e }
+      }
+      const hdg = bearing(pos, nearestEnemy.position)
+      sendCommand({ type: 'SET_HEADING', unitId: unit.id, heading: hdg })
+    }
+
     onClose()
   }
 
