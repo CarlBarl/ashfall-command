@@ -17,6 +17,7 @@ const emptyViewState: GameViewState = {
   supplyLines: [],
   events: [],
   pendingEventCount: 0,
+  satelliteDetectedUnitIds: [],
 }
 
 interface GameStore {

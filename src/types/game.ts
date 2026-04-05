@@ -19,12 +19,27 @@ export interface GameTime {
   tickIntervalMs: number
 }
 
+export interface SatellitePass {
+  id: string
+  nation: NationId
+  type: 'optical' | 'radar_sat'
+  swathWidth_km: number
+  /** Game seconds between passes */
+  revisitInterval_sec: number
+  lastPassTick: number
+  groundTrack: {
+    startLat: number; startLng: number
+    endLat: number; endLng: number
+  }
+}
+
 export interface Nation {
   id: NationId
   name: string
   economy: Economy
   relations: Record<NationId, number> // -100..+100
   atWar: NationId[]
+  satellites?: SatellitePass[]
 }
 
 export interface Economy {

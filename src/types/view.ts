@@ -28,6 +28,8 @@ export interface GameViewState {
   /** New events since last poll (one-shot delivery) */
   events: GameEvent[]
   pendingEventCount: number
+  /** Unit IDs recently detected by satellite passes (fades after ~60 ticks) */
+  satelliteDetectedUnitIds: string[]
 }
 
 export interface ViewUnit {

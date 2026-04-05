@@ -21,6 +21,8 @@ import { patchDronePK } from '@/data/weapons/drone-pk-patch'
 import { resetDroneAIState } from './systems/drone-ai'
 import { ElevationGrid } from './systems/elevation'
 import { buildSensorNetwork, type SensorNetwork } from './systems/sensor-network'
+import { processSatellites, resetSatelliteState, getSatelliteDetections } from './systems/satellites'
+import type { SatellitePass } from '@/types/game'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
 const SCENARIO_START = new Date('2026-06-15T06:00:00Z').getTime()
@@ -131,6 +133,9 @@ export class GameEngine {
 
     // Orient sector-limited SAMs toward enemy before first tick
     orientSAMRadars(this.state)
+
+    // Initialize satellite constellations
+    this.initSatellites()
   }
 
   /** Initialize from scenario data (used by the game mode menu) */
@@ -175,6 +180,9 @@ export class GameEngine {
 
     // Orient sector-limited SAMs toward enemy before first tick
     orientSAMRadars(this.state)
+
+    // Initialize satellite constellations
+    this.initSatellites()
   }
 
   /** Advance simulation by one tick */
@@ -208,6 +216,9 @@ export class GameEngine {
     for (const cmd of [...friendlyCmds, ...aiCommands]) {
       this.executeCommand(cmd)
     }
+
+    // Satellite reconnaissance passes
+    processSatellites(state)
   }
 
   /** Execute a player command */
@@ -303,6 +314,7 @@ export class GameEngine {
       supplyLines: Array.from(state.supplyLines.values()),
       events,
       pendingEventCount: state.events.length,
+      satelliteDetectedUnitIds: Array.from(getSatelliteDetections(state.time.tick)),
     }
   }
 
@@ -336,6 +348,68 @@ export class GameEngine {
     resetPointDefenseState()
     resetRepairState()
     resetDroneAIState()
+    resetSatelliteState()
+  }
+
+  /** Set up satellite constellations for each nation */
+  private initSatellites(): void {
+    const usaSats: SatellitePass[] = [
+      {
+        id: 'usa_optical_1',
+        nation: 'usa',
+        type: 'optical',
+        swathWidth_km: 50,
+        revisitInterval_sec: 3600, // 1 hour
+        lastPassTick: 0,
+        groundTrack: {
+          startLat: 38, startLng: 44,  // NW Turkey
+          endLat: 24, endLng: 60,       // SE Arabian Sea
+        },
+      },
+      {
+        id: 'usa_optical_2',
+        nation: 'usa',
+        type: 'optical',
+        swathWidth_km: 50,
+        revisitInterval_sec: 3600,
+        lastPassTick: 1800, // offset so passes alternate
+        groundTrack: {
+          startLat: 24, startLng: 44,  // SW Saudi Arabia
+          endLat: 38, endLng: 60,       // NE Turkmenistan
+        },
+      },
+      {
+        id: 'usa_radar_sat_1',
+        nation: 'usa',
+        type: 'radar_sat',
+        swathWidth_km: 200,
+        revisitInterval_sec: 7200, // 2 hours
+        lastPassTick: 0,
+        groundTrack: {
+          startLat: 36, startLng: 46,  // NW Iraq
+          endLat: 26, endLng: 58,       // SE Gulf of Oman
+        },
+      },
+    ]
+
+    const iranSats: SatellitePass[] = [
+      {
+        id: 'iran_optical_1',
+        nation: 'iran',
+        type: 'optical',
+        swathWidth_km: 30,
+        revisitInterval_sec: 10800, // 3 hours
+        lastPassTick: 0,
+        groundTrack: {
+          startLat: 34, startLng: 46,  // NW Iran border
+          endLat: 26, endLng: 58,       // SE Gulf of Oman
+        },
+      },
+    ]
+
+    this.state.nations.usa.satellites = usaSats
+    this.state.nations.iran.satellites = iranSats
+    resetSatelliteState()
   }
 
   private emitEvent(event: GameEvent): void {
