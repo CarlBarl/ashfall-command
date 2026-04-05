@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSensorNetwork, detectThreatsNetworked } from '../sensor-network'
+import { buildSensorNetwork, detectThreatsNetworked, isDetectedByELINT } from '../sensor-network'
 import type { GameState, Unit, Missile, NationId } from '@/types/game'
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -150,5 +150,113 @@ describe('detectThreatsNetworked', () => {
     const threats = detectThreatsNetworked(state, sam, network)
     // No missiles in flight → no threats
     expect(threats).toHaveLength(0)
+  })
+})
+
+describe('ELINT detection', () => {
+  it('detects enemy radar within 1.5x range', () => {
+    // USA unit at 25,51 — Iran radar at 25.5,51.5 with 300km range
+    // Distance ~70km, 1.5x range = 450km → detected
+    const usaSensor = makeUnit({
+      id: 'usa_elint',
+      nation: 'usa',
+      position: { lat: 25, lng: 51 },
+      sensors: [{ type: 'radar', range_km: 100, detection_prob: 0.9 }],
+    })
+    const iranRadar = makeUnit({
+      id: 'iran_s300',
+      nation: 'iran',
+      position: { lat: 25.5, lng: 51.5 },
+      sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.92 }],
+    })
+    const state = makeState([usaSensor, iranRadar])
+    const network = buildSensorNetwork(state)
+
+    // USA should detect Iran's radar via ELINT
+    expect(isDetectedByELINT(network, 'usa', 'iran_s300')).toBe(true)
+    // Iran should also detect USA's radar via ELINT (distance ~70km, 1.5x100=150km)
+    expect(isDetectedByELINT(network, 'iran', 'usa_elint')).toBe(true)
+  })
+
+  it('does not detect enemy radar beyond 1.5x range', () => {
+    // USA unit very far from Iran radar → not detected
+    const usaSensor = makeUnit({
+      id: 'usa_elint',
+      nation: 'usa',
+      position: { lat: 25, lng: 51 },
+      sensors: [{ type: 'radar', range_km: 100, detection_prob: 0.9 }],
+    })
+    const iranRadar = makeUnit({
+      id: 'iran_s300',
+      nation: 'iran',
+      position: { lat: 30, lng: 56 }, // ~700km away
+      sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.92 }],
+    })
+    const state = makeState([usaSensor, iranRadar])
+    const network = buildSensorNetwork(state)
+
+    // 1.5x300=450km, distance ~700km → not detected
+    expect(isDetectedByELINT(network, 'usa', 'iran_s300')).toBe(false)
+  })
+
+  it('does not detect units without radar sensors', () => {
+    // Iran missile battery with no radar → not detected via ELINT
+    const usaSensor = makeUnit({
+      id: 'usa_elint',
+      nation: 'usa',
+      position: { lat: 25, lng: 51 },
+      sensors: [{ type: 'radar', range_km: 100, detection_prob: 0.9 }],
+    })
+    const iranBattery = makeUnit({
+      id: 'iran_missile',
+      nation: 'iran',
+      position: { lat: 25.5, lng: 51.5 }, // ~70km away, close enough
+      sensors: [], // no radar
+    })
+    const state = makeState([usaSensor, iranBattery])
+    const network = buildSensorNetwork(state)
+
+    expect(isDetectedByELINT(network, 'usa', 'iran_missile')).toBe(false)
+  })
+
+  it('does not detect same-nation units', () => {
+    const usaRadar1 = makeUnit({
+      id: 'usa_radar1',
+      nation: 'usa',
+      position: { lat: 25, lng: 51 },
+      sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.95 }],
+    })
+    const usaRadar2 = makeUnit({
+      id: 'usa_radar2',
+      nation: 'usa',
+      position: { lat: 25.1, lng: 51.1 }, // very close
+      sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.95 }],
+    })
+    const state = makeState([usaRadar1, usaRadar2])
+    const network = buildSensorNetwork(state)
+
+    // Same nation — should NOT appear in ELINT detections
+    expect(isDetectedByELINT(network, 'usa', 'usa_radar2')).toBe(false)
+  })
+
+  it('requires detecting unit to have sensors', () => {
+    // Unit with no sensors can't detect ELINT emissions
+    const usaNoSensors = makeUnit({
+      id: 'usa_base',
+      nation: 'usa',
+      position: { lat: 25, lng: 51 },
+      sensors: [], // no sensors
+    })
+    const iranRadar = makeUnit({
+      id: 'iran_s300',
+      nation: 'iran',
+      position: { lat: 25.1, lng: 51.1 }, // very close
+      sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.92 }],
+    })
+    const state = makeState([usaNoSensors, iranRadar])
+    const network = buildSensorNetwork(state)
+
+    // USA has no sensor-capable units → can't detect ELINT
+    expect(isDetectedByELINT(network, 'usa', 'iran_s300')).toBe(false)
   })
 })

@@ -20,6 +20,8 @@ export interface SensorNetwork {
   connections: Map<UnitId, UnitId[]>
   /** nation → missileId → best detection from any networked unit */
   sharedDetections: Map<NationId, Map<string, NetworkDetection>>
+  /** nation → set of enemy unit IDs detected via ELINT (radar emission interception) */
+  elintDetections: Map<NationId, Set<UnitId>>
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +154,38 @@ export function buildSensorNetwork(
     }
   }
 
-  return { connections, sharedDetections }
+  // --- Step 5: ELINT — detect enemy radar emissions ---
+  // Any unit with sensors within 1.5× an enemy radar's range can detect its emissions
+  const elintDetections = new Map<NationId, Set<UnitId>>()
+
+  for (const unit of state.units.values()) {
+    if (unit.status === 'destroyed') continue
+    if (unit.sensors.length === 0) continue // need sensors to detect emissions
+
+    for (const enemy of state.units.values()) {
+      if (enemy.status === 'destroyed') continue
+      if (enemy.nation === unit.nation) continue // same nation — skip
+
+      // Check each enemy radar sensor
+      for (const sensor of enemy.sensors) {
+        if (sensor.type !== 'radar') continue
+        const elintRange = sensor.range_km * 1.5 // emissions detectable at 1.5x radar range
+        const dist = haversine(unit.position, enemy.position)
+        if (dist <= elintRange) {
+          // Add enemy unit to ELINT detections for detecting unit's nation
+          let nationSet = elintDetections.get(unit.nation)
+          if (!nationSet) {
+            nationSet = new Set()
+            elintDetections.set(unit.nation, nationSet)
+          }
+          nationSet.add(enemy.id)
+          break // already detected this enemy, no need to check remaining sensors
+        }
+      }
+    }
+  }
+
+  return { connections, sharedDetections, elintDetections }
 }
 
 // ---------------------------------------------------------------------------
@@ -211,4 +244,17 @@ export function detectThreatsNetworked(
   const results = Array.from(resultMap.values())
   results.sort((a, b) => a.timeToImpactMs - b.timeToImpactMs)
   return results
+}
+
+// ---------------------------------------------------------------------------
+// ELINT helper
+// ---------------------------------------------------------------------------
+
+/** Check if a unit has been detected via ELINT by a given nation */
+export function isDetectedByELINT(
+  network: SensorNetwork,
+  nation: NationId,
+  unitId: UnitId,
+): boolean {
+  return network.elintDetections.get(nation)?.has(unitId) ?? false
 }
