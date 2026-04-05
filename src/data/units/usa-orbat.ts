@@ -194,7 +194,7 @@ export const usaUnits: Unit[] = [
 
   u({
     id: 'patriot_qatar', name: 'Patriot Battery (Qatar)', nation: 'usa', category: 'sam_site',
-    position: { lat: 25.3, lng: 51.5 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    position: { lat: 25.3, lng: 51.5 }, heading: 0, speed_kts: 0, maxSpeed_kts: 25,
     health: 100, hardness: 100,
     weapons: [
       { weaponId: 'pac3_mse', count: 16, maxCount: 16, reloadTimeSec: 600 },
@@ -205,7 +205,7 @@ export const usaUnits: Unit[] = [
 
   u({
     id: 'patriot_bahrain', name: 'Patriot Battery (Bahrain)', nation: 'usa', category: 'sam_site',
-    position: { lat: 26.2, lng: 50.5 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    position: { lat: 26.2, lng: 50.5 }, heading: 0, speed_kts: 0, maxSpeed_kts: 25,
     health: 100, hardness: 100,
     weapons: [
       { weaponId: 'pac3_mse', count: 16, maxCount: 16, reloadTimeSec: 600 },
@@ -216,7 +216,7 @@ export const usaUnits: Unit[] = [
 
   u({
     id: 'patriot_kuwait', name: 'Patriot Battery (Kuwait)', nation: 'usa', category: 'sam_site',
-    position: { lat: 29.2, lng: 47.7 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    position: { lat: 29.2, lng: 47.7 }, heading: 0, speed_kts: 0, maxSpeed_kts: 25,
     health: 100, hardness: 100,
     weapons: [
       { weaponId: 'pac3_mse', count: 16, maxCount: 16, reloadTimeSec: 600 },
@@ -227,7 +227,7 @@ export const usaUnits: Unit[] = [
 
   u({
     id: 'patriot_saudi', name: 'Patriot Battery (Riyadh)', nation: 'usa', category: 'sam_site',
-    position: { lat: 24.7, lng: 46.7 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    position: { lat: 24.7, lng: 46.7 }, heading: 0, speed_kts: 0, maxSpeed_kts: 25,
     health: 100, hardness: 100,
     weapons: [
       { weaponId: 'pac3_mse', count: 16, maxCount: 16, reloadTimeSec: 600 },
@@ -239,7 +239,7 @@ export const usaUnits: Unit[] = [
   // THAAD in UAE
   u({
     id: 'thaad_uae', name: 'THAAD Battery (UAE)', nation: 'usa', category: 'sam_site',
-    position: { lat: 24.4, lng: 54.5 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    position: { lat: 24.4, lng: 54.5 }, heading: 0, speed_kts: 0, maxSpeed_kts: 25,
     health: 100, hardness: 100,
     weapons: [
       { weaponId: 'thaad_int', count: 48, maxCount: 48, reloadTimeSec: 900 },

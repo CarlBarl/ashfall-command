@@ -20,7 +20,7 @@ export const iranUnits: Unit[] = [
 
   u({
     id: 's300_isfahan', name: 'S-300PMU-2 (Isfahan)', nation: 'iran', category: 'sam_site',
-    position: { lat: 32.66, lng: 51.68 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    position: { lat: 32.66, lng: 51.68 }, heading: 0, speed_kts: 0, maxSpeed_kts: 25,
     health: 100, hardness: 100,
     weapons: [
       { weaponId: 's300_48n6e2', count: 32, maxCount: 32, reloadTimeSec: 720 },
@@ -31,7 +31,7 @@ export const iranUnits: Unit[] = [
 
   u({
     id: 's300_bushehr', name: 'S-300PMU-2 (Bushehr)', nation: 'iran', category: 'sam_site',
-    position: { lat: 28.97, lng: 50.83 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    position: { lat: 29.1, lng: 50.6 }, heading: 0, speed_kts: 0, maxSpeed_kts: 25,
     health: 100, hardness: 100,
     weapons: [
       { weaponId: 's300_48n6e2', count: 32, maxCount: 32, reloadTimeSec: 720 },
@@ -42,7 +42,7 @@ export const iranUnits: Unit[] = [
 
   u({
     id: 's300_natanz', name: 'S-300PMU-2 (Natanz)', nation: 'iran', category: 'sam_site',
-    position: { lat: 33.73, lng: 51.73 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    position: { lat: 33.73, lng: 51.73 }, heading: 0, speed_kts: 0, maxSpeed_kts: 25,
     health: 100, hardness: 100,
     weapons: [
       { weaponId: 's300_48n6e2', count: 32, maxCount: 32, reloadTimeSec: 720 },
@@ -53,7 +53,7 @@ export const iranUnits: Unit[] = [
 
   u({
     id: 'bavar_tehran', name: 'Bavar-373 (Tehran)', nation: 'iran', category: 'sam_site',
-    position: { lat: 35.69, lng: 51.39 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    position: { lat: 35.69, lng: 51.39 }, heading: 0, speed_kts: 0, maxSpeed_kts: 25,
     health: 100, hardness: 100,
     weapons: [
       { weaponId: 'bavar373_int', count: 24, maxCount: 24, reloadTimeSec: 600 },
@@ -64,7 +64,7 @@ export const iranUnits: Unit[] = [
 
   u({
     id: 'bavar_esfahan', name: 'Bavar-373 (Isfahan #2)', nation: 'iran', category: 'sam_site',
-    position: { lat: 32.50, lng: 51.80 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    position: { lat: 32.50, lng: 51.80 }, heading: 0, speed_kts: 0, maxSpeed_kts: 25,
     health: 100, hardness: 100,
     weapons: [
       { weaponId: 'bavar373_int', count: 24, maxCount: 24, reloadTimeSec: 600 },
@@ -76,7 +76,7 @@ export const iranUnits: Unit[] = [
   // Medium Range SAMs
   u({
     id: 'khordad_tehran', name: '3rd Khordad (Tehran)', nation: 'iran', category: 'sam_site',
-    position: { lat: 35.75, lng: 51.25 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    position: { lat: 35.75, lng: 51.25 }, heading: 0, speed_kts: 0, maxSpeed_kts: 20,
     health: 100, hardness: 80,
     weapons: [
       { weaponId: 'khordad15_int', count: 12, maxCount: 12, reloadTimeSec: 480 },
@@ -87,7 +87,7 @@ export const iranUnits: Unit[] = [
 
   u({
     id: 'khordad_bandar', name: '3rd Khordad (Bandar Abbas)', nation: 'iran', category: 'sam_site',
-    position: { lat: 27.18, lng: 56.27 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    position: { lat: 27.3, lng: 56.1 }, heading: 0, speed_kts: 0, maxSpeed_kts: 20,
     health: 100, hardness: 80,
     weapons: [
       { weaponId: 'khordad15_int', count: 12, maxCount: 12, reloadTimeSec: 480 },
@@ -99,7 +99,7 @@ export const iranUnits: Unit[] = [
   // Short Range — Tor-M1
   u({
     id: 'tor_isfahan', name: 'Tor-M1 (Isfahan)', nation: 'iran', category: 'sam_site',
-    position: { lat: 32.70, lng: 51.65 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    position: { lat: 32.70, lng: 51.65 }, heading: 0, speed_kts: 0, maxSpeed_kts: 35,
     health: 100, hardness: 60,
     weapons: [
       { weaponId: 'tor_m1_int', count: 8, maxCount: 8, reloadTimeSec: 300 },
@@ -110,7 +110,7 @@ export const iranUnits: Unit[] = [
 
   u({
     id: 'tor_bushehr', name: 'Tor-M1 (Bushehr)', nation: 'iran', category: 'sam_site',
-    position: { lat: 28.95, lng: 50.85 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    position: { lat: 28.95, lng: 50.85 }, heading: 0, speed_kts: 0, maxSpeed_kts: 35,
     health: 100, hardness: 60,
     weapons: [
       { weaponId: 'tor_m1_int', count: 8, maxCount: 8, reloadTimeSec: 300 },
