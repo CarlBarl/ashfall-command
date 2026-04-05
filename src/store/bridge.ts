@@ -14,6 +14,9 @@ export function initBridge(): void {
   worker = new Worker(new URL('@/engine/worker.ts', import.meta.url), { type: 'module' })
   api = Comlink.wrap<WorkerAPI>(worker)
 
+  // Load elevation grid (non-blocking — game can start before it finishes)
+  api.loadElevation().catch(console.warn)
+
   const frame = async () => {
     pollCounter++
 
@@ -78,4 +81,9 @@ export async function initFromData(
 export async function isGameInitialized(): Promise<boolean> {
   if (!api) return false
   return api.isInitialized()
+}
+
+export async function loadElevation(): Promise<void> {
+  if (!api) throw new Error('Bridge not initialized')
+  await api.loadElevation()
 }

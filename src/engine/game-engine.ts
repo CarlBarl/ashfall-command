@@ -19,6 +19,7 @@ import { iranBaseSupply, iranSupplyLines } from '@/data/supply/iran-supply'
 import '@/data/weapons/drones'
 import { patchDronePK } from '@/data/weapons/drone-pk-patch'
 import { resetDroneAIState } from './systems/drone-ai'
+import { ElevationGrid } from './systems/elevation'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
 const SCENARIO_START = new Date('2026-06-15T06:00:00Z').getTime()
@@ -44,6 +45,7 @@ function createEmptyState(): GameState {
 export class GameEngine {
   state: GameState
   rng: SeededRNG
+  elevationGrid: ElevationGrid | null = null
 
   constructor() {
     this.rng = new SeededRNG(42)
@@ -51,6 +53,10 @@ export class GameEngine {
 
     // Start with empty uninitialized state — initGame() populates it
     this.state = createEmptyState()
+  }
+
+  setElevationGrid(grid: ElevationGrid): void {
+    this.elevationGrid = grid
   }
 
   /** Initialize game from the default scenario (backward-compatible) */

@@ -1,6 +1,7 @@
 import * as Comlink from 'comlink'
 import { GameEngine } from './game-engine'
 import { GameLoop } from './game-loop'
+import { ElevationGrid } from './systems/elevation'
 import type { GameViewState } from '@/types/view'
 import type { Command } from '@/types/commands'
 import type { NationId, Nation, Unit, SupplyLine, WeaponStock } from '@/types/game'
@@ -57,6 +58,12 @@ const api = {
 
   loadState(json: string): void {
     engine.loadState(json)
+  },
+
+  async loadElevation(): Promise<void> {
+    const resp = await fetch('/data/theater-elevation.bin')
+    const buf = await resp.arrayBuffer()
+    engine.setElevationGrid(new ElevationGrid(buf))
   },
 }
 
