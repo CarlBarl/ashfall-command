@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapGL, { Layer, Source } from 'react-map-gl/maplibre'
 import type { MapRef, MapLayerMouseEvent } from 'react-map-gl/maplibre'
-import type { StyleSpecification } from 'maplibre-gl'
 import DeckOverlay from './DeckOverlay'
 import ContextMenu from './ContextMenu'
 import { createUnitLayer, getLastClusterMap } from './layers/UnitLayer'
@@ -17,7 +16,7 @@ import MissileTracker from './MissileTracker'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
-import baseStyle from '@/styles/map-style.json'
+import { getMapStyle } from '@/styles/map-providers'
 
 const INITIAL_VIEW = {
   longitude: 51.4,
@@ -168,7 +167,7 @@ export default function GameMap() {
         ref={mapRef}
         initialViewState={INITIAL_VIEW}
         style={{ width: '100%', height: '100%' }}
-        mapStyle={baseStyle as StyleSpecification}
+        mapStyle={getMapStyle('dark')}
         onLoad={onLoad}
         onMove={onMove}
         onContextMenu={onContextMenu}

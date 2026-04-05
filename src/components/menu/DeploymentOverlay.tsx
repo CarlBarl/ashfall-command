@@ -1,13 +1,12 @@
 import { useEffect, useCallback, useRef, useState, type CSSProperties } from 'react'
 import MapGL from 'react-map-gl/maplibre'
-import type { StyleSpecification } from 'maplibre-gl'
 import type { MapLayerMouseEvent } from 'react-map-gl/maplibre'
 import DeckOverlay from '@/components/map/DeckOverlay'
 import { IconLayer, TextLayer } from '@deck.gl/layers'
 import { useMenuStore } from '@/store/menu-store'
 import { useDeploymentStore } from '@/store/deployment-store'
 import { isValidPlacement } from '@/data/theater-water'
-import baseStyle from '@/styles/map-style.json'
+import { getMapStyle } from '@/styles/map-providers'
 
 const INITIAL_VIEW = {
   longitude: 51.4,
@@ -270,7 +269,7 @@ export default function DeploymentOverlay() {
         <MapGL
           initialViewState={INITIAL_VIEW}
           style={{ width: '100%', height: '100%' }}
-          mapStyle={baseStyle as StyleSpecification}
+          mapStyle={getMapStyle('dark')}
           onClick={handleMapClick}
           dragPan={true}
         >
