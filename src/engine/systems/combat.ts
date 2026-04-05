@@ -697,6 +697,48 @@ function cleanEngagement(unitId: string, missileId: string): void {
   }
 }
 
+// ═══════════════════════════════════════════════
+//  pK MODIFIERS — composable factors for intercept probability
+// ═══════════════════════════════════════════════
+
+/**
+ * Speed modifier: bidirectional factor based on interceptor-to-target speed ratio.
+ * Slow targets give a bonus (interceptor has more time for terminal guidance corrections).
+ * Fast targets penalize linearly (less time to correct, higher closure rate).
+ *
+ * Bonus capped at +12% via log2 scaling:
+ *   ratio 1:1 → 1.00, 5:1 → ~1.07, 23:1 → 1.12
+ */
+export function speedModifier(interceptorMach: number, targetMach: number): number {
+  if (targetMach <= 0) return 1.0
+  const ratio = interceptorMach / targetMach
+  if (ratio >= 1) {
+    const bonus = Math.min(0.12, Math.log2(ratio) * 0.03)
+    return 1.0 + bonus
+  }
+  return ratio
+}
+
+/**
+ * Altitude modifier: continuous gradient for non-ballistic targets based on ground/sea
+ * clutter physics. Ballistic missiles use phase-based penalties instead.
+ *
+ * ≤100ft: 0.75  — severe ground/sea clutter (sea-skimmers, terrain followers)
+ * 100–500ft: 0.75→1.00 — linear interpolation as clutter diminishes
+ * >500ft: 1.00  — clear engagement envelope
+ */
+export function altitudeModifier(altitudeFt: number, targetType?: string, phase?: string): number {
+  if (targetType === 'ballistic_missile') {
+    if (phase === 'terminal') return 0.75
+    if (phase === 'midcourse') return 0.85
+    if (phase === 'boost') return 0.70
+    return 1.0
+  }
+  if (altitudeFt <= 100) return 0.75
+  if (altitudeFt <= 500) return 0.75 + (altitudeFt - 100) / 400 * 0.25
+  return 1.0
+}
+
 function computePKill(
   interceptor: WeaponSpec,
   target: WeaponSpec | undefined,
@@ -708,14 +750,17 @@ function computePKill(
   const targetType = target?.type ?? 'cruise_missile'
   let pKill = interceptor.pk[targetType] ?? 0.5
 
-  // Speed factor -- use actual current speed, not spec speed
+  // Speed modifier — bidirectional: slow targets give bonus, fast targets penalize
   if (target) {
     const effectiveTargetSpeed = missile.speed_current_mach > 0
       ? missile.speed_current_mach
       : target.speed_mach
-    const speedFactor = Math.min(1, interceptor.speed_mach / effectiveTargetSpeed)
-    pKill *= speedFactor
+    pKill *= speedModifier(interceptor.speed_mach, effectiveTargetSpeed)
   }
+
+  // Altitude modifier — continuous gradient for non-ballistic, phase-based for ballistic
+  const altFt = target?.flight_altitude_ft ?? 10000
+  pKill *= altitudeModifier(altFt, target?.type, missile.phase)
 
   // Saturation factor
   const load = activeChannels / totalChannels
@@ -725,21 +770,6 @@ function computePKill(
 
   // Health factor
   pKill *= adUnit.health / 100
-
-  // Altitude penalty -- harder to hit at extremes of envelope
-  if (target?.type === 'ballistic_missile') {
-    // Terminal phase is harder (fast reentry)
-    if (missile.phase === 'terminal') pKill *= 0.75
-    // Midcourse at very high altitude -- only BMD interceptors good here
-    if (missile.phase === 'midcourse' && missile.altitude_m > 100000) pKill *= 0.85
-    // Boost phase -- difficult but possible for forward-deployed BMD
-    if (missile.phase === 'boost') pKill *= 0.7
-  }
-
-  // Low-altitude cruise missiles harder to detect/track
-  if (target?.flight_altitude_ft && target.flight_altitude_ft < 500) {
-    pKill *= 0.8
-  }
 
   return Math.max(0.05, Math.min(0.95, pKill))
 }
