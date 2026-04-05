@@ -15,7 +15,7 @@ const NATION_STYLES = {
   iran: { fill: 'rgba(204, 68, 68, 0.08)', stroke: 'rgba(204, 68, 68, 0.3)' },
 } as const
 
-const SAM_STYLE = { fill: 'rgba(50, 200, 100, 0.08)', stroke: 'rgba(50, 200, 100, 0.3)' }
+const SAM_STYLE = { fill: 'rgba(50, 200, 100, 0.12)', stroke: 'rgba(50, 200, 100, 0.5)' }
 
 export function createRangeRingGeoJSON(units: ViewUnit[]): FeatureCollection {
   const features: Feature<Polygon>[] = []

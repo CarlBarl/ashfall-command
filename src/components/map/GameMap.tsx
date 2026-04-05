@@ -628,16 +628,17 @@ export default function GameMap() {
                 id="range-ring-labels"
                 type="symbol"
                 layout={{
-                  'text-field': ['get', 'weaponName'],
-                  'text-size': 10,
-                  'text-font': ['Open Sans Regular'],
+                  'text-field': ['concat', ['get', 'weaponName'], ' ', ['to-string', ['get', 'range_km']], 'km'],
+                  'text-size': 9,
+                  'text-font': ['Noto Sans Regular'],
                   'symbol-placement': 'line',
-                  'text-allow-overlap': true,
+                  'text-allow-overlap': false,
+                  'symbol-spacing': 250,
                 }}
                 paint={{
-                  'text-color': 'rgba(200, 200, 200, 0.5)',
-                  'text-halo-color': 'rgba(0, 0, 0, 0.8)',
-                  'text-halo-width': 1,
+                  'text-color': ['get', 'stroke'],
+                  'text-halo-color': 'rgba(0, 0, 0, 0.9)',
+                  'text-halo-width': 1.5,
                 }}
               />
             </Source>
