@@ -33,7 +33,7 @@ export const iranCatalog: UnitCatalogEntry[] = [
       weapons: [
         { weaponId: 's300_48n6e2', count: 32, maxCount: 32, reloadTimeSec: 720 },
       ],
-      sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.92 }],
+      sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.92, antenna_height_m: 12 }],
       roe: 'weapons_free',
     },
   },
@@ -61,7 +61,7 @@ export const iranCatalog: UnitCatalogEntry[] = [
       weapons: [
         { weaponId: 'bavar373_int', count: 24, maxCount: 24, reloadTimeSec: 600 },
       ],
-      sensors: [{ type: 'radar', range_km: 350, detection_prob: 0.90 }],
+      sensors: [{ type: 'radar', range_km: 350, detection_prob: 0.90, antenna_height_m: 12 }],
       roe: 'weapons_free',
     },
   },
@@ -93,7 +93,7 @@ export const iranCatalog: UnitCatalogEntry[] = [
       weapons: [
         { weaponId: 'khordad15_int', count: 12, maxCount: 12, reloadTimeSec: 480 },
       ],
-      sensors: [{ type: 'radar', range_km: 150, detection_prob: 0.85 }],
+      sensors: [{ type: 'radar', range_km: 150, detection_prob: 0.85, antenna_height_m: 8 }],
       roe: 'weapons_free',
     },
   },
@@ -125,7 +125,7 @@ export const iranCatalog: UnitCatalogEntry[] = [
       weapons: [
         { weaponId: 'tor_m1_int', count: 8, maxCount: 8, reloadTimeSec: 300 },
       ],
-      sensors: [{ type: 'radar', range_km: 25, detection_prob: 0.88 }],
+      sensors: [{ type: 'radar', range_km: 25, detection_prob: 0.88, antenna_height_m: 5 }],
       roe: 'weapons_free',
     },
   },
@@ -368,7 +368,7 @@ export const iranCatalog: UnitCatalogEntry[] = [
         { weaponId: 'noor', count: 12, maxCount: 12, reloadTimeSec: 1200 },
         { weaponId: 'khalij_fars', count: 4, maxCount: 4, reloadTimeSec: 2400 },
       ],
-      sensors: [{ type: 'radar', range_km: 100, detection_prob: 0.80 }],
+      sensors: [{ type: 'radar', range_km: 100, detection_prob: 0.80, antenna_height_m: 10 }],
       roe: 'weapons_tight',
     },
   },
@@ -428,7 +428,7 @@ export const iranCatalog: UnitCatalogEntry[] = [
       logistics: 0,
       supplyStocks: [],
       weapons: [],
-      sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.85 }],
+      sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.85, antenna_height_m: 20 }],
       roe: 'weapons_tight',
     },
   },

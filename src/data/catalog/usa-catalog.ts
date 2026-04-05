@@ -33,7 +33,7 @@ export const usaCatalog: UnitCatalogEntry[] = [
       weapons: [
         { weaponId: 'pac3_mse', count: 16, maxCount: 16, reloadTimeSec: 600 },
       ],
-      sensors: [{ type: 'radar', range_km: 180, detection_prob: 0.95 }],
+      sensors: [{ type: 'radar', range_km: 180, detection_prob: 0.95, antenna_height_m: 8 }],
       roe: 'weapons_free',
     },
   },
@@ -61,7 +61,7 @@ export const usaCatalog: UnitCatalogEntry[] = [
       weapons: [
         { weaponId: 'thaad_int', count: 48, maxCount: 48, reloadTimeSec: 900 },
       ],
-      sensors: [{ type: 'radar', range_km: 1000, detection_prob: 0.98 }],
+      sensors: [{ type: 'radar', range_km: 1000, detection_prob: 0.98, antenna_height_m: 10 }],
       roe: 'weapons_free',
     },
   },
@@ -96,7 +96,7 @@ export const usaCatalog: UnitCatalogEntry[] = [
         { weaponId: 'sm2_iiia', count: 24, maxCount: 24, reloadTimeSec: 0 },
         { weaponId: 'harpoon', count: 8, maxCount: 8, reloadTimeSec: 0 },
       ],
-      sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.96 }],
+      sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.96, antenna_height_m: 30 }],
       roe: 'weapons_tight',
     },
   },
@@ -128,7 +128,7 @@ export const usaCatalog: UnitCatalogEntry[] = [
         { weaponId: 'harpoon', count: 16, maxCount: 16, reloadTimeSec: 0 },
       ],
       sensors: [
-        { type: 'radar', range_km: 500, detection_prob: 0.98 },
+        { type: 'radar', range_km: 500, detection_prob: 0.98, antenna_height_m: 50 },
         { type: 'sonar', range_km: 50, detection_prob: 0.70 },
       ],
       roe: 'weapons_tight',
@@ -191,7 +191,7 @@ export const usaCatalog: UnitCatalogEntry[] = [
       weapons: [
         { weaponId: 'jassm_er', count: 96, maxCount: 96, reloadTimeSec: 0 },
       ],
-      sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95 }],
+      sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95, antenna_height_m: 25 }],
       roe: 'weapons_tight',
     },
   },
@@ -219,7 +219,7 @@ export const usaCatalog: UnitCatalogEntry[] = [
       weapons: [
         { weaponId: 'jassm_er', count: 48, maxCount: 48, reloadTimeSec: 0 },
       ],
-      sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95 }],
+      sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95, antenna_height_m: 25 }],
       roe: 'weapons_tight',
     },
   },

@@ -28,7 +28,7 @@ export const usaUnits: Unit[] = [
     pointDefense: [
       { specId: 'cram_centurion', active: true, ammo: 2000, maxAmmo: 2000 },
     ],
-    sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95 }],
+    sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95, antenna_height_m: 25 }],
     roe: 'weapons_tight',
   }),
 
@@ -42,7 +42,7 @@ export const usaUnits: Unit[] = [
     pointDefense: [
       { specId: 'cram_centurion', active: true, ammo: 2000, maxAmmo: 2000 },
     ],
-    sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95 }],
+    sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95, antenna_height_m: 25 }],
     roe: 'weapons_tight',
   }),
 
@@ -56,7 +56,7 @@ export const usaUnits: Unit[] = [
     pointDefense: [
       { specId: 'cram_centurion', active: true, ammo: 2000, maxAmmo: 2000 },
     ],
-    sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95 }],
+    sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95, antenna_height_m: 25 }],
     roe: 'weapons_tight',
   }),
 
@@ -70,7 +70,7 @@ export const usaUnits: Unit[] = [
     pointDefense: [
       { specId: 'cram_centurion', active: true, ammo: 1550, maxAmmo: 1550 },
     ],
-    sensors: [{ type: 'radar', range_km: 350, detection_prob: 0.90 }],
+    sensors: [{ type: 'radar', range_km: 350, detection_prob: 0.90, antenna_height_m: 25 }],
     roe: 'weapons_tight',
   }),
 
@@ -81,7 +81,7 @@ export const usaUnits: Unit[] = [
     weapons: [
       { weaponId: 'jassm_er', count: 48, maxCount: 48, reloadTimeSec: 0 },
     ],
-    sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95 }],
+    sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95, antenna_height_m: 25 }],
     roe: 'weapons_tight',
   }),
 
@@ -92,7 +92,7 @@ export const usaUnits: Unit[] = [
     weapons: [
       { weaponId: 'jassm_er', count: 80, maxCount: 80, reloadTimeSec: 0 },
     ],
-    sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.90 }],
+    sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.90, antenna_height_m: 25 }],
     roe: 'weapons_tight',
   }),
 
@@ -116,7 +116,7 @@ export const usaUnits: Unit[] = [
       { specId: 'rim116_ram', active: true, ammo: 21, maxAmmo: 21 },
     ],
     sensors: [
-      { type: 'radar', range_km: 500, detection_prob: 0.98 },
+      { type: 'radar', range_km: 500, detection_prob: 0.98, antenna_height_m: 50 },
       { type: 'sonar', range_km: 50, detection_prob: 0.70 },
     ],
     roe: 'weapons_tight',
@@ -137,7 +137,7 @@ export const usaUnits: Unit[] = [
       { specId: 'phalanx_ciws', active: true, ammo: 1550, maxAmmo: 1550 },
       { specId: 'rim116_ram', active: true, ammo: 21, maxAmmo: 21 },
     ],
-    sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.96 }],
+    sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.96, antenna_height_m: 30 }],
     roe: 'weapons_tight',
   }),
 
@@ -155,7 +155,7 @@ export const usaUnits: Unit[] = [
       { specId: 'phalanx_ciws', active: true, ammo: 1550, maxAmmo: 1550 },
       { specId: 'rim116_ram', active: true, ammo: 21, maxAmmo: 21 },
     ],
-    sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.96 }],
+    sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.96, antenna_height_m: 30 }],
     roe: 'weapons_tight',
   }),
 
@@ -171,7 +171,7 @@ export const usaUnits: Unit[] = [
     pointDefense: [
       { specId: 'phalanx_ciws', active: true, ammo: 1550, maxAmmo: 1550 },
     ],
-    sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.96 }],
+    sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.96, antenna_height_m: 30 }],
     roe: 'weapons_tight',
   }),
 
@@ -199,7 +199,7 @@ export const usaUnits: Unit[] = [
     weapons: [
       { weaponId: 'pac3_mse', count: 16, maxCount: 16, reloadTimeSec: 600 },
     ],
-    sensors: [{ type: 'radar', range_km: 180, detection_prob: 0.95 }],
+    sensors: [{ type: 'radar', range_km: 180, detection_prob: 0.95, antenna_height_m: 8 }],
     roe: 'weapons_free',
   }),
 
@@ -210,7 +210,7 @@ export const usaUnits: Unit[] = [
     weapons: [
       { weaponId: 'pac3_mse', count: 16, maxCount: 16, reloadTimeSec: 600 },
     ],
-    sensors: [{ type: 'radar', range_km: 180, detection_prob: 0.95 }],
+    sensors: [{ type: 'radar', range_km: 180, detection_prob: 0.95, antenna_height_m: 8 }],
     roe: 'weapons_free',
   }),
 
@@ -221,7 +221,7 @@ export const usaUnits: Unit[] = [
     weapons: [
       { weaponId: 'pac3_mse', count: 16, maxCount: 16, reloadTimeSec: 600 },
     ],
-    sensors: [{ type: 'radar', range_km: 180, detection_prob: 0.95 }],
+    sensors: [{ type: 'radar', range_km: 180, detection_prob: 0.95, antenna_height_m: 8 }],
     roe: 'weapons_free',
   }),
 
@@ -232,7 +232,7 @@ export const usaUnits: Unit[] = [
     weapons: [
       { weaponId: 'pac3_mse', count: 16, maxCount: 16, reloadTimeSec: 600 },
     ],
-    sensors: [{ type: 'radar', range_km: 180, detection_prob: 0.95 }],
+    sensors: [{ type: 'radar', range_km: 180, detection_prob: 0.95, antenna_height_m: 8 }],
     roe: 'weapons_free',
   }),
 
@@ -244,7 +244,7 @@ export const usaUnits: Unit[] = [
     weapons: [
       { weaponId: 'thaad_int', count: 48, maxCount: 48, reloadTimeSec: 900 },
     ],
-    sensors: [{ type: 'radar', range_km: 1000, detection_prob: 0.98 }],
+    sensors: [{ type: 'radar', range_km: 1000, detection_prob: 0.98, antenna_height_m: 10 }],
     roe: 'weapons_free',
   }),
 ]

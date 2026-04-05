@@ -25,7 +25,7 @@ export const iranUnits: Unit[] = [
     weapons: [
       { weaponId: 's300_48n6e2', count: 32, maxCount: 32, reloadTimeSec: 720 },
     ],
-    sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.92 }],
+    sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.92, antenna_height_m: 12 }],
     roe: 'weapons_free',
   }),
 
@@ -36,7 +36,7 @@ export const iranUnits: Unit[] = [
     weapons: [
       { weaponId: 's300_48n6e2', count: 32, maxCount: 32, reloadTimeSec: 720 },
     ],
-    sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.92 }],
+    sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.92, antenna_height_m: 12 }],
     roe: 'weapons_free',
   }),
 
@@ -47,7 +47,7 @@ export const iranUnits: Unit[] = [
     weapons: [
       { weaponId: 's300_48n6e2', count: 32, maxCount: 32, reloadTimeSec: 720 },
     ],
-    sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.92 }],
+    sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.92, antenna_height_m: 12 }],
     roe: 'weapons_free',
   }),
 
@@ -58,7 +58,7 @@ export const iranUnits: Unit[] = [
     weapons: [
       { weaponId: 'bavar373_int', count: 24, maxCount: 24, reloadTimeSec: 600 },
     ],
-    sensors: [{ type: 'radar', range_km: 350, detection_prob: 0.90 }],
+    sensors: [{ type: 'radar', range_km: 350, detection_prob: 0.90, antenna_height_m: 12 }],
     roe: 'weapons_free',
   }),
 
@@ -69,7 +69,7 @@ export const iranUnits: Unit[] = [
     weapons: [
       { weaponId: 'bavar373_int', count: 24, maxCount: 24, reloadTimeSec: 600 },
     ],
-    sensors: [{ type: 'radar', range_km: 350, detection_prob: 0.90 }],
+    sensors: [{ type: 'radar', range_km: 350, detection_prob: 0.90, antenna_height_m: 12 }],
     roe: 'weapons_free',
   }),
 
@@ -81,7 +81,7 @@ export const iranUnits: Unit[] = [
     weapons: [
       { weaponId: 'khordad15_int', count: 12, maxCount: 12, reloadTimeSec: 480 },
     ],
-    sensors: [{ type: 'radar', range_km: 150, detection_prob: 0.85 }],
+    sensors: [{ type: 'radar', range_km: 150, detection_prob: 0.85, antenna_height_m: 8 }],
     roe: 'weapons_free',
   }),
 
@@ -92,7 +92,7 @@ export const iranUnits: Unit[] = [
     weapons: [
       { weaponId: 'khordad15_int', count: 12, maxCount: 12, reloadTimeSec: 480 },
     ],
-    sensors: [{ type: 'radar', range_km: 150, detection_prob: 0.85 }],
+    sensors: [{ type: 'radar', range_km: 150, detection_prob: 0.85, antenna_height_m: 8 }],
     roe: 'weapons_free',
   }),
 
@@ -104,7 +104,7 @@ export const iranUnits: Unit[] = [
     weapons: [
       { weaponId: 'tor_m1_int', count: 8, maxCount: 8, reloadTimeSec: 300 },
     ],
-    sensors: [{ type: 'radar', range_km: 25, detection_prob: 0.88 }],
+    sensors: [{ type: 'radar', range_km: 25, detection_prob: 0.88, antenna_height_m: 5 }],
     roe: 'weapons_free',
   }),
 
@@ -115,7 +115,7 @@ export const iranUnits: Unit[] = [
     weapons: [
       { weaponId: 'tor_m1_int', count: 8, maxCount: 8, reloadTimeSec: 300 },
     ],
-    sensors: [{ type: 'radar', range_km: 25, detection_prob: 0.88 }],
+    sensors: [{ type: 'radar', range_km: 25, detection_prob: 0.88, antenna_height_m: 5 }],
     roe: 'weapons_free',
   }),
 
@@ -231,7 +231,7 @@ export const iranUnits: Unit[] = [
       { weaponId: 'noor', count: 12, maxCount: 12, reloadTimeSec: 1200 },
       { weaponId: 'khalij_fars', count: 4, maxCount: 4, reloadTimeSec: 2400 },
     ],
-    sensors: [{ type: 'radar', range_km: 100, detection_prob: 0.80 }],
+    sensors: [{ type: 'radar', range_km: 100, detection_prob: 0.80, antenna_height_m: 10 }],
     roe: 'weapons_tight',
   }),
 
@@ -242,7 +242,7 @@ export const iranUnits: Unit[] = [
     weapons: [
       { weaponId: 'noor', count: 8, maxCount: 8, reloadTimeSec: 1200 },
     ],
-    sensors: [{ type: 'radar', range_km: 80, detection_prob: 0.75 }],
+    sensors: [{ type: 'radar', range_km: 80, detection_prob: 0.75, antenna_height_m: 10 }],
     roe: 'weapons_tight',
   }),
 
@@ -254,7 +254,7 @@ export const iranUnits: Unit[] = [
     weapons: [
       { weaponId: 'noor', count: 4, maxCount: 4, reloadTimeSec: 0 },
     ],
-    sensors: [{ type: 'radar', range_km: 40, detection_prob: 0.70 }],
+    sensors: [{ type: 'radar', range_km: 40, detection_prob: 0.70, antenna_height_m: 8 }],
     roe: 'weapons_tight',
   }),
 
@@ -267,7 +267,7 @@ export const iranUnits: Unit[] = [
     position: { lat: 35.69, lng: 51.31 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
     health: 100, hardness: 200,
     weapons: [],
-    sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.85 }],
+    sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.85, antenna_height_m: 20 }],
     roe: 'weapons_tight',
   }),
 
@@ -276,7 +276,7 @@ export const iranUnits: Unit[] = [
     position: { lat: 32.75, lng: 51.86 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
     health: 100, hardness: 200,
     weapons: [],
-    sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.85 }],
+    sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.85, antenna_height_m: 20 }],
     roe: 'weapons_tight',
   }),
 
@@ -285,7 +285,7 @@ export const iranUnits: Unit[] = [
     position: { lat: 28.95, lng: 50.83 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
     health: 100, hardness: 200,
     weapons: [],
-    sensors: [{ type: 'radar', range_km: 250, detection_prob: 0.80 }],
+    sensors: [{ type: 'radar', range_km: 250, detection_prob: 0.80, antenna_height_m: 20 }],
     roe: 'weapons_tight',
   }),
 
@@ -294,7 +294,7 @@ export const iranUnits: Unit[] = [
     position: { lat: 27.22, lng: 56.38 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
     health: 100, hardness: 200,
     weapons: [],
-    sensors: [{ type: 'radar', range_km: 250, detection_prob: 0.80 }],
+    sensors: [{ type: 'radar', range_km: 250, detection_prob: 0.80, antenna_height_m: 20 }],
     roe: 'weapons_tight',
   }),
 
@@ -303,7 +303,7 @@ export const iranUnits: Unit[] = [
     position: { lat: 38.13, lng: 46.24 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
     health: 100, hardness: 200,
     weapons: [],
-    sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.85 }],
+    sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.85, antenna_height_m: 20 }],
     roe: 'weapons_tight',
   }),
 
