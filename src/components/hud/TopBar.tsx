@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
@@ -43,8 +43,11 @@ const ALL_SPEED_LABELS: Record<number, string> = {
 
 export default function TopBar() {
   const isMobile = useIsMobile()
-  const showRangeRings = useUIStore((s) => s.showRangeRings)
-  const toggleRangeRings = useUIStore((s) => s.toggleRangeRings)
+  const rngFilter = useUIStore((s) => s.rngFilter)
+  const toggleRangeRings = useCallback(() => {
+    useUIStore.setState((s) => ({ rngFilter: s.rngFilter === 'off' ? 'both' : 'off' }))
+  }, [])
+  const showRangeRings = rngFilter !== 'off'
   const showOrbat = useUIStore((s) => s.showOrbat)
   const showStats = useUIStore((s) => s.showStats)
   const showEconomy = useUIStore((s) => s.showEconomy)

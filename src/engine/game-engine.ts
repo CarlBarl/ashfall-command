@@ -240,6 +240,11 @@ export class GameEngine {
 
     // Espionage: HUMINT reveals + SIGINT multiplier
     this.lastEspionageResult = processEspionage(state, this.rng)
+
+    // Cap pendingEvents to prevent unbounded growth during fast-forward
+    if (state.pendingEvents.length > 2000) {
+      state.pendingEvents.splice(0, state.pendingEvents.length - 2000)
+    }
   }
 
   /** Execute a player command */

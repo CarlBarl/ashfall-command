@@ -88,7 +88,7 @@ export const adSystems: Record<string, ADSystemSpec> = {
     id: 'tor_m1',
     name: 'Tor-M1',
     radar_range_km: 25,
-    engagement_range_km: 15, // per CSIS; was 12
+    engagement_range_km: 12, // per CSIS — must match interceptor range_km
     max_altitude_m: 6000,
     fire_channels: 2,
     reload_time_sec: 300,

@@ -27,7 +27,7 @@ const MACH_KMS = 1235 / 3600
 // ────────────────────────────────────────────────
 
 /** Weapon types considered offensive (non-SAM) */
-const OFFENSIVE_TYPES = new Set(['cruise_missile', 'ballistic_missile', 'ashm'])
+const OFFENSIVE_TYPES = new Set(['cruise_missile', 'ballistic_missile', 'ashm', 'loitering_munition'])
 
 function isOffensiveWeapon(wl: WeaponLoadout): boolean {
   const spec = weaponSpecs[wl.weaponId]

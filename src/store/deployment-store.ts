@@ -147,6 +147,7 @@ export const useDeploymentStore = create<DeploymentState>((set, get) => ({
       placedUnits: [],
       activeIndex: 0,
       enemyUnits: [],
+      selectedPlacedIndex: null,
     })
   },
 }))

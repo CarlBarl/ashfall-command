@@ -47,7 +47,7 @@ const WEAPONS_TIGHT_RANGE_KM = 50
  * Returns commands to be executed by the engine.
  */
 export function processOrders(state: GameState, elevationGrid?: ElevationGrid | null): Command[] {
-  // Clear per-tick suppression state before re-evaluating
+  // Clear per-tick per-unit suppression state before re-evaluating
   suppressedMissiles.clear()
 
   // Drain one queued command per unit
@@ -87,24 +87,24 @@ function enforceWeaponsTight(state: GameState, elevationGrid?: ElevationGrid | n
     const threats = detectThreats(state, unit, elevationGrid)
     for (const threat of threats) {
       if (!nearbyFriendlyIds.has(threat.missile.targetId)) {
-        // Not a local threat — mark missile so combat skips engagement
-        // We use a convention: tag the missile id in a module-level set
-        suppressedMissiles.add(threat.missile.id)
+        // Not a local threat for THIS unit — mark per-unit so combat skips engagement
+        if (!suppressedMissiles.has(unit.id)) suppressedMissiles.set(unit.id, new Set())
+        suppressedMissiles.get(unit.id)!.add(threat.missile.id)
       }
     }
   }
 }
 
 /**
- * Set of missile IDs that weapons_tight units should NOT engage this tick.
- * Cleared at the start of each processOrders call via resetSuppressed().
+ * Per-unit set of missile IDs that weapons_tight units should NOT engage this tick.
+ * Cleared at the start of each processOrders call.
  */
-const suppressedMissiles = new Set<string>()
+const suppressedMissiles = new Map<UnitId, Set<string>>()
 
 /** Check if a missile is suppressed for a given unit (weapons_tight filtering) */
-export function isSuppressedForTight(missileId: string, unit: { roe: ROE }): boolean {
+export function isSuppressedForTight(missileId: string, unit: { id: UnitId; roe: ROE }): boolean {
   if (unit.roe !== 'weapons_tight') return false
-  return suppressedMissiles.has(missileId)
+  return suppressedMissiles.get(unit.id)?.has(missileId) ?? false
 }
 
 /**

@@ -68,5 +68,5 @@ export const useIntelStore = create<IntelState>((set) => ({
 
   setPlacing: (catalogId) => set({ placingCatalogId: catalogId }),
 
-  reset: () => set({ ...INITIAL_STATE }),
+  reset: () => { counter = 0; set({ ...INITIAL_STATE }) },
 }))

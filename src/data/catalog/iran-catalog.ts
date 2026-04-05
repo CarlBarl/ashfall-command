@@ -203,7 +203,7 @@ export const iranCatalog: UnitCatalogEntry[] = [
     category: 'missile_battery',
     cost_millions: 20,
     description:
-      'Fateh-110 short-range ballistic missile battery. 12 missiles, 300 km range, 100m CEP. ' +
+      'Fateh-110 short-range ballistic missile battery. 12 missiles, 300 km range, 250m CEP. ' +
       'Solid-fuel, GPS-guided — workhorse of IRGC tactical strike capability.',
     template: {
       name: 'Fateh-110 Battery',

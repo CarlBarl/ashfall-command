@@ -68,7 +68,7 @@ export const nationalStockpiles: Record<NationId, NationalStockpile> = {
       { weaponId: 'shahed_136',    ratePerHour: 2.0,  efficiency: 1.0 },
       { weaponId: 'shahed_131',    ratePerHour: 1.0,  efficiency: 1.0 },
       { weaponId: 'shahed_238',    ratePerHour: 0.5,  efficiency: 1.0 },
-      { weaponId: 's300_48n6e2',   ratePerHour: 0.3,  efficiency: 1.0 },
+      { weaponId: 's300_48n6e2',   ratePerHour: 0,    efficiency: 1.0 }, // Russian-built, not domestically produced
       { weaponId: 'bavar373_int',  ratePerHour: 0.2,  efficiency: 1.0 },
     ],
   },

@@ -151,10 +151,11 @@ function computeRepairRate(unit: Unit, nearestBase: Unit | null): number {
  * Never overrides 'moving' or 'engaged' status with 'repairing'.
  */
 function updateRepairStatus(unit: Unit): void {
+  const isBusy = unit.status === 'moving' || unit.status === 'engaged' ||
+    unit.readiness === 'packing' || unit.readiness === 'deploying'
   if (unit.health >= unit.maxHealth) {
-    // Fully repaired (up to maxHealth cap) — back to ready
-    unit.status = 'ready'
-  } else if (unit.status !== 'moving' && unit.status !== 'engaged') {
+    if (!isBusy) unit.status = 'ready'
+  } else if (!isBusy) {
     // Still needs repair and not otherwise occupied
     unit.status = 'repairing'
   }

@@ -46,16 +46,22 @@ export function destination(start: Position, bearingDeg: number, distKm: number)
 
 /** Generate N points along a great circle from a to b */
 export function greatCirclePath(a: Position, b: Position, numPoints: number): [number, number][] {
+  const d = haversine(a, b) / R
+  const sinD = Math.sin(d)
+
+  // Guard: if start and end are (nearly) identical, return identical points
+  if (sinD < 1e-12) {
+    return Array.from({ length: numPoints + 1 }, () => [a.lng, a.lat])
+  }
+
+  const lat1 = toRad(a.lat)
+  const lng1 = toRad(a.lng)
+  const lat2 = toRad(b.lat)
+  const lng2 = toRad(b.lng)
+
   const points: [number, number][] = []
   for (let i = 0; i <= numPoints; i++) {
     const f = i / numPoints
-    const d = haversine(a, b) / R
-    const sinD = Math.sin(d)
-    const lat1 = toRad(a.lat)
-    const lng1 = toRad(a.lng)
-    const lat2 = toRad(b.lat)
-    const lng2 = toRad(b.lng)
-
     const A = Math.sin((1 - f) * d) / sinD
     const B = Math.sin(f * d) / sinD
 

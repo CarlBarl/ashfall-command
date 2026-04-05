@@ -92,6 +92,7 @@ function updateMissileSpeed(state: GameState): void {
 
     if (spec.type === 'ballistic_missile') {
       const flightDuration = missile.eta - missile.launchTime
+      if (flightDuration <= 0) { missile.status = 'impact'; continue }
       const elapsed = state.time.timestamp - missile.launchTime
       const progress = Math.max(0, Math.min(1, elapsed / flightDuration))
 
@@ -138,6 +139,7 @@ function updateMissileAltitudes(state: GameState): void {
 
       const elapsed = state.time.timestamp - missile.launchTime
       const flightDuration = missile.eta - missile.launchTime
+      if (flightDuration <= 0) continue
       const progress = Math.max(0, Math.min(1, elapsed / flightDuration))
 
       // Determine climb altitude: SAMs climb ABOVE the target, then dive down
@@ -163,6 +165,7 @@ function updateMissileAltitudes(state: GameState): void {
 
     if (spec.type === 'ballistic_missile') {
       const flightDuration = missile.eta - missile.launchTime
+      if (flightDuration <= 0) { missile.status = 'impact'; continue }
       const elapsed = state.time.timestamp - missile.launchTime
       const progress = Math.max(0, Math.min(1, elapsed / flightDuration))
 
@@ -236,8 +239,10 @@ function updateMissilePositions(state: GameState): void {
       continue
     }
 
-    // Update ETA based on current speed
-    if (missile.speed_current_mach > 0) {
+    // Update ETA based on current speed — skip for ballistic missiles
+    // (their trajectory is predetermined; recalculating creates a feedback loop with progress-based speed)
+    const spec2 = weaponSpecs[missile.weaponId]
+    if (spec2?.type !== 'ballistic_missile' && missile.speed_current_mach > 0) {
       const timeToTargetMs = (distToTarget / kmPerSec) * 1000
       missile.eta = state.time.timestamp + timeToTargetMs
     }
@@ -529,6 +534,10 @@ function updateInterceptors(state: GameState, rng: SeededRNG): void {
 
     interceptor.path.push([newPos.lng, newPos.lat])
     interceptor.timestamps.push(state.time.timestamp + 1000)
+    if (interceptor.path.length > 500) {
+      interceptor.path.splice(0, interceptor.path.length - 500)
+      interceptor.timestamps.splice(0, interceptor.timestamps.length - 500)
+    }
   }
 
   for (const id of toRemove) {
@@ -780,7 +789,7 @@ export function launchSAM(
   const timeToReachSec = (distToThreat / intSpeedKmh) * 3600
 
   // Predict where threat will be when interceptor arrives
-  const threatSpeedKmh = targetMissile.speed_current_mach * 343 * 3.6
+  const threatSpeedKmh = machToKmh(targetMissile.speed_current_mach)
   const leadDistKm = (threatSpeedKmh * timeToReachSec) / 3600
 
   const interceptPoint = destination(

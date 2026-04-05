@@ -99,7 +99,7 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
 
       // Crash into terrain check — only crash if still below terrain after climb attempt
       if (missile.altitude_m < terrainElev) {
-        missile.status = 'intercepted'
+        missile.status = 'impact'
         missilesToDelete.push(missile.id)
         // Emit MISSILE_IMPACT event so the player can see what happened
         events.push({

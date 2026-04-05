@@ -130,7 +130,7 @@ export default function MapToggle() {
           <button onClick={() => setLOS('enemy')} style={{ ...btn, ...(losFilter === 'enemy' ? active : {}), color: losFilter === 'enemy' ? '#cc4444' : undefined }}>
             ENM
           </button>
-          <button onClick={() => setLOS('off')} style={{ ...btn, ...(losFilter === 'off' ? {} : {}), color: 'var(--text-muted)' }}>
+          <button onClick={() => setLOS('off')} style={{ ...btn, color: 'var(--text-muted)' }}>
             OFF
           </button>
         </div>

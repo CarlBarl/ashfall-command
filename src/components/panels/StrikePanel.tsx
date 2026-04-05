@@ -47,9 +47,11 @@ let priorityCounter = 0
 // ════════════════════════════════════════════════════════════════
 
 export default function StrikePanel() {
-  const strike = useStrikeStore()
-
-  const { mode, open, targetUnitId } = strike
+  const mode = useStrikeStore((s) => s.mode)
+  const open = useStrikeStore((s) => s.open)
+  const targetUnitId = useStrikeStore((s) => s.targetUnitId)
+  const closeStrike = useStrikeStore((s) => s.closeStrike)
+  const setMode = useStrikeStore((s) => s.setMode)
 
   // Visibility: show when explicitly opened OR when a target is set (auto-show direct fire)
   const autoShowDirect = mode === 'direct' && targetUnitId !== null
@@ -71,10 +73,10 @@ export default function StrikePanel() {
     <Panel
       title={title}
       style={positionStyle}
-      onClose={() => strike.closeStrike()}
+      onClose={closeStrike}
     >
       {/* Tab bar */}
-      <TabBar mode={mode} onSetMode={strike.setMode} />
+      <TabBar mode={mode} onSetMode={setMode} />
 
       {/* Tab content */}
       {mode === 'direct' && <DirectFireTab />}
@@ -763,14 +765,25 @@ function DirectFireTab() {
 // ════════════════════════════════════════════════════════════════
 
 function PlanAttackTab() {
-  const strike = useStrikeStore()
+  const planPriorities = useStrikeStore((s) => s.planPriorities)
+  const planTiming = useStrikeStore((s) => s.planTiming)
+  const planName = useStrikeStore((s) => s.planName)
+  const computedPlan = useStrikeStore((s) => s.computedPlan)
+  const executing = useStrikeStore((s) => s.executing)
+  const executionProgress = useStrikeStore((s) => s.executionProgress)
   const setComputedPlan = useStrikeStore((s) => s.setComputedPlan)
+  const addPlanPriority = useStrikeStore((s) => s.addPlanPriority)
+  const removePlanPriority = useStrikeStore((s) => s.removePlanPriority)
+  const updatePlanPriority = useStrikeStore((s) => s.updatePlanPriority)
+  const reorderPlanPriorities = useStrikeStore((s) => s.reorderPlanPriorities)
+  const setPlanTiming = useStrikeStore((s) => s.setPlanTiming)
+  const startExecution = useStrikeStore((s) => s.startExecution)
+  const updateProgress = useStrikeStore((s) => s.updateProgress)
+  const finishExecution = useStrikeStore((s) => s.finishExecution)
+  const resetStrike = useStrikeStore((s) => s.reset)
+  const closeStrike = useStrikeStore((s) => s.closeStrike)
   const units = useGameStore((s) => s.viewState.units)
   const playerNation = useGameStore((s) => s.viewState.playerNation)
-  const {
-    planPriorities, planTiming, planName,
-    computedPlan, executing, executionProgress,
-  } = strike
 
   const friendlyUnits = useMemo(
     () => units.filter((u) => u.nation === playerNation && u.status !== 'destroyed'),
@@ -792,7 +805,7 @@ function PlanAttackTab() {
   }, [planPriorities, planTiming, planName, friendlyUnits, enemyUnits, setComputedPlan])
 
   const handleAddPriority = useCallback((category: UnitCategory) => {
-    strike.addPlanPriority({
+    addPlanPriority({
       id: `p_${++priorityCounter}`,
       targetCategory: category,
       severity: 'standard',
@@ -800,11 +813,11 @@ function PlanAttackTab() {
       weaponPreference: 'any',
       launcherPreference: 'any',
     })
-  }, [strike])
+  }, [addPlanPriority])
 
   const handleExecute = useCallback(async () => {
     if (!computedPlan || executing) return
-    strike.startExecution()
+    startExecution()
 
     const strikes = computedPlan.strikes.filter((s) => s.inRange)
     const tierGroups = new Map<number, PlannedStrike[]>()
@@ -836,12 +849,12 @@ function PlanAttackTab() {
           count: stk.count,
         })
         fired += stk.count
-        strike.updateProgress(fired / total)
+        updateProgress(fired / total)
       }
     }
 
-    strike.finishExecution()
-  }, [computedPlan, executing, planTiming, strike])
+    finishExecution()
+  }, [computedPlan, executing, planTiming, startExecution, updateProgress, finishExecution])
 
   const availableCategories = TARGET_CATEGORIES.filter(
     (tc) => !planPriorities.some((p) => p.targetCategory === tc.value),
@@ -863,10 +876,10 @@ function PlanAttackTab() {
             index={idx}
             total={planPriorities.length}
             enemyCount={enemyUnits.filter((u) => u.category === p.targetCategory).length}
-            onUpdate={(changes) => strike.updatePlanPriority(p.id, changes)}
-            onRemove={() => strike.removePlanPriority(p.id)}
-            onMoveUp={() => idx > 0 && strike.reorderPlanPriorities(idx, idx - 1)}
-            onMoveDown={() => idx < planPriorities.length - 1 && strike.reorderPlanPriorities(idx, idx + 1)}
+            onUpdate={(changes) => updatePlanPriority(p.id, changes)}
+            onRemove={() => removePlanPriority(p.id)}
+            onMoveUp={() => idx > 0 && reorderPlanPriorities(idx, idx - 1)}
+            onMoveDown={() => idx < planPriorities.length - 1 && reorderPlanPriorities(idx, idx + 1)}
           />
         ))}
 
@@ -896,7 +909,7 @@ function PlanAttackTab() {
           {TIMING_OPTIONS.map((t) => (
             <button
               key={t.value}
-              onClick={() => strike.setPlanTiming(t.value)}
+              onClick={() => setPlanTiming(t.value)}
               style={{
                 flex: 1, padding: '4px 6px',
                 background: planTiming === t.value ? 'var(--bg-hover)' : 'transparent',
@@ -929,7 +942,7 @@ function PlanAttackTab() {
       {/* Execute */}
       <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
         <button
-          onClick={() => { strike.reset(); strike.closeStrike() }}
+          onClick={() => { resetStrike(); closeStrike() }}
           style={{ ...btnStyle, flex: 1, color: 'var(--text-muted)' }}
         >
           CANCEL

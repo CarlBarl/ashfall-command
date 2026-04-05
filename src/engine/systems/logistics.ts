@@ -118,9 +118,8 @@ function processResupply(state: GameState): void {
 
       const needed = weapon.maxCount - weapon.count
       const available = stock.count
-      // Base transfer is 1 per minute, scaled by logistics efficiency
-      // Round down — if logistics < 100, sometimes no transfer occurs
-      const transfer = Math.floor(Math.min(available, needed, 1) * logisticsMultiplier)
+      // Base transfer is 1 per minute; logistics efficiency gates whether it happens
+      const transfer = logisticsMultiplier >= 0.5 ? Math.min(available, needed, 1) : 0
       if (transfer <= 0) continue
 
       // Execute the transfer

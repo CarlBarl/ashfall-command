@@ -51,7 +51,7 @@ export const iranBaseSupply: Record<string, WeaponStock[]> = {
 
   mehrabad: [
     // Tehran is the national logistics center
-    { weaponId: 's300_48n6e2',  count: 32, maxCount: 64, productionRate: 1 },
+    { weaponId: 's300_48n6e2',  count: 32, maxCount: 64, productionRate: 0 }, // Russian-built, finite stock
     { weaponId: 'bavar373_int', count: 24, maxCount: 48, productionRate: 1 },
     { weaponId: 'khordad15_int', count: 16, maxCount: 32, productionRate: 1 },
     { weaponId: 'shahab3',      count: 8,  maxCount: 16, productionRate: 0 },
