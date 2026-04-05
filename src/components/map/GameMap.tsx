@@ -47,6 +47,8 @@ export default function GameMap() {
   const [clusterPopup, setClusterPopup] = useState<{ cluster: UnitCluster; x: number; y: number } | null>(null)
   const [zoom, setZoom] = useState(INITIAL_VIEW.zoom)
   const [followedMissileId, setFollowedMissileId] = useState<string | null>(null)
+  const [cursorElev, setCursorElev] = useState<number | null>(null)
+  const [cursorCoords, setCursorCoords] = useState<{ lat: number; lng: number } | null>(null)
 
   const selectedUnitId = useUIStore((s) => s.selectedUnitId)
   const selectedUnitIds = useUIStore((s) => s.selectedUnitIds)
@@ -140,8 +142,17 @@ export default function GameMap() {
     setCtxMenu(null)
   }, [])
 
-  const onMove = useCallback((evt: { viewState: { zoom: number } }) => {
+  const onMove = useCallback((evt: { viewState: { zoom: number }; lngLat?: { lat: number; lng: number } }) => {
     setZoom(evt.viewState.zoom)
+  }, [])
+
+  const onMouseMove = useCallback((evt: MapLayerMouseEvent) => {
+    const grid = getMainThreadGrid()
+    if (grid && evt.lngLat) {
+      const elev = grid.getElevation(evt.lngLat.lat, evt.lngLat.lng)
+      setCursorElev(elev)
+      setCursorCoords({ lat: evt.lngLat.lat, lng: evt.lngLat.lng })
+    }
   }, [])
 
   const handleHover = useCallback((id: string | null, x?: number, y?: number) => {
@@ -222,6 +233,7 @@ export default function GameMap() {
         mapStyle={mapStyle}
         onLoad={onLoad}
         onMove={onMove}
+        onMouseMove={onMouseMove}
         onContextMenu={onContextMenu}
         onClick={onMapClick}
         attributionControl={false}
@@ -457,6 +469,35 @@ export default function GameMap() {
       )}
 
       <MapToggle />
+
+      {/* Cursor elevation readout */}
+      {showElevation && cursorElev != null && cursorCoords && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 8,
+            right: 8,
+            background: 'rgba(0,0,0,0.8)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--panel-radius)',
+            padding: '4px 10px',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--font-size-xs)',
+            color: cursorElev <= 0 ? 'var(--text-muted)' : 'var(--text-secondary)',
+            letterSpacing: '0.05em',
+            pointerEvents: 'none',
+            zIndex: 10,
+          }}
+        >
+          {cursorElev <= 0
+            ? 'SEA LEVEL'
+            : `${Math.round(cursorElev)}m`}
+          {' '}
+          <span style={{ color: 'var(--text-muted)' }}>
+            {cursorCoords.lat.toFixed(2)}N {cursorCoords.lng.toFixed(2)}E
+          </span>
+        </div>
+      )}
     </>
   )
 }
