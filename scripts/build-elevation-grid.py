@@ -147,24 +147,43 @@ def is_persian_gulf(lat, lng):
         return 26.5
 
     # Southern coast (Arabian side)
-    # From Kuwait (29.4, 47.8) to UAE (24.5, 54.5) to Hormuz (26.0, 56.3)
+    # From Kuwait (29.4, 47.8) around Qatar peninsula to UAE (24.5, 54.5) to Hormuz
+    # Qatar sticks out to ~26.2N at lng 51.5, Gulf extends south to ~24.8 east of Qatar
     def arab_coast(x):
         if x < 48.0:
             return 29.0
-        if x < 50.0:
-            return lerp(29.0, 27.0, (x - 48.0) / 2.0)
-        if x < 51.5:
-            return lerp(27.0, 26.0, (x - 50.0) / 1.5)
-        if x < 53.0:
-            return lerp(26.0, 25.5, (x - 51.5) / 1.5)
+        if x < 49.5:
+            return lerp(29.0, 27.5, (x - 48.0) / 1.5)
+        if x < 50.5:
+            # West of Qatar — Gulf extends to Bahrain (~26.0N)
+            return lerp(27.5, 25.8, (x - 49.5) / 1.0)
+        if x < 51.2:
+            # Qatar's west coast — coast moves north around the peninsula
+            return lerp(25.8, 25.0, (x - 50.5) / 0.7)
+        if x < 51.8:
+            # South of Qatar — Gulf at ~24.8N
+            return lerp(25.0, 24.8, (x - 51.2) / 0.6)
+        if x < 52.5:
+            # East of Qatar — Gulf extends south
+            return lerp(24.8, 24.5, (x - 51.8) / 0.7)
         if x < 54.5:
-            return lerp(25.5, 24.5, (x - 53.0) / 1.5)
+            # Along UAE coast
+            return lerp(24.5, 24.3, (x - 52.5) / 2.0)
         if x < 56.0:
-            return lerp(24.5, 25.5, (x - 54.5) / 1.5)
+            return lerp(24.3, 25.5, (x - 54.5) / 1.5)
         return 26.0
 
     n = iran_coast(lng)
     s = arab_coast(lng)
+
+    # Exclude Qatar peninsula — it sticks into the Gulf
+    # Qatar: lat 24.5-26.2, lng 50.7-51.7 (narrow peninsula)
+    if 24.5 < lat < 26.2 and 50.7 < lng < 51.7:
+        return False
+    # Exclude Bahrain island
+    if 25.8 < lat < 26.3 and 50.3 < lng < 50.7:
+        return False
+
     return s < lat < n
 
 
