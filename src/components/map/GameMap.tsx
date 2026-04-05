@@ -624,6 +624,22 @@ export default function GameMap() {
                   'line-dasharray': [4, 4],
                 }}
               />
+              <Layer
+                id="range-ring-labels"
+                type="symbol"
+                layout={{
+                  'text-field': ['get', 'weaponName'],
+                  'text-size': 10,
+                  'text-font': ['Open Sans Regular'],
+                  'symbol-placement': 'line',
+                  'text-allow-overlap': true,
+                }}
+                paint={{
+                  'text-color': 'rgba(200, 200, 200, 0.5)',
+                  'text-halo-color': 'rgba(0, 0, 0, 0.8)',
+                  'text-halo-width': 1,
+                }}
+              />
             </Source>
           )
         })()}

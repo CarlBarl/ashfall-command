@@ -15,6 +15,8 @@ const NATION_STYLES = {
   iran: { fill: 'rgba(204, 68, 68, 0.08)', stroke: 'rgba(204, 68, 68, 0.3)' },
 } as const
 
+const SAM_STYLE = { fill: 'rgba(50, 200, 100, 0.08)', stroke: 'rgba(50, 200, 100, 0.3)' }
+
 export function createRangeRingGeoJSON(units: ViewUnit[]): FeatureCollection {
   const features: Feature<Polygon>[] = []
 
@@ -41,8 +43,10 @@ export function createRangeRingGeoJSON(units: ViewUnit[]): FeatureCollection {
             nation: unit.nation,
             ringType: 'sam' as const,
             unitName: unit.name,
-            fill: NATION_STYLES[unit.nation]?.fill ?? 'rgba(200,200,200,0.08)',
-            stroke: NATION_STYLES[unit.nation]?.stroke ?? 'rgba(200,200,200,0.3)',
+            weaponName: spec.name,
+            range_km: range,
+            fill: SAM_STYLE.fill,
+            stroke: SAM_STYLE.stroke,
             strokeDash: false,
           },
         })
@@ -62,6 +66,8 @@ export function createRangeRingGeoJSON(units: ViewUnit[]): FeatureCollection {
             nation: unit.nation,
             ringType: 'missile' as const,
             unitName: unit.name,
+            weaponName: spec.name,
+            range_km: range,
             fill: NATION_STYLES[unit.nation]?.fill ?? 'rgba(200,200,200,0.08)',
             stroke: NATION_STYLES[unit.nation]?.stroke ?? 'rgba(200,200,200,0.3)',
             strokeDash: true,

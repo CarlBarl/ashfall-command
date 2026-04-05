@@ -763,7 +763,32 @@ export function launchSAM(
   const threatPos = getCurrentMissilePosition(targetMissile, state.time.timestamp)
   if (!threatPos) return null
 
-  const interceptPoint = { lng: threatPos[0], lat: threatPos[1] }
+  // --- Lead intercept prediction ---
+  // Compute threat's heading from its path (direction of travel)
+  let threatHeading = 0
+  if (targetMissile.path.length >= 2) {
+    const prevPt = targetMissile.path[Math.max(0, targetMissile.path.length - 2)]
+    const curPt = threatPos
+    threatHeading = bearing(
+      { lat: prevPt[1], lng: prevPt[0] },
+      { lat: curPt[1], lng: curPt[0] },
+    )
+  }
+
+  // Estimate time for interceptor to reach threat's current position
+  const distToThreat = haversine(launcher.position, { lng: threatPos[0], lat: threatPos[1] })
+  const timeToReachSec = (distToThreat / intSpeedKmh) * 3600
+
+  // Predict where threat will be when interceptor arrives
+  const threatSpeedKmh = targetMissile.speed_current_mach * 343 * 3.6
+  const leadDistKm = (threatSpeedKmh * timeToReachSec) / 3600
+
+  const interceptPoint = destination(
+    { lat: threatPos[1], lng: threatPos[0] },
+    threatHeading,
+    leadDistKm,
+  )
+
   const dist = haversine(launcher.position, interceptPoint)
   const flightTimeMs = (dist / intSpeedKmh) * 3600 * 1000
   const numSegments = Math.max(5, Math.ceil(dist / 5))
