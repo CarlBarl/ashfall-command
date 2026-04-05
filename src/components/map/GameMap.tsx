@@ -29,7 +29,7 @@ const INITIAL_VIEW = {
   bearing: 0,
 }
 
-const THEATER_COUNTRIES = ['IRN', 'IRQ', 'SAU', 'ARE', 'QAT', 'BHR', 'KWT', 'OMN', 'AFG', 'PAK', 'TUR']
+const THEATER_COUNTRIES = ['IRQ', 'SAU', 'ARE', 'QAT', 'BHR', 'KWT', 'OMN', 'AFG', 'PAK', 'TUR']
 
 interface CtxMenu {
   x: number

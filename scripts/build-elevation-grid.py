@@ -521,8 +521,17 @@ def base_elevation(lat, lng):
     if 17.0 < lat < 22.0 and 45.0 < lng < 55.0:
         return 180
 
-    # UAE coast
+    # UAE coast (Abu Dhabi / Dubai area)
     if 23.5 < lat < 25.5 and 54.0 < lng < 56.0:
+        return 20
+
+    # Qatar peninsula — flat limestone, ~15m ASL
+    if 24.5 < lat < 26.2 and 50.7 < lng < 52.0:
+        return 15
+
+    # Eastern Arabia Gulf coast (Saudi/Bahrain/Kuwait coastal strip)
+    # This is the flat coastal lowland strip adjacent to the Persian Gulf
+    if 24.0 < lat < 30.0 and 47.5 < lng < 52.0:
         return 20
 
     # Kuwait coast
