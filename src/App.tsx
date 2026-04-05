@@ -61,8 +61,12 @@ export default function App() {
   // StrikePanel manages its own visibility via useStrikeStore
 
   useEffect(() => {
-    if (isMobile && selectedUnitId) {
+    if (!isMobile) return
+    if (selectedUnitId) {
       setMobilePanel('unit')
+    } else {
+      // Deselected: close unit/strike panels, keep data panels open
+      setMobilePanel(prev => (prev === 'unit' || prev === 'strike') ? null : prev)
     }
   }, [isMobile, selectedUnitId])
 

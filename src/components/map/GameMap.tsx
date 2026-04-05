@@ -199,6 +199,7 @@ export default function GameMap() {
 
   const onMapClick = useCallback((e: MapLayerMouseEvent) => {
     setCtxMenu(null)
+    setClusterPopup(null)
 
     // Route planning mode: add waypoint on map click
     const strikeState = useStrikeStore.getState()
@@ -218,6 +219,9 @@ export default function GameMap() {
       }
       return // Don't do normal click processing
     }
+
+    // Clicking empty map: deselect units and close panels
+    useUIStore.getState().clearSelection()
   }, [addRouteWaypoint])
 
   const onMove = useCallback((evt: { viewState: { zoom: number }; lngLat?: { lat: number; lng: number } }) => {
