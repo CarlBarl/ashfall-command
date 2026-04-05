@@ -63,7 +63,6 @@ export default function GameMap() {
   const selectUnit = useUIStore((s) => s.selectUnit)
   const hoverUnit = useUIStore((s) => s.hoverUnit)
   const showRangeRings = useUIStore((s) => s.showRangeRings)
-  const showRadarLOS = useUIStore((s) => s.showRadarLOS)
   const showElevation = useUIStore((s) => s.showElevation)
   const mapMode = useUIStore((s) => s.mapMode)
 
@@ -125,33 +124,39 @@ export default function GameMap() {
     return { type: 'FeatureCollection' as const, features }
   }, [estimatedUnits, showIntelCoverage])
 
-  // Compute LOS polygon(s)
-  // 1. Selected unit — always show its LOS (regardless of toggle)
-  // 2. LOS toggle on — show ALL radar coverage for enemy AND friendly as range circles
-  const losPolygon = useMemo(() => {
-    if (!gridReady) return null
+  // Compute LOS polygon(s) for hovered or selected radar unit(s)
+  // Handles clusters: hovering a cluster shows LOS for all radar units in it
+  const losPolygons = useMemo(() => {
+    if (!gridReady) return []
 
-    // Priority: hovered unit (when LOS toggle on) > selected unit
-    const candidates: (string | null)[] = [
-      showRadarLOS ? hoveredUnitId : null,
-      selectedUnitId,
-    ]
+    const results: ReturnType<typeof getLOSPolygon>[] = []
+    const candidates: (string | null)[] = [hoveredUnitId, selectedUnitId]
 
     for (const candidateId of candidates) {
       if (!candidateId) continue
-      const unit = units.find((u) => u.id === candidateId)
-      if (!unit || unit.status === 'destroyed') continue
 
-      const radarSensor = unit.sensors?.find((s) => s.type === 'radar')
-      if (!radarSensor) continue
+      // Check if it's a cluster
+      const clusterMap = getLastClusterMap()
+      const cluster = clusterMap.get(candidateId)
+      const unitIds = cluster ? cluster.units.map(u => u.id) : [candidateId]
 
-      const antennaHeight = radarSensor.antenna_height_m ?? 15
-      const sectorDeg = radarSensor.sector_deg ?? 360
-      return getLOSPolygon(candidateId, unit.position, radarSensor.range_km, antennaHeight, unit.heading, sectorDeg)
+      for (const uid of unitIds) {
+        const unit = units.find(u => u.id === uid)
+        if (!unit || unit.status === 'destroyed') continue
+        const radarSensor = unit.sensors?.find(s => s.type === 'radar')
+        if (!radarSensor) continue
+
+        const antennaHeight = radarSensor.antenna_height_m ?? 15
+        const sectorDeg = radarSensor.sector_deg ?? 360
+        const poly = getLOSPolygon(uid, unit.position, radarSensor.range_km, antennaHeight, unit.heading, sectorDeg)
+        if (poly) results.push(poly)
+      }
+
+      if (results.length > 0) break // use first candidate that has results
     }
 
-    return null
-  }, [gridReady, selectedUnitId, hoveredUnitId, showRadarLOS, units])
+    return results
+  }, [gridReady, selectedUnitId, hoveredUnitId, units])
 
   // Map-wide radar range circles when RNG toggle is on
   const allRadarCoverage = useMemo(() => {
@@ -403,10 +408,10 @@ export default function GameMap() {
           </Source>
         )}
 
-        {losPolygon && (
-          <Source id="los-coverage" type="geojson" data={losPolygon}>
+        {losPolygons.map((poly, i) => (
+          <Source key={`los-${i}`} id={`los-coverage-${i}`} type="geojson" data={poly}>
             <Layer
-              id="los-fill"
+              id={`los-fill-${i}`}
               type="fill"
               paint={{
                 'fill-color': '#22cc44',
@@ -414,7 +419,7 @@ export default function GameMap() {
               }}
             />
             <Layer
-              id="los-outline"
+              id={`los-outline-${i}`}
               type="line"
               paint={{
                 'line-color': '#22cc44',
@@ -423,7 +428,7 @@ export default function GameMap() {
               }}
             />
           </Source>
-        )}
+        ))}
 
         {allRadarCoverage && allRadarCoverage.features.length > 0 && (
           <Source id="all-radar-coverage" type="geojson" data={allRadarCoverage as GeoJSON.FeatureCollection}>
