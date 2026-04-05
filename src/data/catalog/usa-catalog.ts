@@ -223,4 +223,35 @@ export const usaCatalog: UnitCatalogEntry[] = [
       roe: 'weapons_tight',
     },
   },
+
+  // ═══════════════════════════════════════════════
+  //  AWACS — Airborne Early Warning
+  // ═══════════════════════════════════════════════
+
+  {
+    id: 'usa_awacs',
+    name: 'E-3 Sentry AWACS',
+    nation: 'usa',
+    category: 'aircraft',
+    cost_millions: 270,
+    description:
+      'E-3 Sentry airborne early warning and control aircraft. 400 km radar, 360-degree ' +
+      'coverage at 10 km altitude. 600 km datalink range — primary sensor network hub.',
+    template: {
+      name: 'E-3 Sentry AWACS',
+      nation: 'usa',
+      category: 'aircraft',
+      heading: 0,
+      speed_kts: 300,
+      maxSpeed_kts: 350,
+      health: 100,
+      hardness: 30,
+      logistics: 0,
+      supplyStocks: [],
+      weapons: [],
+      sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95, antenna_height_m: 10000, sector_deg: 360 }],
+      roe: 'weapons_free',
+      datalink_range_km: 600,
+    },
+  },
 ]

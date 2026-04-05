@@ -30,6 +30,7 @@ export const usaUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95, antenna_height_m: 25 }],
     roe: 'weapons_tight',
+    datalink_range_km: 150,
   }),
 
   u({
@@ -44,6 +45,7 @@ export const usaUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95, antenna_height_m: 25 }],
     roe: 'weapons_tight',
+    datalink_range_km: 150,
   }),
 
   u({
@@ -58,6 +60,7 @@ export const usaUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95, antenna_height_m: 25 }],
     roe: 'weapons_tight',
+    datalink_range_km: 150,
   }),
 
   u({
@@ -72,6 +75,7 @@ export const usaUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 350, detection_prob: 0.90, antenna_height_m: 25 }],
     roe: 'weapons_tight',
+    datalink_range_km: 150,
   }),
 
   u({
@@ -83,6 +87,7 @@ export const usaUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95, antenna_height_m: 25 }],
     roe: 'weapons_tight',
+    datalink_range_km: 150,
   }),
 
   u({
@@ -94,6 +99,7 @@ export const usaUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.90, antenna_height_m: 25 }],
     roe: 'weapons_tight',
+    datalink_range_km: 150,
   }),
 
   // ═══════════════════════════════════════════════
@@ -120,6 +126,7 @@ export const usaUnits: Unit[] = [
       { type: 'sonar', range_km: 50, detection_prob: 0.70 },
     ],
     roe: 'weapons_tight',
+    datalink_range_km: 300,
   }),
 
   // DDGs in Persian Gulf
@@ -139,6 +146,7 @@ export const usaUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.96, antenna_height_m: 30 }],
     roe: 'weapons_tight',
+    datalink_range_km: 300,
   }),
 
   u({
@@ -157,6 +165,7 @@ export const usaUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.96, antenna_height_m: 30 }],
     roe: 'weapons_tight',
+    datalink_range_km: 300,
   }),
 
   u({
@@ -173,6 +182,7 @@ export const usaUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.96, antenna_height_m: 30 }],
     roe: 'weapons_tight',
+    datalink_range_km: 300,
   }),
 
   // SSN
@@ -246,5 +256,19 @@ export const usaUnits: Unit[] = [
     ],
     sensors: [{ type: 'radar', range_km: 1000, detection_prob: 0.98, antenna_height_m: 10, sector_deg: 120 }],
     roe: 'weapons_free',
+  }),
+
+  // ═══════════════════════════════════════════════
+  //  AWACS — Airborne Early Warning
+  // ═══════════════════════════════════════════════
+
+  u({
+    id: 'awacs_e3', name: 'E-3 Sentry AWACS', nation: 'usa', category: 'aircraft',
+    position: { lat: 26.0, lng: 50.0 }, heading: 0, speed_kts: 300, maxSpeed_kts: 350,
+    health: 100, hardness: 30,
+    weapons: [],
+    sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.95, antenna_height_m: 10000, sector_deg: 360 }],
+    roe: 'weapons_free',
+    datalink_range_km: 600,
   }),
 ]

@@ -432,4 +432,62 @@ export const iranCatalog: UnitCatalogEntry[] = [
       roe: 'weapons_tight',
     },
   },
+
+  // ═══════════════════════════════════════════════
+  //  EARLY WARNING & C2 — Network Hubs
+  // ═══════════════════════════════════════════════
+
+  {
+    id: 'iran_nebo_svu',
+    name: 'Nebo SVU EW Radar',
+    nation: 'iran',
+    category: 'sam_site',
+    cost_millions: 150,
+    description:
+      'Nebo SVU VHF early warning radar. 400 km detection range, 360-degree coverage. ' +
+      'Passive network hub with 300 km datalink — feeds track data to SAM batteries.',
+    template: {
+      name: 'Nebo SVU EW Radar',
+      nation: 'iran',
+      category: 'sam_site',
+      heading: 0,
+      speed_kts: 0,
+      maxSpeed_kts: 0,
+      health: 100,
+      hardness: 80,
+      logistics: 0,
+      supplyStocks: [],
+      weapons: [],
+      sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.90, antenna_height_m: 30, sector_deg: 360 }],
+      roe: 'weapons_free',
+      datalink_range_km: 300,
+    },
+  },
+
+  {
+    id: 'iran_cmd_post',
+    name: 'Mobile Command Post',
+    nation: 'iran',
+    category: 'missile_battery',
+    cost_millions: 50,
+    description:
+      'Mobile C2 node for IRGC network. 100 km local radar, 300 km datalink range. ' +
+      'Connects dispersed missile batteries to the integrated air defense network.',
+    template: {
+      name: 'Mobile Command Post',
+      nation: 'iran',
+      category: 'missile_battery',
+      heading: 0,
+      speed_kts: 0,
+      maxSpeed_kts: 25,
+      health: 80,
+      hardness: 50,
+      logistics: 0,
+      supplyStocks: [],
+      weapons: [],
+      sensors: [{ type: 'radar', range_km: 100, detection_prob: 0.80, antenna_height_m: 10 }],
+      roe: 'weapons_free',
+      datalink_range_km: 300,
+    },
+  },
 ]

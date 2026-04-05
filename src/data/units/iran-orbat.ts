@@ -269,6 +269,7 @@ export const iranUnits: Unit[] = [
     weapons: [],
     sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.85, antenna_height_m: 20 }],
     roe: 'weapons_tight',
+    datalink_range_km: 150,
   }),
 
   u({
@@ -278,6 +279,7 @@ export const iranUnits: Unit[] = [
     weapons: [],
     sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.85, antenna_height_m: 20 }],
     roe: 'weapons_tight',
+    datalink_range_km: 150,
   }),
 
   u({
@@ -287,6 +289,7 @@ export const iranUnits: Unit[] = [
     weapons: [],
     sensors: [{ type: 'radar', range_km: 250, detection_prob: 0.80, antenna_height_m: 20 }],
     roe: 'weapons_tight',
+    datalink_range_km: 150,
   }),
 
   u({
@@ -296,6 +299,7 @@ export const iranUnits: Unit[] = [
     weapons: [],
     sensors: [{ type: 'radar', range_km: 250, detection_prob: 0.80, antenna_height_m: 20 }],
     roe: 'weapons_tight',
+    datalink_range_km: 150,
   }),
 
   u({
@@ -305,6 +309,7 @@ export const iranUnits: Unit[] = [
     weapons: [],
     sensors: [{ type: 'radar', range_km: 300, detection_prob: 0.85, antenna_height_m: 20 }],
     roe: 'weapons_tight',
+    datalink_range_km: 150,
   }),
 
   // ═══════════════════════════════════════════════
@@ -359,5 +364,29 @@ export const iranUnits: Unit[] = [
     ],
     sensors: [],
     roe: 'weapons_tight',
+  }),
+
+  // ═══════════════════════════════════════════════
+  //  EARLY WARNING & C2 — Network Hubs
+  // ═══════════════════════════════════════════════
+
+  u({
+    id: 'iran_nebo_svu', name: 'Nebo SVU EW Radar', nation: 'iran', category: 'sam_site',
+    position: { lat: 35.5, lng: 51.5 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    health: 100, hardness: 80,
+    weapons: [],
+    sensors: [{ type: 'radar', range_km: 400, detection_prob: 0.90, antenna_height_m: 30, sector_deg: 360 }],
+    roe: 'weapons_free',
+    datalink_range_km: 300,
+  }),
+
+  u({
+    id: 'iran_cmd_post', name: 'Mobile Command Post', nation: 'iran', category: 'missile_battery',
+    position: { lat: 33.0, lng: 50.5 }, heading: 0, speed_kts: 0, maxSpeed_kts: 25,
+    health: 80, hardness: 50,
+    weapons: [],
+    sensors: [{ type: 'radar', range_km: 100, detection_prob: 0.80, antenna_height_m: 10 }],
+    roe: 'weapons_free',
+    datalink_range_km: 300,
   }),
 ]
