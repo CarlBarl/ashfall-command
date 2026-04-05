@@ -214,6 +214,8 @@ export interface Missile {
   is_interceptor: boolean
   /** Which missile this interceptor is chasing */
   interceptTargetMissileId?: string
+  /** Detection quality that led to this intercept (for accuracy modifier) */
+  networkQuality?: 'own' | 'tracked' | 'detected'
 }
 
 export interface Engagement {

@@ -6,6 +6,7 @@ import { adSystems } from '@/data/weapons/air-defense'
 import { haversine, bearing, destination } from '../utils/geo'
 import { greatCirclePath, machToKmh } from '../utils/geo'
 import { detectThreats } from './detection'
+import { detectThreatsNetworked, type SensorNetwork } from './sensor-network'
 import { isSuppressedForTight } from './orders'
 
 let missileCounter = 0
@@ -21,12 +22,12 @@ export function resetCombatState(): void {
   activeEngagements.clear()
 }
 
-export function processCombat(state: GameState, rng: SeededRNG, elevationGrid?: ElevationGrid | null): void {
+export function processCombat(state: GameState, rng: SeededRNG, elevationGrid?: ElevationGrid | null, sensorNetwork?: SensorNetwork | null): void {
   updateMissileFuel(state)
   updateMissileSpeed(state)
   updateMissileAltitudes(state)
   updateMissilePositions(state)
-  runADEngagement(state, rng, elevationGrid)
+  runADEngagement(state, rng, elevationGrid, sensorNetwork)
   updateInterceptors(state, rng)
   resolveImpacts(state)
   updateReloads(state)
@@ -298,7 +299,7 @@ function getCurrentMissilePosition(missile: Missile, currentTime: number): [numb
 //  AD ENGAGEMENT — creates interceptor Missiles
 // ===============================================
 
-function runADEngagement(state: GameState, _rng: SeededRNG, elevationGrid?: ElevationGrid | null): void {
+function runADEngagement(state: GameState, _rng: SeededRNG, elevationGrid?: ElevationGrid | null, sensorNetwork?: SensorNetwork | null): void {
   const events: GameEvent[] = []
 
   for (const unit of state.units.values()) {
@@ -309,7 +310,10 @@ function runADEngagement(state: GameState, _rng: SeededRNG, elevationGrid?: Elev
     const unitADSystems = findAllADSystems(unit)
     if (unitADSystems.length === 0) continue
 
-    const threats = detectThreats(state, unit, elevationGrid)
+    // Use networked detection when sensor network is available, fall back to local-only
+    const threats = sensorNetwork
+      ? detectThreatsNetworked(state, unit, sensorNetwork, elevationGrid)
+      : detectThreats(state, unit, elevationGrid).map(t => ({ ...t, networkQuality: 'own' as const }))
     if (threats.length === 0) continue
 
     for (const { adSpec, loadout } of unitADSystems) {
@@ -399,6 +403,7 @@ function runADEngagement(state: GameState, _rng: SeededRNG, elevationGrid?: Elev
           fuel_remaining_sec: fuelSec,
           is_interceptor: true,
           interceptTargetMissileId: threat.missile.id,
+          networkQuality: threat.networkQuality,
         }
 
         state.missiles.set(intId, interceptor)
@@ -468,7 +473,7 @@ function updateInterceptors(state: GameState, rng: SeededRNG): void {
       }
 
       const adSpec = findADSpecForWeapon(interceptor.weaponId)
-      const pKill = computePKill(
+      let pKill = computePKill(
         interceptorSpec,
         targetSpec,
         adUnit,
@@ -476,6 +481,14 @@ function updateInterceptors(state: GameState, rng: SeededRNG): void {
         adSpec?.fire_channels ?? 6,
         0,
       )
+
+      // Network detection quality modifier:
+      // own radar = full accuracy, tracked via network = 70%, detected (no track) = 40%
+      const nq = interceptor.networkQuality ?? 'own'
+      const qualityModifier = nq === 'own' ? 1.0
+        : nq === 'tracked' ? 0.7
+        : 0.4 // 'detected'
+      pKill *= qualityModifier
 
       if (rng.chance(pKill)) {
         // Hit! Destroy both
