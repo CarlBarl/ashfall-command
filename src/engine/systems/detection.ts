@@ -1,6 +1,6 @@
 import type { GameState, Missile, Unit, Position } from '@/types/game'
 import type { ElevationGrid } from './elevation'
-import { haversine } from '../utils/geo'
+import { haversine, bearing } from '../utils/geo'
 import { weaponSpecs } from '@/data/weapons/missiles'
 
 export interface DetectedThreat {
@@ -84,6 +84,16 @@ export function detectThreats(state: GameState, adUnit: Unit, grid?: ElevationGr
       // Fallback: old altitude modifiers when no elevation grid
       if (spec.flight_altitude_ft < 500) effectiveRange *= 0.4
       else if (spec.flight_altitude_ft < 5000) effectiveRange *= 0.7
+    }
+
+    // Sector check — skip targets outside radar's coverage arc
+    const sensor = adUnit.sensors.find(s => s.type === 'radar')
+    const sectorDeg = sensor?.sector_deg ?? 360
+    if (sectorDeg < 360) {
+      const bearingToTarget = bearing(adUnit.position, { lat: currentPos[1], lng: currentPos[0] })
+      // Normalize difference to [-180, 180]
+      const headingDiff = ((bearingToTarget - adUnit.heading) % 360 + 540) % 360 - 180
+      if (Math.abs(headingDiff) > sectorDeg / 2) continue
     }
 
     if (dist <= effectiveRange) {
