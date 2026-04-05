@@ -1,10 +1,12 @@
-import { useEffect, useCallback, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useCallback, useMemo, useRef, useState, type CSSProperties } from 'react'
 import MapGL from 'react-map-gl/maplibre'
 import type { MapLayerMouseEvent } from 'react-map-gl/maplibre'
 import DeckOverlay from '@/components/map/DeckOverlay'
+import MapToggle from '@/components/hud/MapToggle'
 import { IconLayer, TextLayer } from '@deck.gl/layers'
 import { useMenuStore } from '@/store/menu-store'
 import { useDeploymentStore } from '@/store/deployment-store'
+import { useUIStore } from '@/store/ui-store'
 import { isValidPlacement } from '@/data/theater-water'
 import { getMapStyle } from '@/styles/map-providers'
 
@@ -109,6 +111,9 @@ export default function DeploymentOverlay() {
   const moveUnit = useDeploymentStore(s => s.moveUnit)
   const selectPlaced = useDeploymentStore(s => s.selectPlaced)
   const undoLast = useDeploymentStore(s => s.undoLast)
+
+  const mapMode = useUIStore((s) => s.mapMode)
+  const mapStyle = useMemo(() => getMapStyle(mapMode), [mapMode])
 
   const [placementError, setPlacementError] = useState<string | null>(null)
   const errorTimeout = useRef<ReturnType<typeof setTimeout>>(null)
@@ -269,12 +274,14 @@ export default function DeploymentOverlay() {
         <MapGL
           initialViewState={INITIAL_VIEW}
           style={{ width: '100%', height: '100%' }}
-          mapStyle={getMapStyle('dark')}
+          mapStyle={mapStyle}
           onClick={handleMapClick}
           dragPan={true}
         >
           <DeckOverlay layers={layers} />
         </MapGL>
+
+        <MapToggle />
 
         {/* Instruction banner */}
         <div

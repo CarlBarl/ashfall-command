@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { UnitId } from '@/types/game'
+import type { MapMode } from '@/styles/map-providers'
 
 export type LeftPanel = 'orbat' | 'stats' | 'economy' | null
 
@@ -11,6 +12,11 @@ interface UIState {
 
   // Map overlays
   showRangeRings: boolean
+
+  // Map display
+  mapMode: MapMode
+  showElevation: boolean
+  showRadarLOS: boolean
 
   // Left sidebar — radio group (only one at a time)
   leftPanel: LeftPanel
@@ -29,6 +35,9 @@ interface UIState {
 
   // Actions — map
   toggleRangeRings: () => void
+  cycleMapMode: () => void
+  toggleElevation: () => void
+  toggleRadarLOS: () => void
 
   // Actions — panels
   setLeftPanel: (panel: LeftPanel) => void
@@ -43,6 +52,9 @@ export const useUIStore = create<UIState>((set) => ({
   selectedUnitId: null,
   hoveredUnitId: null,
   showRangeRings: false,
+  mapMode: 'dark' as MapMode,
+  showElevation: false,
+  showRadarLOS: false,
   leftPanel: null,
   showOrbat: false,
   showStats: false,
@@ -76,6 +88,9 @@ export const useUIStore = create<UIState>((set) => ({
 
   // Map
   toggleRangeRings: () => set((s) => ({ showRangeRings: !s.showRangeRings })),
+  cycleMapMode: () => set((s) => ({ mapMode: (s.mapMode === 'dark' ? 'satellite' : 'dark') as MapMode })),
+  toggleElevation: () => set((s) => ({ showElevation: !s.showElevation })),
+  toggleRadarLOS: () => set((s) => ({ showRadarLOS: !s.showRadarLOS })),
 
   togglePanel: (panel) => {
     if (panel === 'orbat' || panel === 'stats' || panel === 'economy') {

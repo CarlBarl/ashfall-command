@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import MapToggle from '@/components/hud/MapToggle'
 import MapGL, { Layer, Source } from 'react-map-gl/maplibre'
 import type { MapRef, MapLayerMouseEvent } from 'react-map-gl/maplibre'
 import DeckOverlay from './DeckOverlay'
@@ -51,6 +52,9 @@ export default function GameMap() {
   const selectUnit = useUIStore((s) => s.selectUnit)
   const hoverUnit = useUIStore((s) => s.hoverUnit)
   const showRangeRings = useUIStore((s) => s.showRangeRings)
+  const mapMode = useUIStore((s) => s.mapMode)
+
+  const mapStyle = useMemo(() => getMapStyle(mapMode), [mapMode])
 
   // Targeting state from strike-store (not ui-store compat shims)
   const targetUnitId = useStrikeStore((s) => s.targetUnitId)
@@ -167,7 +171,7 @@ export default function GameMap() {
         ref={mapRef}
         initialViewState={INITIAL_VIEW}
         style={{ width: '100%', height: '100%' }}
-        mapStyle={getMapStyle('dark')}
+        mapStyle={mapStyle}
         onLoad={onLoad}
         onMove={onMove}
         onContextMenu={onContextMenu}
@@ -358,6 +362,8 @@ export default function GameMap() {
           onClose={() => setCtxMenu(null)}
         />
       )}
+
+      <MapToggle />
     </>
   )
 }
