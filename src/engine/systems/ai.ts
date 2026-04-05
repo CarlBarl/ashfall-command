@@ -32,7 +32,7 @@ function getAIState(nation: NationId): AIState {
 }
 
 /** Orient sector-limited SAM radars toward the nearest enemy concentration */
-function orientSAMRadars(state: GameState, excludeNation?: NationId): void {
+export function orientSAMRadars(state: GameState, excludeNation?: NationId): void {
   for (const unit of state.units.values()) {
     if (unit.status === 'destroyed') continue
     if (excludeNation && unit.nation === excludeNation) continue
@@ -62,12 +62,8 @@ function orientSAMRadars(state: GameState, excludeNation?: NationId): void {
 export function processAI(state: GameState, rng: SeededRNG): Command[] {
   const commands: Command[] = []
 
-  // Orient SAM radars toward threats
-  if (state.time.tick === 1) {
-    // Orient ALL sector-limited SAMs at game start
-    orientSAMRadars(state)
-  } else if (state.time.tick % 60 === 0) {
-    // Re-orient only enemy (non-player) SAMs periodically
+  // Re-orient enemy SAMs periodically (initial orient done in game-engine init)
+  if (state.time.tick % 60 === 0) {
     orientSAMRadars(state, state.playerNation)
   }
 

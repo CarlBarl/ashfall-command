@@ -6,7 +6,7 @@ import { iranUnits } from '@/data/units/iran-orbat'
 import { SeededRNG } from './utils/rng'
 import { processMovement } from './systems/movement'
 import { processCombat, launchMissile, launchSAM, resetCombatState } from './systems/combat'
-import { processAI, resetAIState } from './systems/ai'
+import { processAI, resetAIState, orientSAMRadars } from './systems/ai'
 import { processEconomy } from './systems/economy'
 import { processOrders, resetOrdersState } from './systems/orders'
 import { processFriendlyAI, resetFriendlyAIState } from './systems/friendly-ai'
@@ -126,6 +126,9 @@ export class GameEngine {
     for (const line of [...usaSupplyLines, ...iranSupplyLines]) {
       this.state.supplyLines.set(line.id, { ...line })
     }
+
+    // Orient sector-limited SAMs toward enemy before first tick
+    orientSAMRadars(this.state)
   }
 
   /** Initialize from scenario data (used by the game mode menu) */
@@ -167,6 +170,9 @@ export class GameEngine {
     for (const line of supplyLines) {
       this.state.supplyLines.set(line.id, { ...line })
     }
+
+    // Orient sector-limited SAMs toward enemy before first tick
+    orientSAMRadars(this.state)
   }
 
   /** Advance simulation by one tick */
