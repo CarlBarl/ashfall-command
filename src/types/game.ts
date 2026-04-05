@@ -2,6 +2,8 @@ export type NationId = 'usa' | 'iran'
 export type UnitId = string
 export type WeaponId = string
 
+export type DetectionState = 'unknown' | 'estimated' | 'detected' | 'tracked'
+
 export interface Position {
   lng: number
   lat: number
@@ -62,6 +64,8 @@ export interface Unit {
   roe: ROE
   parentId?: UnitId
   subordinateIds: UnitId[]
+  /** Hub units only — range of datalink to share detection data */
+  datalink_range_km?: number
 }
 
 export interface WeaponStock {
