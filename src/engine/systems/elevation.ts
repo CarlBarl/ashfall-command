@@ -62,6 +62,19 @@ export class ElevationGrid {
     return this.getElevation(lat, lng) <= 0
   }
 
+  /** Grid metadata accessors — used by visualization overlays */
+  get bounds(): { latMin: number; latMax: number; lngMin: number; lngMax: number } {
+    return {
+      latMin: this.latMin,
+      latMax: this.latMin + this.rows * this.resolution,
+      lngMin: this.lngMin,
+      lngMax: this.lngMin + this.cols * this.resolution,
+    }
+  }
+  get numRows(): number { return this.rows }
+  get numCols(): number { return this.cols }
+  get data(): Float32Array { return this.grid }
+
   /** Sample N elevation points along a line between two positions */
   sampleLine(from: Position, to: Position, samples: number): number[] {
     if (samples < 2) return [this.getElevation(from.lat, from.lng)]

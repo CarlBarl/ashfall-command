@@ -12,7 +12,8 @@ import { createImpactLayers } from './layers/ImpactLayer'
 import { createWaypointLayers } from './layers/WaypointLayer'
 import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
 import { createSupplyLineGeoJSON } from './layers/SupplyLineLayer'
-import { ensureMainThreadGrid, getLOSPolygon } from './layers/LOSLayer'
+import { ensureMainThreadGrid, getMainThreadGrid, getLOSPolygon } from './layers/LOSLayer'
+import { generateElevationOverlay } from './layers/ElevationOverlay'
 import InfoTooltip from './InfoTooltip'
 import MissileTracker from './MissileTracker'
 import { useUIStore } from '@/store/ui-store'
@@ -54,6 +55,7 @@ export default function GameMap() {
   const hoverUnit = useUIStore((s) => s.hoverUnit)
   const showRangeRings = useUIStore((s) => s.showRangeRings)
   const showRadarLOS = useUIStore((s) => s.showRadarLOS)
+  const showElevation = useUIStore((s) => s.showElevation)
   const mapMode = useUIStore((s) => s.mapMode)
 
   const mapStyle = useMemo(() => getMapStyle(mapMode), [mapMode])
@@ -85,26 +87,42 @@ export default function GameMap() {
     ensureMainThreadGrid().then(() => setGridReady(true)).catch(() => {})
   }, [])
 
+  // Generate elevation overlay image (static, computed once when grid is ready)
+  const elevationOverlay = useMemo(() => {
+    if (!gridReady || !showElevation) return null
+    const grid = getMainThreadGrid()
+    if (!grid) return null
+    return generateElevationOverlay(grid)
+  }, [gridReady, showElevation])
+
   // Compute LOS polygon for hovered/selected radar unit
   const losPolygon = useMemo(() => {
     if (!gridReady) return null
 
     // Determine which unit to show LOS for:
-    // 1. Selected radar unit — always show
-    // 2. Hovered radar unit — only when showRadarLOS toggle is on
-    const losUnitId = selectedUnitId ?? (showRadarLOS ? hoveredUnitId : null)
-    if (!losUnitId) return null
+    // 1. Hovered radar unit — when showRadarLOS toggle is on (takes priority for responsiveness)
+    // 2. Selected radar unit — always show regardless of toggle
+    // We try hovered first so that hovering over other radar units while one is selected
+    // still shows the hovered unit's coverage.
+    const candidates: (string | null)[] = [
+      showRadarLOS ? hoveredUnitId : null,
+      selectedUnitId,
+    ]
 
-    const unit = units.find((u) => u.id === losUnitId)
-    if (!unit || unit.status === 'destroyed') return null
+    for (const candidateId of candidates) {
+      if (!candidateId) continue
+      const unit = units.find((u) => u.id === candidateId)
+      if (!unit || unit.status === 'destroyed') continue
 
-    // Find the best radar sensor on this unit
-    const radarSensor = unit.sensors?.find((s) => s.type === 'radar')
-    if (!radarSensor) return null
+      const radarSensor = unit.sensors?.find((s) => s.type === 'radar')
+      if (!radarSensor) continue
 
-    const antennaHeight = radarSensor.antenna_height_m ?? 15 // default 15m
-    const sectorDeg = radarSensor.sector_deg ?? 360
-    return getLOSPolygon(losUnitId, unit.position, radarSensor.range_km, antennaHeight, unit.heading, sectorDeg)
+      const antennaHeight = radarSensor.antenna_height_m ?? 15
+      const sectorDeg = radarSensor.sector_deg ?? 360
+      return getLOSPolygon(candidateId, unit.position, radarSensor.range_km, antennaHeight, unit.heading, sectorDeg)
+    }
+
+    return null
   }, [gridReady, selectedUnitId, hoveredUnitId, showRadarLOS, units])
 
   const onLoad = useCallback(() => {
@@ -212,6 +230,29 @@ export default function GameMap() {
         cursor={targetingMode ? 'crosshair' : hoveredUnitId ? 'pointer' : 'grab'}
       >
         <DeckOverlay layers={layers} />
+
+        {elevationOverlay && (
+          <Source
+            id="elevation-overlay"
+            type="image"
+            url={elevationOverlay.dataUrl}
+            coordinates={[
+              [elevationOverlay.bounds[0], elevationOverlay.bounds[3]], // top-left [west, north]
+              [elevationOverlay.bounds[2], elevationOverlay.bounds[3]], // top-right [east, north]
+              [elevationOverlay.bounds[2], elevationOverlay.bounds[1]], // bottom-right [east, south]
+              [elevationOverlay.bounds[0], elevationOverlay.bounds[1]], // bottom-left [west, south]
+            ]}
+          >
+            <Layer
+              id="elevation-raster"
+              type="raster"
+              paint={{
+                'raster-opacity': 0.6,
+                'raster-fade-duration': 0,
+              }}
+            />
+          </Source>
+        )}
 
         {supplyLines.length > 0 && (
           <Source id="supply-lines" type="geojson" data={createSupplyLineGeoJSON(supplyLines, units)}>
