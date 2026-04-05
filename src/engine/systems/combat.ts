@@ -15,6 +15,80 @@ let interceptorCounter = 0
 // Track active fire channels per AD system per unit: `${unitId}:${adSystemId}` -> Set<missileId>
 const activeEngagements = new Map<string, Set<string>>()
 
+/**
+ * Quadratic intercept solver: find the point where interceptor and target
+ * arrive simultaneously. This is the standard missile guidance initial-aim
+ * calculation used by real fire-control systems.
+ *
+ * Solves: |T + Vt*t - L| = Si*t  (interceptor reaches target's future position)
+ * Expands to quadratic: (St² - Si²)t² + 2(d·Vt)t + |d|² = 0
+ *
+ * Uses flat-earth projection (< 0.5% error at typical AD ranges < 500km).
+ * Returns null if no intercept is geometrically possible (target outrunning interceptor).
+ */
+export function computeInterceptPoint(
+  fromPos: { lat: number; lng: number },
+  targetPos: [number, number], // [lng, lat]
+  targetHeadingDeg: number,
+  targetSpeedKmh: number,
+  interceptorSpeedKmh: number,
+): { lat: number; lng: number; timeToInterceptSec: number } | null {
+  const midLat = (fromPos.lat + targetPos[1]) / 2
+  const cosLat = Math.cos(midLat * Math.PI / 180)
+  const KM_PER_DEG = 111.32
+
+  // Target relative to launcher in flat-earth km
+  const dx = (targetPos[0] - fromPos.lng) * cosLat * KM_PER_DEG
+  const dy = (targetPos[1] - fromPos.lat) * KM_PER_DEG
+
+  // Target velocity vector (km/s), heading = degrees clockwise from north
+  const headRad = targetHeadingDeg * Math.PI / 180
+  const St = targetSpeedKmh / 3600
+  const vx = St * Math.sin(headRad)
+  const vy = St * Math.cos(headRad)
+
+  const Si = interceptorSpeedKmh / 3600
+
+  // Quadratic coefficients
+  const a = St * St - Si * Si
+  const b = 2 * (dx * vx + dy * vy)
+  const c = dx * dx + dy * dy
+
+  let t: number
+
+  if (Math.abs(a) < 1e-10) {
+    // Equal speeds — degenerate to linear
+    if (Math.abs(b) < 1e-10) return null
+    t = -c / b
+    if (t <= 0) return null
+  } else {
+    const disc = b * b - 4 * a * c
+    if (disc < 0) return null
+
+    const sqrtD = Math.sqrt(disc)
+    const t1 = (-b + sqrtD) / (2 * a)
+    const t2 = (-b - sqrtD) / (2 * a)
+
+    // Smallest positive root (at least 0.1s to avoid degenerate solutions)
+    const pos = [t1, t2].filter(v => v > 0.1)
+    if (pos.length === 0) return null
+    t = Math.min(...pos)
+  }
+
+  // Cap at 120s — beyond this, target may maneuver and prediction is unreliable
+  t = Math.min(t, 120)
+
+  // Intercept point in local Cartesian, then back to lat/lng
+  const ix = dx + vx * t
+  const iy = dy + vy * t
+
+  return {
+    lat: fromPos.lat + iy / KM_PER_DEG,
+    lng: fromPos.lng + ix / (cosLat * KM_PER_DEG),
+    timeToInterceptSec: t,
+  }
+}
+
 /** Reset module-level state — must be called on save/load */
 export function resetCombatState(): void {
   missileCounter = 0
@@ -385,8 +459,7 @@ function runADEngagement(state: GameState, _rng: SeededRNG, elevationGrid?: Elev
         const threatPos = getCurrentMissilePosition(threat.missile, state.time.timestamp)
         if (!threatPos) continue
 
-        // --- Lead intercept prediction ---
-        // Compute threat's heading from its path (direction of travel)
+        // Compute threat heading from path history
         let threatHeading = 0
         if (threat.missile.path.length >= 2) {
           const prevPt = threat.missile.path[Math.max(0, threat.missile.path.length - 2)]
@@ -396,21 +469,23 @@ function runADEngagement(state: GameState, _rng: SeededRNG, elevationGrid?: Elev
           )
         }
 
-        // Estimate time for interceptor to reach threat's current position
-        const distToThreat = haversine(unit.position, { lng: threatPos[0], lat: threatPos[1] })
-        const timeToReachSec = (distToThreat / intSpeedKmh) * 3600
-
-        // Predict where threat will be when interceptor arrives
+        // Quadratic intercept solve: exact time + point where interceptor meets threat
         const threatSpeedKmh = machToKmh(threat.missile.speed_current_mach)
-        const leadDistKm = (threatSpeedKmh * timeToReachSec) / 3600
-
-        const interceptPoint = destination(
-          { lat: threatPos[1], lng: threatPos[0] },
-          threatHeading,
-          leadDistKm,
+        const solve = computeInterceptPoint(
+          unit.position, threatPos, threatHeading, threatSpeedKmh, intSpeedKmh,
         )
 
-        const dist = haversine(unit.position, interceptPoint)
+        let interceptPoint: { lat: number; lng: number }
+        let dist: number
+        if (solve) {
+          interceptPoint = solve
+          dist = haversine(unit.position, interceptPoint)
+        } else {
+          // No solution (target outrunning interceptor) — aim at current position
+          interceptPoint = { lng: threatPos[0], lat: threatPos[1] }
+          dist = haversine(unit.position, interceptPoint)
+        }
+
         const flightTimeMs = (dist / intSpeedKmh) * 3600 * 1000
         const numSegments = Math.max(5, Math.ceil(dist / 5))
         const path = greatCirclePath(unit.position, interceptPoint, numSegments)
@@ -544,8 +619,7 @@ function updateInterceptors(state: GameState, rng: SeededRNG): void {
       continue
     }
 
-    // Lead pursuit (proportional navigation approximation):
-    // Fly toward where the target WILL BE, not where it IS now.
+    // Proportional navigation: steer toward quadratic intercept point each tick
     const intKmPerSec = machToKmh(interceptor.speed_current_mach) / 3600
 
     // Get target's heading from its last two path points
@@ -555,21 +629,28 @@ function updateInterceptors(state: GameState, rng: SeededRNG): void {
       targetHeading = bearing({ lat: prev[1], lng: prev[0] }, { lat: targetPos[1], lng: targetPos[0] })
     }
 
-    // Estimate time-to-intercept from current closing geometry
-    const targetKmPerSec = machToKmh(targetMissile.speed_current_mach) / 3600
-    const timeToInterceptSec = dist / (intKmPerSec + targetKmPerSec * 0.5) // rough closing rate
-
-    // Predict where target will be at intercept time
-    const leadDist = targetKmPerSec * Math.min(timeToInterceptSec, 30) // cap lead at 30s ahead
-    const predictedTarget = destination(
-      { lat: targetPos[1], lng: targetPos[0] },
+    // Quadratic intercept solve from current interceptor position
+    const intSpeedKmh = machToKmh(interceptor.speed_current_mach)
+    const targetSpeedKmh = machToKmh(targetMissile.speed_current_mach)
+    const solve = computeInterceptPoint(
+      { lng: intPos[0], lat: intPos[1] },
+      targetPos,
       targetHeading,
-      leadDist,
+      targetSpeedKmh,
+      intSpeedKmh,
     )
+
+    let steerTarget: { lat: number; lng: number }
+    if (solve) {
+      steerTarget = solve
+    } else {
+      // No intercept solution — aim directly at target (best effort)
+      steerTarget = { lat: targetPos[1], lng: targetPos[0] }
+    }
 
     const brng = bearing(
       { lng: intPos[0], lat: intPos[1] },
-      predictedTarget,
+      steerTarget,
     )
     const newPos = destination(
       { lng: intPos[0], lat: intPos[1] },
@@ -825,33 +906,32 @@ export function launchSAM(
   const threatPos = getCurrentMissilePosition(targetMissile, state.time.timestamp)
   if (!threatPos) return null
 
-  // --- Lead intercept prediction ---
-  // Compute threat's heading from its path (direction of travel)
+  // Compute threat heading from path history
   let threatHeading = 0
   if (targetMissile.path.length >= 2) {
     const prevPt = targetMissile.path[Math.max(0, targetMissile.path.length - 2)]
-    const curPt = threatPos
     threatHeading = bearing(
       { lat: prevPt[1], lng: prevPt[0] },
-      { lat: curPt[1], lng: curPt[0] },
+      { lat: threatPos[1], lng: threatPos[0] },
     )
   }
 
-  // Estimate time for interceptor to reach threat's current position
-  const distToThreat = haversine(launcher.position, { lng: threatPos[0], lat: threatPos[1] })
-  const timeToReachSec = (distToThreat / intSpeedKmh) * 3600
-
-  // Predict where threat will be when interceptor arrives
+  // Quadratic intercept solve
   const threatSpeedKmh = machToKmh(targetMissile.speed_current_mach)
-  const leadDistKm = (threatSpeedKmh * timeToReachSec) / 3600
-
-  const interceptPoint = destination(
-    { lat: threatPos[1], lng: threatPos[0] },
-    threatHeading,
-    leadDistKm,
+  const solve = computeInterceptPoint(
+    launcher.position, threatPos, threatHeading, threatSpeedKmh, intSpeedKmh,
   )
 
-  const dist = haversine(launcher.position, interceptPoint)
+  let interceptPoint: { lat: number; lng: number }
+  let dist: number
+  if (solve) {
+    interceptPoint = solve
+    dist = haversine(launcher.position, interceptPoint)
+  } else {
+    interceptPoint = { lng: threatPos[0], lat: threatPos[1] }
+    dist = haversine(launcher.position, interceptPoint)
+  }
+
   const flightTimeMs = (dist / intSpeedKmh) * 3600 * 1000
   const numSegments = Math.max(5, Math.ceil(dist / 5))
   const path = greatCirclePath(launcher.position, interceptPoint, numSegments)
