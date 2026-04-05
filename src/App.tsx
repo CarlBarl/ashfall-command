@@ -11,11 +11,13 @@ import StatsPanel from '@/components/panels/StatsPanel'
 import StartScreen from '@/components/menu/StartScreen'
 import ScenarioSelect from '@/components/menu/ScenarioSelect'
 import FreeModeLobby from '@/components/menu/FreeModeLobby'
+import DeploymentOverlay from '@/components/menu/DeploymentOverlay'
 import { useGameStore } from '@/store/game-store'
 import { useUIStore } from '@/store/ui-store'
 import { useMenuStore } from '@/store/menu-store'
+import { useDeploymentStore } from '@/store/deployment-store'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { initBridge, initDefaultScenario, initFromData } from '@/store/bridge'
+import { initBridge, initFromData } from '@/store/bridge'
 import { getScenario } from '@/data/scenarios/index'
 
 type MobilePanel = null | 'unit' | 'strike' | 'orbat' | 'stats' | 'econ' | 'events'
@@ -35,17 +37,17 @@ export default function App() {
     const store = useMenuStore.getState()
     const mode = store.selectedMode ?? 'scenario'
 
+    // Reuse scenario data for nations/economy in both modes
+    const scenario = getScenario('persian-gulf-2026')!
+    const data = scenario.getData()
+
     if (mode === 'scenario') {
-      const scenario = getScenario('persian-gulf-2026')
-      if (scenario) {
-        const data = scenario.getData()
-        initFromData(store.selectedNation, data.nations, data.units, data.supplyLines, data.baseSupply, scenario.startDate)
-      } else {
-        initDefaultScenario(store.selectedNation)
-      }
+      initFromData(store.selectedNation, data.nations, data.units, data.supplyLines, data.baseSupply, scenario.startDate)
     } else {
-      // Free mode — use default scenario data for nations/economy, but custom units
-      initDefaultScenario(store.selectedNation)
+      // Free mode — use player-placed units + AI/manual enemy units
+      const deployStore = useDeploymentStore.getState()
+      const allUnits = deployStore.confirmDeployment()
+      initFromData(store.selectedNation, data.nations, allUnits, [], {}, scenario.startDate)
     }
   }, [screen])
 
@@ -66,6 +68,7 @@ export default function App() {
   if (screen === 'start') return <StartScreen />
   if (screen === 'scenario-select') return <ScenarioSelect />
   if (screen === 'free-lobby') return <FreeModeLobby />
+  if (screen === 'deployment') return <DeploymentOverlay />
 
   if (isMobile) {
     return (

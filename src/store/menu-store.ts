@@ -22,7 +22,7 @@ export interface GameModeConfig {
 // ── Store ───────────────────────────────────────────────────────────
 
 interface MenuState {
-  screen: 'start' | 'scenario-select' | 'free-lobby' | 'playing'
+  screen: 'start' | 'scenario-select' | 'free-lobby' | 'deployment' | 'playing'
   selectedMode: 'scenario' | 'free' | null
   selectedNation: NationId
   freeBudget: number

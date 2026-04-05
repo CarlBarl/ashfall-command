@@ -1,67 +1,13 @@
 import { useState, useMemo, type CSSProperties } from 'react'
 import { useMenuStore, type FreeModeUnit } from '@/store/menu-store'
 import type { NationId, UnitCategory } from '@/types/game'
+import type { UnitCatalogEntry } from '@/types/scenario'
+import { usaCatalog } from '@/data/catalog/usa-catalog'
+import { iranCatalog } from '@/data/catalog/iran-catalog'
 
-// ── Catalog data (placeholder until @/data/catalog/* exists) ────────
-
-interface CatalogEntry {
-  id: string
-  name: string
-  category: UnitCategory
-  cost_millions: number
-  description: string
-}
-
-const USA_CATALOG: CatalogEntry[] = [
-  // SAM Sites
-  { id: 'patriot', name: 'Patriot Battery (PAC-3 MSE)', category: 'sam_site', cost_millions: 1100, description: 'MIM-104 Patriot with PAC-3 MSE interceptors' },
-  { id: 'thaad', name: 'THAAD Battery', category: 'sam_site', cost_millions: 1800, description: 'Terminal High Altitude Area Defense' },
-
-  // Airbases
-  { id: 'airbase_f15', name: 'F-15E Strike Eagle Wing', category: 'airbase', cost_millions: 3200, description: '24x F-15E with JASSM-ER loadout' },
-  { id: 'airbase_f35', name: 'F-35A Lightning II Wing', category: 'airbase', cost_millions: 4500, description: '24x F-35A with JSM/SDB loadout' },
-  { id: 'airbase_b1b', name: 'B-1B Lancer Detachment', category: 'airbase', cost_millions: 2800, description: '6x B-1B heavy bomber with JASSM-ER' },
-
-  // Ships
-  { id: 'ddg_burke', name: 'Arleigh Burke DDG', category: 'ship', cost_millions: 1900, description: 'Aegis destroyer with SM-2/SM-6 + Tomahawk' },
-  { id: 'cg_tico', name: 'Ticonderoga CG', category: 'ship', cost_millions: 2200, description: 'Aegis cruiser with 122 VLS cells' },
-
-  // Carrier Groups
-  { id: 'cvn_group', name: 'Carrier Strike Group', category: 'carrier_group', cost_millions: 8000, description: 'Nimitz-class CVN + air wing + escorts' },
-
-  // Submarines
-  { id: 'ssn_virginia', name: 'Virginia-class SSN', category: 'submarine', cost_millions: 2700, description: 'Block V with Virginia Payload Module' },
-
-  // Missile Batteries
-  { id: 'tomahawk_battery', name: 'Tomahawk Battery', category: 'missile_battery', cost_millions: 800, description: 'Ground-launched Tomahawk cruise missiles' },
-]
-
-const IRAN_CATALOG: CatalogEntry[] = [
-  // SAM Sites
-  { id: 's300', name: 'S-300PMU-2 Battalion', category: 'sam_site', cost_millions: 600, description: 'Russian-made long-range SAM system' },
-  { id: 'bavar373', name: 'Bavar-373 Battalion', category: 'sam_site', cost_millions: 500, description: 'Indigenous long-range air defense' },
-  { id: 'khordad15', name: 'Khordad-15 Battery', category: 'sam_site', cost_millions: 300, description: 'Medium-range SAM with Sayyad-3' },
-
-  // Airbases
-  { id: 'airbase_f14', name: 'F-14A Tomcat Squadron', category: 'airbase', cost_millions: 1200, description: '12x F-14A with AIM-54 Phoenix' },
-  { id: 'airbase_su24', name: 'Su-24 Fencer Squadron', category: 'airbase', cost_millions: 800, description: '12x Su-24MK strike aircraft' },
-
-  // Missile Batteries
-  { id: 'shahab3', name: 'Shahab-3 Battery', category: 'missile_battery', cost_millions: 350, description: 'Medium-range ballistic missile (1300km)' },
-  { id: 'fateh110', name: 'Fateh-110 Battery', category: 'missile_battery', cost_millions: 200, description: 'Short-range ballistic missile (300km)' },
-  { id: 'soumar', name: 'Soumar Cruise Missile Battery', category: 'missile_battery', cost_millions: 400, description: 'Ground-launched cruise missile (2500km)' },
-
-  // Ships
-  { id: 'moudge_frigate', name: 'Moudge-class Frigate', category: 'ship', cost_millions: 450, description: 'Frigate with C-802 anti-ship missiles' },
-  { id: 'fast_attack', name: 'Fast Attack Craft Wing', category: 'ship', cost_millions: 250, description: 'Swarm of missile-armed fast boats' },
-
-  // Naval Bases
-  { id: 'naval_base', name: 'Coastal Naval Base', category: 'naval_base', cost_millions: 600, description: 'Fortified harbor with support facilities' },
-]
-
-const CATALOGS: Record<NationId, CatalogEntry[]> = {
-  usa: USA_CATALOG,
-  iran: IRAN_CATALOG,
+const CATALOGS: Record<NationId, UnitCatalogEntry[]> = {
+  usa: usaCatalog,
+  iran: iranCatalog,
 }
 
 const CATEGORY_ORDER: UnitCategory[] = [
@@ -205,7 +151,7 @@ function CatalogItem({
   onAdd,
   disabled,
 }: {
-  entry: CatalogEntry
+  entry: UnitCatalogEntry
   onAdd: () => void
   disabled: boolean
 }) {
@@ -350,12 +296,12 @@ function CatalogBrowser({
   budget,
   onAdd,
 }: {
-  catalog: CatalogEntry[]
+  catalog: UnitCatalogEntry[]
   budget: number
-  onAdd: (entry: CatalogEntry) => void
+  onAdd: (entry: UnitCatalogEntry) => void
 }) {
   const grouped = useMemo(() => {
-    const map = new Map<UnitCategory, CatalogEntry[]>()
+    const map = new Map<UnitCategory, UnitCatalogEntry[]>()
     for (const entry of catalog) {
       if (!map.has(entry.category)) map.set(entry.category, [])
       map.get(entry.category)!.push(entry)
@@ -466,7 +412,7 @@ export default function FreeModeLobby() {
   const playerCatalog = CATALOGS[selectedNation]
   const enemyCatalog = CATALOGS[enemyNation]
 
-  const handleAddUnit = (entry: CatalogEntry) => {
+  const handleAddUnit = (entry: UnitCatalogEntry) => {
     addFreeUnit({
       catalogId: entry.id,
       name: entry.name,
@@ -475,7 +421,7 @@ export default function FreeModeLobby() {
     })
   }
 
-  const handleAddEnemyUnit = (entry: CatalogEntry) => {
+  const handleAddEnemyUnit = (entry: UnitCatalogEntry) => {
     addFreeEnemyUnit({
       catalogId: entry.id,
       name: entry.name,
@@ -484,8 +430,8 @@ export default function FreeModeLobby() {
     })
   }
 
-  const handleLaunch = () => {
-    setScreen('playing')
+  const handleDeploy = () => {
+    setScreen('deployment')
   }
 
   const handleBack = () => {
@@ -689,10 +635,10 @@ export default function FreeModeLobby() {
           </>
         )}
 
-        {/* Launch */}
+        {/* Deploy */}
         <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 0 32px' }}>
           <button
-            onClick={handleLaunch}
+            onClick={handleDeploy}
             disabled={freeUnits.length === 0}
             style={{
               background: freeUnits.length > 0 ? 'var(--text-accent)' : 'transparent',
@@ -713,7 +659,7 @@ export default function FreeModeLobby() {
               opacity: freeUnits.length > 0 ? 1 : 0.5,
             }}
           >
-            LAUNCH
+            DEPLOY
           </button>
         </div>
       </div>

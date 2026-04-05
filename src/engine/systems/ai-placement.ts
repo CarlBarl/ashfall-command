@@ -222,7 +222,7 @@ function jitterPosition(center: Position, rng: SeededRNG): Position {
 }
 
 /** Build a full Unit from a catalog entry template */
-function buildUnit(
+export function buildUnit(
   entry: UnitCatalogEntry,
   position: Position,
   nation: NationId,
