@@ -24,6 +24,7 @@ import { ElevationGrid } from './systems/elevation'
 import { buildSensorNetwork, type SensorNetwork } from './systems/sensor-network'
 import { processSatellites, resetSatelliteState, getSatelliteDetections } from './systems/satellites'
 import { processEspionage, type EspionageResult } from './systems/espionage'
+import { findNavalRoute } from './systems/route-planner'
 import type { SatellitePass } from '@/types/game'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
@@ -281,7 +282,19 @@ export class GameEngine {
             // If packing or deploying, reject silently (unit is transitioning)
           } else {
             // No readiness lifecycle (ships, aircraft, etc.) — move immediately
-            unit.waypoints = cmd.waypoints
+            const isNaval = unit.category === 'ship' || unit.category === 'submarine' || unit.category === 'carrier_group'
+            if (isNaval && this.elevationGrid && cmd.waypoints.length > 0) {
+              // Auto-route naval units around land
+              const finalDest = cmd.waypoints[cmd.waypoints.length - 1]
+              const route = findNavalRoute(unit.position, finalDest, this.elevationGrid)
+              if (route) {
+                unit.waypoints = [...route, finalDest]
+              } else {
+                unit.waypoints = cmd.waypoints // fallback to direct if no route
+              }
+            } else {
+              unit.waypoints = cmd.waypoints
+            }
             unit.status = 'moving'
           }
         }
