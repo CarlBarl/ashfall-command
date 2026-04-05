@@ -10,6 +10,8 @@ import type { UnitCluster } from './layers/cluster'
 import { createMissileLayers } from './layers/MissileLayer'
 import { createImpactLayers } from './layers/ImpactLayer'
 import { createWaypointLayers } from './layers/WaypointLayer'
+import { createIntelUnitLayers } from './layers/IntelLayer'
+import circle from '@turf/circle'
 import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
 import { createSupplyLineGeoJSON } from './layers/SupplyLineLayer'
 import { ensureMainThreadGrid, getMainThreadGrid, getLOSPolygon } from './layers/LOSLayer'
@@ -71,8 +73,9 @@ export default function GameMap() {
   const targetingMode = useStrikeStore((s) => s.targetingMode)
   const setTarget = useStrikeStore((s) => s.setTargetUnitId)
 
-  // Intel placement mode
+  // Intel placement mode + estimated units
   const placingCatalogId = useIntelStore((s) => s.placingCatalogId)
+  const estimatedUnits = useIntelStore((s) => s.estimatedUnits)
 
   // Get selected unit's nation for targeting
   const units = useGameStore((s) => s.viewState.units)
@@ -103,6 +106,17 @@ export default function GameMap() {
     if (!grid) return null
     return generateElevationOverlay(grid)
   }, [gridReady, showElevation])
+
+  // Compute radar coverage circles for estimated intel units
+  const intelCoverageData = useMemo(() => {
+    const features = estimatedUnits
+      .filter((u) => u.sensors.some((s) => s.type === 'radar'))
+      .map((u) => {
+        const radar = u.sensors.find((s) => s.type === 'radar')!
+        return circle([u.position.lng, u.position.lat], radar.range_km, { units: 'kilometers', steps: 64 })
+      })
+    return { type: 'FeatureCollection' as const, features }
+  }, [estimatedUnits])
 
   // Compute LOS polygon for hovered/selected radar unit
   const losPolygon = useMemo(() => {
@@ -245,7 +259,8 @@ export default function GameMap() {
     ...createMissileLayers(missiles, currentTime, units, handleHover, handleMissileClick),
     ...createImpactLayers(allEvents, units, currentTick),
     ...createWaypointLayers(units, selectedUnitIds),
-  ], [units, selectedUnitId, selectedUnitIds, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, handleMissileClick, setTarget, selectedNation, zoom, missiles, currentTime, allEvents, currentTick])
+    ...createIntelUnitLayers(estimatedUnits),
+  ], [units, selectedUnitId, selectedUnitIds, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, handleMissileClick, setTarget, selectedNation, zoom, missiles, currentTime, allEvents, currentTick, estimatedUnits])
 
   return (
     <>
@@ -344,6 +359,29 @@ export default function GameMap() {
                 'line-color': '#22cc44',
                 'line-opacity': 0.3,
                 'line-width': 1,
+              }}
+            />
+          </Source>
+        )}
+
+        {intelCoverageData.features.length > 0 && (
+          <Source id="intel-coverage" type="geojson" data={intelCoverageData}>
+            <Layer
+              id="intel-coverage-fill"
+              type="fill"
+              paint={{
+                'fill-color': '#ff8800',
+                'fill-opacity': 0.06,
+              }}
+            />
+            <Layer
+              id="intel-coverage-line"
+              type="line"
+              paint={{
+                'line-color': '#ff8800',
+                'line-opacity': 0.3,
+                'line-width': 1,
+                'line-dasharray': [4, 4],
               }}
             />
           </Source>
