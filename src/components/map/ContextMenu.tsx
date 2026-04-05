@@ -2,6 +2,46 @@ import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { sendCommand } from '@/store/bridge'
 import { bearing } from '@/engine/utils/geo'
+import { getMainThreadGrid } from './layers/LOSLayer'
+import { destination } from '@turf/destination'
+
+const FIXED_CATEGORIES = new Set(['airbase', 'naval_base'])
+const OPTIMIZE_RADIUS_KM = 30
+const OPTIMIZE_SAMPLES = 36 // sample every 10 degrees at 3 radii
+
+/** Score a position by how much radar coverage it has (simplified LOS check) */
+function scoreLOS(lat: number, lng: number, antennaHeightM: number, rangeKm: number): number {
+  const grid = getMainThreadGrid()
+  if (!grid) return 0
+
+  const radarAlt = grid.getElevation(lat, lng) + antennaHeightM
+  if (radarAlt <= 0) return -1 // don't place in water
+
+  let score = 0
+  const numRays = 36
+  const steps = 10
+
+  for (let ray = 0; ray < numRays; ray++) {
+    const azimuth = (ray * 360) / numRays
+    let maxObstacleAngle = -Infinity
+
+    for (let step = 1; step <= steps; step++) {
+      const dist = (step / steps) * rangeKm
+      const pt = destination([lng, lat], dist, azimuth, { units: 'kilometers' })
+      const coords = pt.geometry.coordinates
+      const terrainElev = grid.getElevation(coords[1], coords[0])
+      const angle = Math.atan2(terrainElev - radarAlt, dist * 1000)
+
+      if (angle > maxObstacleAngle) {
+        maxObstacleAngle = angle
+        score += dist // more visible distance = higher score
+      } else if (terrainElev - radarAlt > 0) {
+        break
+      }
+    }
+  }
+  return score
+}
 
 interface ContextMenuProps {
   x: number
@@ -18,10 +58,51 @@ export default function ContextMenu({ x, y, lngLat, shiftKey, onClose }: Context
 
   if (!unit) return null
 
-  const canMove = unit.category !== 'airbase' && unit.category !== 'sam_site'
+  const canMove = !FIXED_CATEGORIES.has(unit.category)
+  const hasRadar = unit.sensors?.some(s => s.type === 'radar')
   const hasSectorRadar = unit.sensors?.some(
     (s) => s.type === 'radar' && s.sector_deg != null && s.sector_deg < 360,
   )
+
+  const handleOptimize = () => {
+    const radar = unit.sensors?.find(s => s.type === 'radar')
+    if (!radar) return
+
+    const antennaH = radar.antenna_height_m ?? 15
+    const rangeKm = radar.range_km
+
+    let bestScore = scoreLOS(unit.position.lat, unit.position.lng, antennaH, rangeKm)
+    let bestPos = unit.position
+
+    // Sample positions at 3 radii around current position
+    const radii = [OPTIMIZE_RADIUS_KM * 0.3, OPTIMIZE_RADIUS_KM * 0.6, OPTIMIZE_RADIUS_KM]
+    for (const radius of radii) {
+      for (let i = 0; i < OPTIMIZE_SAMPLES; i++) {
+        const azimuth = (i * 360) / OPTIMIZE_SAMPLES
+        const pt = destination(
+          [unit.position.lng, unit.position.lat],
+          radius,
+          azimuth,
+          { units: 'kilometers' },
+        )
+        const coords = pt.geometry.coordinates
+        const s = scoreLOS(coords[1], coords[0], antennaH, rangeKm)
+        if (s > bestScore) {
+          bestScore = s
+          bestPos = { lat: coords[1], lng: coords[0] }
+        }
+      }
+    }
+
+    if (bestPos !== unit.position) {
+      sendCommand({
+        type: 'MOVE_UNIT',
+        unitId: unit.id,
+        waypoints: [bestPos],
+      })
+    }
+    onClose()
+  }
 
   return (
     <div
@@ -46,14 +127,12 @@ export default function ContextMenu({ x, y, lngLat, shiftKey, onClose }: Context
           onClick={() => {
             const newWaypoint = { lat: lngLat.lat, lng: lngLat.lng }
             if (shiftKey && unit.waypoints && unit.waypoints.length > 0) {
-              // Append to existing waypoints
               sendCommand({
                 type: 'MOVE_UNIT',
                 unitId: unit.id,
                 waypoints: [...unit.waypoints, newWaypoint],
               })
             } else {
-              // Replace waypoints
               sendCommand({
                 type: 'MOVE_UNIT',
                 unitId: unit.id,
@@ -62,6 +141,12 @@ export default function ContextMenu({ x, y, lngLat, shiftKey, onClose }: Context
             }
             onClose()
           }}
+        />
+      )}
+      {canMove && hasRadar && (
+        <MenuItem
+          label="Optimize position (30km)"
+          onClick={handleOptimize}
         />
       )}
       {hasSectorRadar && (
