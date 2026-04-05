@@ -21,6 +21,7 @@
     "@turf/destination": "^7.3.4",
     "@turf/distance": "^7.3.4",
     "@turf/helpers": "^7.3.4",
+    "@turf/union": "^7.3.4",
     "comlink": "^4.4.2",
     "idb": "^8.0.3",
     "maplibre-gl": "^4.7.1",

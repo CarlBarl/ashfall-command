@@ -595,24 +595,25 @@ export default function GameMap() {
           const rangeData = createRangeRingGeoJSON(units)
           return (
             <Source id="range-rings" type="geojson" data={rangeData}>
+              {/* Fill — very subtle for both types */}
               <Layer
                 id="range-ring-fill"
                 type="fill"
                 paint={{
                   'fill-color': ['get', 'fill'],
-                  'fill-opacity': 0.08,
                 }}
               />
+              {/* SAM rings: solid bright green line, 1.5px */}
               <Layer
                 id="range-ring-stroke-sam"
                 type="line"
                 filter={['==', ['get', 'ringType'], 'sam']}
                 paint={{
                   'line-color': ['get', 'stroke'],
-                  'line-width': 1,
-                  'line-opacity': 0.3,
+                  'line-width': 1.5,
                 }}
               />
+              {/* Offensive rings: dashed nation color, thinner */}
               <Layer
                 id="range-ring-stroke-missile"
                 type="line"
@@ -620,25 +621,27 @@ export default function GameMap() {
                 paint={{
                   'line-color': ['get', 'stroke'],
                   'line-width': 1,
-                  'line-opacity': 0.3,
-                  'line-dasharray': [4, 4],
+                  'line-dasharray': [6, 4],
                 }}
               />
+              {/* Labels: weapon name + range along the ring line */}
               <Layer
                 id="range-ring-labels"
                 type="symbol"
+                minzoom={4}
                 layout={{
-                  'text-field': ['concat', ['get', 'weaponName'], ' ', ['to-string', ['get', 'range_km']], 'km'],
-                  'text-size': 9,
+                  'text-field': ['get', 'label'],
+                  'text-size': 10,
                   'text-font': ['Noto Sans Regular'],
                   'symbol-placement': 'line',
                   'text-allow-overlap': false,
-                  'symbol-spacing': 250,
+                  'symbol-spacing': 300,
+                  'text-letter-spacing': 0.05,
                 }}
                 paint={{
-                  'text-color': ['get', 'stroke'],
-                  'text-halo-color': 'rgba(0, 0, 0, 0.9)',
-                  'text-halo-width': 1.5,
+                  'text-color': '#e0e0e0',
+                  'text-halo-color': 'rgba(0, 0, 0, 1)',
+                  'text-halo-width': 2,
                 }}
               />
             </Source>
