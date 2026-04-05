@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import GameMap from '@/components/map/GameMap'
 import TimeControls from '@/components/hud/TimeControls'
 import TopBar from '@/components/hud/TopBar'
@@ -18,7 +18,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useMenuStore } from '@/store/menu-store'
 import { useDeploymentStore } from '@/store/deployment-store'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { initBridge, initFromData } from '@/store/bridge'
+import { initBridge, initFromData, sendCommand } from '@/store/bridge'
 import { getScenario } from '@/data/scenarios/index'
 
 type MobilePanel = null | 'unit' | 'strike' | 'orbat' | 'stats' | 'econ' | 'events'
@@ -65,6 +65,46 @@ export default function App() {
       setMobilePanel('unit')
     }
   }, [isMobile, selectedUnitId])
+
+  // Global keyboard shortcuts
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Skip when typing in inputs
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return
+
+    switch (e.key) {
+      // Time: 1-5 = speed presets, Space = pause/resume
+      case ' ':
+        e.preventDefault()
+        sendCommand({ type: 'SET_SPEED', speed: useGameStore.getState().viewState.time.speed === 0 ? 1 : 0 })
+        break
+      case '1': sendCommand({ type: 'SET_SPEED', speed: 0.1 }); break   // 1s/s
+      case '2': sendCommand({ type: 'SET_SPEED', speed: 6 }); break     // 1m/s
+      case '3': sendCommand({ type: 'SET_SPEED', speed: 60 }); break    // 10m/s
+      case '4': sendCommand({ type: 'SET_SPEED', speed: 600 }); break   // 1h/s
+      case '5': sendCommand({ type: 'SET_SPEED', speed: 3600 }); break  // 10h/s
+
+      // Panels
+      case 'o': useUIStore.getState().toggleLeftPanel('orbat'); break
+      case 'e': useUIStore.getState().toggleLeftPanel('economy'); break
+      case 'i': useUIStore.getState().toggleIntel(); break
+
+      // Map overlays
+      case 'r': useUIStore.setState((s) => ({ rngFilter: s.rngFilter === 'off' ? 'both' : 'off' })); break
+      case 'l': useUIStore.setState((s) => ({ losFilter: s.losFilter === 'off' ? 'both' : 'off' })); break
+      case 'v': useUIStore.getState().toggleElevation(); break
+      case 'm': useUIStore.getState().cycleMapMode(); break
+
+      // Selection
+      case 'Escape':
+        useUIStore.getState().clearSelection()
+        break
+    }
+  }, [])
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleKeyDown])
 
   // Menu screens — shown before game starts
   if (screen === 'start') return <StartScreen />

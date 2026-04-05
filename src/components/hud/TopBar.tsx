@@ -511,22 +511,35 @@ export default function TopBar() {
           <div style={{ color: 'var(--text-accent)', fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>
             Controls
           </div>
-          <HelpRow keys="Click unit" desc="Select unit" />
-          <HelpRow keys="Right-click map" desc="Move selected unit" />
-          <HelpRow keys="Launch Panel" desc="Select target + fire" />
+          <div style={{ color: 'var(--text-accent)', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }}>
+            Keyboard
+          </div>
+          <HelpRow keys="Space" desc="Pause / resume" />
+          <HelpRow keys="1" desc="1 sec/s" />
+          <HelpRow keys="2" desc="1 min/s" />
+          <HelpRow keys="3" desc="10 min/s" />
+          <HelpRow keys="4" desc="1 hr/s" />
+          <HelpRow keys="5" desc="10 hr/s" />
+          <HelpRow keys="O" desc="ORBAT panel" />
+          <HelpRow keys="E" desc="Economy panel" />
+          <HelpRow keys="I" desc="Intel panel" />
+          <HelpRow keys="R" desc="Range rings" />
+          <HelpRow keys="L" desc="Line of sight" />
+          <HelpRow keys="V" desc="Elevation overlay" />
+          <HelpRow keys="M" desc="Map style" />
+          <HelpRow keys="Esc" desc="Deselect" />
           <div style={{ height: 6 }} />
           <div style={{ color: 'var(--text-accent)', fontWeight: 600, marginBottom: 4, marginTop: 4, textTransform: 'uppercase' }}>
-            Panels
+            Mouse
           </div>
-          <HelpRow keys="RINGS" desc="Toggle range ring overlay" />
-          <HelpRow keys="ORBAT" desc="Order of battle tree" />
-          <HelpRow keys="SITREP" desc="Situation report / ammo" />
-          <HelpRow keys="ECON" desc="Economy comparison" />
+          <HelpRow keys="Click unit" desc="Select unit" />
+          <HelpRow keys="Right-click map" desc="Move selected unit" />
+          <HelpRow keys="Shift+right-click" desc="Queue waypoint" />
           <div style={{ height: 6 }} />
           <div style={{ color: 'var(--text-accent)', fontWeight: 600, marginBottom: 4, marginTop: 4, textTransform: 'uppercase' }}>
             Top Bar
           </div>
-          <HelpRow keys="ROE dropdown" desc="Theater-wide ROE for all US forces" />
+          <HelpRow keys="ROE dropdown" desc="Theater-wide ROE" />
           <HelpRow keys="DECLARE WAR" desc="Initiate hostilities (click twice)" />
           <div style={{ height: 6 }} />
           <div style={{ color: 'var(--text-accent)', fontWeight: 600, marginBottom: 4, marginTop: 4, textTransform: 'uppercase' }}>
@@ -535,11 +548,6 @@ export default function TopBar() {
           <HelpRow keys="SELECT ON MAP" desc="Enter targeting mode" />
           <HelpRow keys="Click enemy" desc="Set as target" />
           <HelpRow keys="+/- buttons" desc="Set salvo quantity" />
-          <HelpRow keys="Quick Salvo" desc="Fire 5/10/20 at once" />
-          <div style={{ height: 8 }} />
-          <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-            All panels are draggable (grab title bar) and minimizable (- button).
-          </div>
         </div>
       )}
     </>
