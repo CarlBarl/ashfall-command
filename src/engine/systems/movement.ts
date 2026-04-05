@@ -47,11 +47,26 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
       if (missile.phase !== 'cruise') continue
       if (missile.path.length === 0) continue
 
-      // Use current missile position (last appended path point)
-      // NOTE: on the very first tick after launch the path still has the pre-computed great-circle
-      // points; we check the most recent point which is the missile's actual current location.
-      const lastPt = missile.path[missile.path.length - 1]
-      const terrainElev = elevationGrid.getElevation(lastPt[1], lastPt[0]) // path is [lng, lat]
+      // Get current missile position for terrain check.
+      // On first tick, path contains pre-computed great-circle points ending at the TARGET.
+      // The actual current position is the FIRST point (launch position) or most recently
+      // appended tick position. Use path[0] on first ticks, then the last appended point.
+      // Since updateMissilePositions pops future points and appends current, after first tick
+      // the last point IS the current position. But we need to handle the initial state safely.
+      // Use the interpolated position based on the missile's timestamps.
+      const currentTime = state.time.timestamp
+      let curPos: [number, number] | null = null
+      if (missile.timestamps.length > 0 && missile.timestamps[0] <= currentTime) {
+        // Find the path point closest to current time
+        for (let i = missile.timestamps.length - 1; i >= 0; i--) {
+          if (missile.timestamps[i] <= currentTime) {
+            curPos = missile.path[i]
+            break
+          }
+        }
+      }
+      if (!curPos) curPos = missile.path[0] // fallback to launch position
+      const terrainElev = elevationGrid.getElevation(curPos[1], curPos[0]) // path is [lng, lat]
       const spec = weaponSpecs[missile.weaponId]
       const clearance = 50 // meters above terrain
       const cruiseAltM = (spec?.flight_altitude_ft ?? 200) * 0.3048 // ft to meters
