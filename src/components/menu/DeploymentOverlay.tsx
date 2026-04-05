@@ -7,7 +7,9 @@ import { IconLayer, TextLayer } from '@deck.gl/layers'
 import { useMenuStore } from '@/store/menu-store'
 import { useDeploymentStore } from '@/store/deployment-store'
 import { useUIStore } from '@/store/ui-store'
-import { isValidPlacement } from '@/data/theater-water'
+import { ensureMainThreadGrid } from '@/components/map/layers/LOSLayer'
+import type { ElevationGrid } from '@/engine/systems/elevation'
+import type { UnitCategory } from '@/types/game'
 import { getMapStyle } from '@/styles/map-providers'
 
 const INITIAL_VIEW = {
@@ -116,9 +118,15 @@ export default function DeploymentOverlay() {
   const mapStyle = useMemo(() => getMapStyle(mapMode), [mapMode])
 
   const [placementError, setPlacementError] = useState<string | null>(null)
+  const [elevGrid, setElevGrid] = useState<ElevationGrid | null>(null)
   const errorTimeout = useRef<ReturnType<typeof setTimeout>>(null)
 
   const enemyNation = selectedNation === 'usa' ? 'iran' : 'usa'
+
+  // Load elevation grid for terrain validation
+  useEffect(() => {
+    ensureMainThreadGrid().then(setElevGrid)
+  }, [])
 
   // Initialize deployment store on mount
   useEffect(() => {
@@ -126,6 +134,16 @@ export default function DeploymentOverlay() {
       init(selectedNation, enemyNation)
     }
   }, [screen, selectedNation, enemyNation, init])
+
+  const isValidPlacement = useCallback((category: UnitCategory, lat: number, lng: number): boolean => {
+    if (!elevGrid) return true // allow if grid not loaded yet
+    const water = elevGrid.isWater(lat, lng)
+    const LAND_CATEGORIES: Set<string> = new Set(['sam_site', 'airbase', 'missile_battery', 'naval_base'])
+    const WATER_CATEGORIES: Set<string> = new Set(['ship', 'submarine', 'carrier_group'])
+    if (LAND_CATEGORIES.has(category) && water) return false
+    if (WATER_CATEGORIES.has(category) && !water) return false
+    return true
+  }, [elevGrid])
 
   const showError = useCallback((msg: string) => {
     setPlacementError(msg)
@@ -161,7 +179,7 @@ export default function DeploymentOverlay() {
     }
 
     placeUnit({ lat, lng })
-  }, [activeIndex, unplacedUnits, placedUnits, selectedPlacedIndex, placeUnit, moveUnit, selectPlaced, showError])
+  }, [activeIndex, unplacedUnits, placedUnits, selectedPlacedIndex, placeUnit, moveUnit, selectPlaced, showError, isValidPlacement])
 
   const handleLaunch = useCallback(() => {
     setScreen('playing')
