@@ -102,9 +102,6 @@ export default function GameMap() {
     const radarSensor = unit.sensors?.find((s) => s.type === 'radar')
     if (!radarSensor) return null
 
-    // Only show for selected if it has radar, or hovered when toggle is on
-    if (losUnitId === hoveredUnitId && !showRadarLOS) return null
-
     const antennaHeight = radarSensor.antenna_height_m ?? 15 // default 15m
     return getLOSPolygon(losUnitId, unit.position, radarSensor.range_km, antennaHeight)
   }, [gridReady, selectedUnitId, hoveredUnitId, showRadarLOS, units])
