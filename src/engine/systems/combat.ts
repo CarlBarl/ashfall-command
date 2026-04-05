@@ -1,4 +1,5 @@
 import type { GameState, GameEvent, Missile, Unit, WeaponSpec, ADSystemSpec } from '@/types/game'
+import type { ElevationGrid } from './elevation'
 import type { SeededRNG } from '../utils/rng'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import { adSystems } from '@/data/weapons/air-defense'
@@ -20,12 +21,12 @@ export function resetCombatState(): void {
   activeEngagements.clear()
 }
 
-export function processCombat(state: GameState, rng: SeededRNG): void {
+export function processCombat(state: GameState, rng: SeededRNG, elevationGrid?: ElevationGrid | null): void {
   updateMissileFuel(state)
   updateMissileSpeed(state)
   updateMissileAltitudes(state)
   updateMissilePositions(state)
-  runADEngagement(state, rng)
+  runADEngagement(state, rng, elevationGrid)
   updateInterceptors(state, rng)
   resolveImpacts(state)
   updateReloads(state)
@@ -295,7 +296,7 @@ function getCurrentMissilePosition(missile: Missile, currentTime: number): [numb
 //  AD ENGAGEMENT — creates interceptor Missiles
 // ===============================================
 
-function runADEngagement(state: GameState, _rng: SeededRNG): void {
+function runADEngagement(state: GameState, _rng: SeededRNG, elevationGrid?: ElevationGrid | null): void {
   const events: GameEvent[] = []
 
   for (const unit of state.units.values()) {
@@ -306,7 +307,7 @@ function runADEngagement(state: GameState, _rng: SeededRNG): void {
     const unitADSystems = findAllADSystems(unit)
     if (unitADSystems.length === 0) continue
 
-    const threats = detectThreats(state, unit)
+    const threats = detectThreats(state, unit, elevationGrid)
     if (threats.length === 0) continue
 
     for (const { adSpec, loadout } of unitADSystems) {

@@ -184,7 +184,7 @@ export class GameEngine {
       this.executeCommand(cmd)
     }
 
-    processCombat(state, this.rng)
+    processCombat(state, this.rng, this.elevationGrid)
     processPointDefense(state, this.rng)
     processEconomy(state)
     processLogistics(state)

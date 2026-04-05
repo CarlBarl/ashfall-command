@@ -1,4 +1,5 @@
-import type { GameState, Missile, Unit } from '@/types/game'
+import type { GameState, Missile, Unit, Position } from '@/types/game'
+import type { ElevationGrid } from './elevation'
 import { haversine } from '../utils/geo'
 import { weaponSpecs } from '@/data/weapons/missiles'
 
@@ -8,8 +9,32 @@ export interface DetectedThreat {
   timeToImpactMs: number
 }
 
+/** Radar horizon distance in km using 4/3 earth refraction model */
+function radarHorizon(antennaHeightM: number, targetHeightM: number): number {
+  return 4.12 * (Math.sqrt(Math.max(0, antennaHeightM)) + Math.sqrt(Math.max(0, targetHeightM)))
+}
+
+/** Check line-of-sight between two points using elevation grid */
+function hasLineOfSight(
+  radarPos: Position, radarAltM: number,
+  targetLat: number, targetLng: number, targetAltM: number,
+  grid: ElevationGrid,
+): boolean {
+  const samples = grid.sampleLine(
+    radarPos,
+    { lat: targetLat, lng: targetLng },
+    10,
+  )
+  for (let i = 1; i < samples.length - 1; i++) {
+    const t = i / (samples.length - 1)
+    const losHeight = radarAltM + (targetAltM - radarAltM) * t
+    if (samples[i] > losHeight) return false
+  }
+  return true
+}
+
 /** For each AD unit, find incoming missiles within detection range */
-export function detectThreats(state: GameState, adUnit: Unit): DetectedThreat[] {
+export function detectThreats(state: GameState, adUnit: Unit, grid?: ElevationGrid | null): DetectedThreat[] {
   const threats: DetectedThreat[] = []
 
   if (adUnit.sensors.length === 0) return threats
@@ -40,6 +65,20 @@ export function detectThreats(state: GameState, adUnit: Unit): DetectedThreat[] 
       // RCS factor: small targets (drones ~0.1 m²) are harder to detect
       const rcs = spec.rcs_m2 ?? 1.0
       if (rcs < 1.0) effectiveRange *= Math.min(1.0, Math.sqrt(rcs))
+    }
+
+    // Radar horizon + terrain masking (when elevation grid available)
+    if (grid) {
+      const radarElevation = grid.getElevation(adUnit.position.lat, adUnit.position.lng)
+      const antennaHeight = adUnit.sensors.find(s => s.type === 'radar')?.antenna_height_m ?? 15
+      const radarAltM = radarElevation + antennaHeight
+      const targetAltM = missile.altitude_m ?? 50
+
+      const horizonKm = radarHorizon(radarAltM, targetAltM)
+      if (dist > horizonKm) continue
+
+      // Terrain masking — currentPos is [lng, lat]
+      if (!hasLineOfSight(adUnit.position, radarAltM, currentPos[1], currentPos[0], targetAltM, grid)) continue
     }
 
     if (dist <= effectiveRange) {
