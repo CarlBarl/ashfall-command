@@ -111,7 +111,7 @@ export const SM6 = reg({
   id: 'sm6',
   name: 'SM-6',
   type: 'sam',
-  range_km: 460,
+  range_km: 370, // per CSIS; was 460
   speed_mach: 3.5,
   warhead_kg: 64,
   cep_m: 0,
@@ -157,7 +157,7 @@ export const FATEH110 = reg({
   range_km: 300,
   speed_mach: 3.5,
   warhead_kg: 450,
-  cep_m: 100,
+  cep_m: 250, // per CSIS baseline; was 100
   pk: {},
   flight_altitude_ft: 150000,
   guidance: 'INS/GPS',

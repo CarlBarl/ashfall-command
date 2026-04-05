@@ -36,7 +36,7 @@ export const adSystems: Record<string, ADSystemSpec> = {
     id: 'aegis_aaw',
     name: 'Aegis AAW (SM-6)',
     radar_range_km: 500,
-    engagement_range_km: 460,
+    engagement_range_km: 370, // per CSIS; was 460
     max_altitude_m: 33000,
     fire_channels: 18,
     reload_time_sec: 0,

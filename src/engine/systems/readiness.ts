@@ -14,6 +14,7 @@ import type { GameState } from '@/types/game'
  */
 export function processReadiness(state: GameState): void {
   for (const unit of state.units.values()) {
+    if (unit.status === 'destroyed') continue
     if (!unit.readiness || !unit.readinessTimer) continue
     if (unit.readiness !== 'packing' && unit.readiness !== 'deploying') continue
 

@@ -106,7 +106,7 @@ function updateMissileSpeed(state: GameState): void {
         // Terminal: gravity accelerates reentry vehicle substantially
         // Real BMs gain ~50-70% speed during reentry (e.g. Mach 7 → Mach 10-12)
         const terminalProgress = (progress - 0.7) / 0.3
-        missile.speed_current_mach *= (1 + 0.005 * terminalProgress)
+        missile.speed_current_mach = spec.speed_mach * (1 + 0.5 * terminalProgress)
       }
     } else {
       // Cruise missiles and ASHMs

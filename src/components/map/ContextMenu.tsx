@@ -14,6 +14,9 @@ function scoreLOS(lat: number, lng: number, antennaHeightM: number, rangeKm: num
   const grid = getMainThreadGrid()
   if (!grid) return 0
 
+  // Bounds check: grid only covers the MENA theater
+  if (lat < 12 || lat > 43 || lng < 32 || lng > 70) return 0
+
   if (grid.isWater(lat, lng)) return -Infinity // never place on water
   const groundElev = grid.getElevation(lat, lng)
   const radarAlt = groundElev + antennaHeightM
