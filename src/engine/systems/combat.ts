@@ -117,7 +117,7 @@ export function resetCombatState(): void {
 export function processCombat(state: GameState, rng: SeededRNG, elevationGrid?: ElevationGrid | null, sensorNetwork?: SensorNetwork | null): void {
   updateMissileFuel(state)
   updateMissileSpeed(state)
-  updateMissileAltitudes(state)
+  updateMissileAltitudes(state, elevationGrid)
   updateMissilePositions(state)
   runADEngagement(state, rng, elevationGrid, sensorNetwork)
   updateInterceptors(state, rng)
@@ -217,7 +217,7 @@ function updateMissileSpeed(state: GameState): void {
 //  ALTITUDE MODEL
 // ===============================================
 
-function updateMissileAltitudes(state: GameState): void {
+function updateMissileAltitudes(state: GameState, elevationGrid?: ElevationGrid | null): void {
   for (const missile of state.missiles.values()) {
     if (missile.status !== 'inflight') continue
 
@@ -251,6 +251,20 @@ function updateMissileAltitudes(state: GameState): void {
         // Phase 3: Terminal dive toward target
         const termProgress = (progress - 0.7) / 0.3
         missile.altitude_m = climbAlt + (target.altitude_m - climbAlt) * termProgress
+      }
+
+      // Terrain floor: interceptors must clear terrain regardless of flight profile.
+      // Real SAMs climb steeply — they don't terrain-follow, but they also don't
+      // fly through mountains. If terrain is higher than computed altitude, force-clear.
+      if (elevationGrid) {
+        const curPos = getCurrentMissilePosition(missile, state.time.timestamp)
+        if (curPos) {
+          const terrainElev = elevationGrid.getElevation(curPos[1], curPos[0]) // [lng, lat]
+          const clearance = 200 // interceptors fly high, generous clearance
+          if (missile.altitude_m < terrainElev + clearance) {
+            missile.altitude_m = terrainElev + clearance
+          }
+        }
       }
       continue
     }
