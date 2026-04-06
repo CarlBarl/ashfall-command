@@ -15,7 +15,30 @@ import type {
   WeaponLoadout,
   WeaponStock,
 } from './game'
-import type { BattleIndicator, EncirclementPocket, FrontlineSegment, GeneralReport } from './ground'
+import type {
+  ArmyGroupId,
+  BattleIndicator,
+  DivisionStance,
+  DivisionType,
+  EncirclementPocket,
+  FrontlineSegment,
+  GeneralId,
+  GeneralOrder,
+  GeneralReport,
+  GeneralTraits,
+  GroundUnitId,
+  GroundUnitStatus,
+} from './ground'
+
+export interface ViewTerritory {
+  /** Current controller */
+  nation: string
+  /** Original sovereign owner */
+  owner?: string | null
+  occupied?: boolean
+  /** Polygon rings [lng, lat][][] */
+  polygon: [number, number][][]
+}
 
 /** Flat, serializable snapshot sent from Worker → Main at 30fps */
 export interface GameViewState {
@@ -34,11 +57,14 @@ export interface GameViewState {
 
   // ─── Ground warfare (present only when ground units exist) ───
   frontlines?: FrontlineSegment[]
-  territories?: { nation: string; polygon: [number, number][][] }[]
+  territories?: ViewTerritory[]
   battles?: BattleIndicator[]
   encirclements?: EncirclementPocket[]
   generalReports?: GeneralReport[]
   researchSummary?: Record<string, { current: string | null; progress: number; completed: string[] }>
+  groundUnits?: ViewGroundUnit[]
+  generals?: ViewGeneral[]
+  armyGroups?: ViewArmyGroup[]
 }
 
 export interface ViewUnit {
@@ -63,4 +89,41 @@ export interface ViewUnit {
   subordinateIds: UnitId[]
   readiness?: 'deployed' | 'packing' | 'deploying' | 'moving'
   readinessTimer?: number
+}
+
+// ─── Ground warfare view types ─────────────────────────────────────
+
+export interface ViewGroundUnit {
+  id: GroundUnitId
+  name: string
+  nation: NationId
+  type: DivisionType
+  armyGroupId: ArmyGroupId
+  /** Map position (converted from grid coords) */
+  lat: number
+  lng: number
+  strength: number
+  morale: number
+  organization: number
+  stance: DivisionStance
+  status: GroundUnitStatus
+  supplyState: number
+  entrenched: number
+}
+
+export interface ViewGeneral {
+  id: GeneralId
+  name: string
+  nation: NationId
+  armyGroupId: ArmyGroupId
+  traits: GeneralTraits
+  currentOrder: GeneralOrder | null
+}
+
+export interface ViewArmyGroup {
+  id: ArmyGroupId
+  name: string
+  nation: NationId
+  generalId: GeneralId
+  divisionIds: GroundUnitId[]
 }

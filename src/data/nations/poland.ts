@@ -21,4 +21,5 @@ export const polandEconomy: Economy = {
   sanctions_impact: 0,
   war_cost_per_day_millions: 8,
   reserves_billions: 2,
+  currency: 'zl',
 }

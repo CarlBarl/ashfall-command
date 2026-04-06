@@ -20,9 +20,11 @@ const CATEGORY_LABELS: Record<UnitCategory, string> = {
   carrier_group: 'Carrier Groups',
 }
 
-/** Return the enemy catalog for the player's nation */
+/** Return the enemy catalog for the player's nation (modern scenarios only) */
 function getEnemyCatalog(playerNation: string): UnitCatalogEntry[] {
-  return playerNation === 'usa' ? iranCatalog : usaCatalog
+  if (playerNation === 'usa') return iranCatalog
+  if (playerNation === 'iran') return usaCatalog
+  return [] // WW2 / other scenarios: no modern enemy catalog
 }
 
 function CatalogCategory({
@@ -278,22 +280,22 @@ export default function IntelPanel() {
       {/* Section 0: Budget Allocation */}
       <IntelBudgetPanel />
 
-      {/* Section A: Enemy Catalog Browser */}
-      <div style={{ marginBottom: 8 }}>
+      {/* Section A: Enemy Catalog Browser (modern scenarios only) */}
+      {catalog.length > 0 && <div style={{ marginBottom: 8 }}>
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: 6,
             padding: '4px 4px',
-            borderBottom: '1px solid var(--iran-primary)44',
+            borderBottom: '1px solid var(--status-damaged)44',
             marginBottom: 4,
             userSelect: 'none',
           }}
         >
           <span
             style={{
-              color: 'var(--iran-primary)',
+              color: 'var(--status-damaged)',
               fontWeight: 700,
               fontSize: 'var(--font-size-sm)',
               letterSpacing: '0.06em',
@@ -333,7 +335,7 @@ export default function IntelPanel() {
             onPlace={handlePlace}
           />
         ))}
-      </div>
+      </div>}
 
       {/* Section B: Placed Estimates */}
       <div>

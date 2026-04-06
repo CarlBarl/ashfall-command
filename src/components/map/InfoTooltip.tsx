@@ -1,8 +1,11 @@
+import { useMemo } from 'react'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import type { ViewUnit } from '@/types/view'
 import type { Missile } from '@/types/game'
+import type { FrontlineSideSummary, FrontlineSummary } from './frontline-utils'
+import { buildFrontlineSummaryMap } from './frontline-utils'
 
 interface InfoTooltipProps {
   x: number
@@ -11,18 +14,35 @@ interface InfoTooltipProps {
 
 export default function InfoTooltip({ x, y }: InfoTooltipProps) {
   const hoveredId = useUIStore((s) => s.hoveredUnitId)
+  const hoveredFrontlineId = useUIStore((s) => s.hoveredFrontlineId)
   const units = useGameStore((s) => s.viewState.units)
   const missiles = useGameStore((s) => s.viewState.missiles)
+  const frontlines = useGameStore((s) => s.viewState.frontlines)
+  const groundUnits = useGameStore((s) => s.viewState.groundUnits)
+  const generals = useGameStore((s) => s.viewState.generals)
+  const armyGroups = useGameStore((s) => s.viewState.armyGroups)
+  const nations = useGameStore((s) => s.viewState.nations)
 
-  if (!hoveredId) return null
+  const frontlineSummaries = useMemo(() => buildFrontlineSummaryMap(
+    frontlines ?? [],
+    groundUnits ?? [],
+    armyGroups ?? [],
+    generals ?? [],
+    nations,
+  ), [armyGroups, frontlines, generals, groundUnits, nations])
 
-  // Check units first
-  const unit = units.find(u => u.id === hoveredId)
-  if (unit) return <UnitTooltip unit={unit} x={x} y={y} />
+  if (hoveredId) {
+    const unit = units.find(u => u.id === hoveredId)
+    if (unit) return <UnitTooltip unit={unit} x={x} y={y} />
 
-  // Check missiles
-  const missile = missiles.find(m => m.id === hoveredId)
-  if (missile) return <MissileTooltipView missile={missile} x={x} y={y} />
+    const missile = missiles.find(m => m.id === hoveredId)
+    if (missile) return <MissileTooltipView missile={missile} x={x} y={y} />
+  }
+
+  if (hoveredFrontlineId) {
+    const summary = frontlineSummaries.get(hoveredFrontlineId)
+    if (summary) return <FrontlineTooltip summary={summary} x={x} y={y} />
+  }
 
   return null
 }
@@ -81,6 +101,55 @@ function UnitTooltip({ unit, x, y }: { unit: ViewUnit; x: number; y: number }) {
         </>
       )}
     </div>
+  )
+}
+
+function FrontlineTooltip({
+  summary,
+  x,
+  y,
+}: {
+  summary: FrontlineSummary
+  x: number
+  y: number
+}) {
+  return (
+    <div style={tooltipStyle(x, y)}>
+      <div style={headerStyle}>
+        {summary.sideA.nationLabel} vs {summary.sideB.nationLabel}
+      </div>
+      <Row label="Front Length" value={`${Math.round(summary.lengthKm)} km`} highlight />
+      <div style={{ borderTop: '1px solid var(--border-default)', margin: '4px 0' }} />
+      <FrontlineSideBlock side={summary.sideA} />
+      <div style={{ borderTop: '1px solid var(--border-default)', margin: '4px 0' }} />
+      <FrontlineSideBlock side={summary.sideB} />
+    </div>
+  )
+}
+
+function FrontlineSideBlock({
+  side,
+}: {
+  side: FrontlineSideSummary
+}) {
+  const leadGroup = side.armyGroups[0]
+
+  return (
+    <>
+      <div style={{ color: 'var(--text-accent)', fontWeight: 600, marginBottom: 2 }}>
+        {side.nationLabel}
+      </div>
+      <Row label="Nearby Divisions" value={`${side.divisions}`} highlight />
+      <Row label="Posture" value={`${side.attacking} ATK / ${side.defending} DEF`} />
+      <Row label="Avg Strength" value={`${Math.round(side.avgStrength)}%`} />
+      <Row label="Avg Morale" value={`${Math.round(side.avgMorale)}%`} />
+      {leadGroup && (
+        <Row
+          label="Lead Group"
+          value={leadGroup.generalName ? `${leadGroup.name} / ${leadGroup.generalName}` : leadGroup.name}
+        />
+      )}
+    </>
   )
 }
 

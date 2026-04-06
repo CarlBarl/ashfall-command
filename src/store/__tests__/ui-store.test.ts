@@ -8,6 +8,8 @@ beforeEach(() => {
   // Reset to initial state
   store.clearSelection()
   store.hoverUnit(null)
+  store.clearSelectedFrontline()
+  store.setHoveredFrontline(null)
   // Reset map toggles to false
   if (store.showRangeRings) store.toggleRangeRings()
   if (store.showElevation) store.toggleElevation()
@@ -103,6 +105,24 @@ describe('hoverUnit', () => {
     useUIStore.getState().hoverUnit('unit_1')
     useUIStore.getState().hoverUnit(null)
     expect(useUIStore.getState().hoveredUnitId).toBeNull()
+  })
+})
+
+describe('frontline selection', () => {
+  it('stores the selected frontline id', () => {
+    useUIStore.getState().setSelectedFrontline('frontline-a')
+    expect(useUIStore.getState().selectedFrontlineId).toBe('frontline-a')
+  })
+
+  it('clears the selected frontline id', () => {
+    useUIStore.getState().setSelectedFrontline('frontline-a')
+    useUIStore.getState().clearSelectedFrontline()
+    expect(useUIStore.getState().selectedFrontlineId).toBeNull()
+  })
+
+  it('stores the hovered frontline id', () => {
+    useUIStore.getState().setHoveredFrontline('frontline-b')
+    expect(useUIStore.getState().hoveredFrontlineId).toBe('frontline-b')
   })
 })
 

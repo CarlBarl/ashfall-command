@@ -12,8 +12,14 @@ import { createImpactLayers } from './layers/ImpactLayer'
 import { createWaypointLayers } from './layers/WaypointLayer'
 import { createIntelUnitLayers } from './layers/IntelLayer'
 import { createRouteLayers } from './layers/RouteLayer'
-// GroundUnitLayer removed — ground units are data behind the frontline, not visible icons
-import { createFrontlineGeoJSON, FRONTLINE_LAYER_STYLES } from './layers/FrontlineLayer'
+import {
+  createFrontlineGeoJSON,
+  createTerritoryGeoJSON,
+  FRONTLINE_LAYER_STYLES,
+  OCCUPATION_PATTERN_COLORS,
+  OCCUPATION_PATTERN_IDS,
+  TERRITORY_LAYER_STYLES,
+} from './layers/FrontlineLayer'
 // circle import removed — range rings handled by RangeRingLayer
 import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
 import { createSupplyLineGeoJSON } from './layers/SupplyLineLayer'
@@ -30,6 +36,7 @@ import { getMapStyle } from '@/styles/map-providers'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import { iranCatalog } from '@/data/catalog/iran-catalog'
 import { usaCatalog } from '@/data/catalog/usa-catalog'
+import type { Map as MapLibreMap } from 'maplibre-gl'
 
 const DEFAULT_VIEW = {
   longitude: 51.4,
@@ -48,6 +55,53 @@ interface CtxMenu {
   y: number
   lngLat: { lng: number; lat: number }
   shiftKey: boolean
+}
+
+function getFrontlineFeatureId(features: MapLayerMouseEvent['features'] | undefined): string | null {
+  const feature = features?.find((candidate) => {
+    const properties = candidate.properties as Record<string, unknown> | undefined
+    return typeof properties?.segmentId === 'string'
+  })
+  const properties = feature?.properties as Record<string, unknown> | undefined
+  return typeof properties?.segmentId === 'string' ? properties.segmentId : null
+}
+
+function createOccupationPatternImage(color: string): ImageData | null {
+  const canvas = document.createElement('canvas')
+  canvas.width = 14
+  canvas.height = 14
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  ctx.fillStyle = color
+  ctx.globalAlpha = 1
+  ctx.beginPath()
+  ctx.arc(3.5, 3.5, 1.7, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.beginPath()
+  ctx.arc(10.5, 5.5, 1.7, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.beginPath()
+  ctx.arc(6, 11, 1.5, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.beginPath()
+  ctx.arc(12, 12, 1.2, 0, Math.PI * 2)
+  ctx.fill()
+
+  return ctx.getImageData(0, 0, canvas.width, canvas.height)
+}
+
+function ensureOccupationPatterns(map: MapLibreMap): void {
+  for (const [nation, patternId] of Object.entries(OCCUPATION_PATTERN_IDS)) {
+    if (map.hasImage(patternId)) continue
+    const color = OCCUPATION_PATTERN_COLORS[nation]
+    if (!color) continue
+    const image = createOccupationPatternImage(color)
+    if (!image) continue
+    map.addImage(patternId, image, { pixelRatio: 2 })
+  }
 }
 
 export default function GameMap() {
@@ -72,8 +126,14 @@ export default function GameMap() {
   const selectedUnitId = useUIStore((s) => s.selectedUnitId)
   const selectedUnitIds = useUIStore((s) => s.selectedUnitIds)
   const hoveredUnitId = useUIStore((s) => s.hoveredUnitId)
+  const selectedFrontlineId = useUIStore((s) => s.selectedFrontlineId)
+  const hoveredFrontlineId = useUIStore((s) => s.hoveredFrontlineId)
   const selectUnit = useUIStore((s) => s.selectUnit)
   const hoverUnit = useUIStore((s) => s.hoverUnit)
+  const setLeftPanel = useUIStore((s) => s.setLeftPanel)
+  const setSelectedFrontline = useUIStore((s) => s.setSelectedFrontline)
+  const clearSelectedFrontline = useUIStore((s) => s.clearSelectedFrontline)
+  const setHoveredFrontline = useUIStore((s) => s.setHoveredFrontline)
   const rngFilter = useUIStore((s) => s.rngFilter)
   const showElevation = useUIStore((s) => s.showElevation)
   const mapMode = useUIStore((s) => s.mapMode)
@@ -94,6 +154,7 @@ export default function GameMap() {
 
   // Get selected unit's nation for targeting
   const units = useGameStore((s) => s.viewState.units)
+  const nations = useGameStore((s) => s.viewState.nations)
   const selectedUnit = units.find(u => u.id === selectedUnitId)
   const selectedNation = selectedUnit?.nation ?? null
   const missiles = useGameStore((s) => s.viewState.missiles)
@@ -101,8 +162,27 @@ export default function GameMap() {
   const currentTime = useGameStore((s) => s.visualTimestamp)
   const currentTick = useGameStore((s) => s.viewState.time.tick)
   const supplyLines = useGameStore((s) => s.viewState.supplyLines)
-  // groundUnits removed — they're data behind the frontline, not map objects
   const frontlines = useGameStore((s) => s.viewState.frontlines)
+  const territories = useGameStore((s) => s.viewState.territories)
+  const frontlineGeoJSON = useMemo(() => (
+    createFrontlineGeoJSON(frontlines ?? [], {
+      nations,
+      hoveredId: hoveredFrontlineId,
+      selectedId: selectedFrontlineId,
+    })
+  ), [frontlines, nations, hoveredFrontlineId, selectedFrontlineId])
+  const territoryGeoJSON = useMemo(
+    () => createTerritoryGeoJSON(territories ?? []),
+    [territories],
+  )
+  const interactiveLayerIds = useMemo(
+    () => frontlines && frontlines.length > 0
+      ? FRONTLINE_LAYER_STYLES
+        .map((style) => style.id)
+        .filter((id): id is string => typeof id === 'string')
+      : undefined,
+    [frontlines],
+  )
 
   useEffect(() => {
     const geoPath = borderGeojsonPath || '/geo/ne_50m_admin_0.geojson'
@@ -202,8 +282,19 @@ export default function GameMap() {
   }, [losFilter, gridReady, units])
 
   const onLoad = useCallback(() => {
-    mapRef.current?.getMap()?.resize()
-  }, [])
+    const map = mapRef.current?.getMap()
+    map?.resize()
+    if (borderGeojsonPath && map) {
+      ensureOccupationPatterns(map)
+    }
+  }, [borderGeojsonPath])
+
+  useEffect(() => {
+    const map = mapRef.current?.getMap()
+    if (borderGeojsonPath && map) {
+      ensureOccupationPatterns(map)
+    }
+  }, [borderGeojsonPath, mapStyle])
 
   const onContextMenu = useCallback((e: MapLayerMouseEvent) => {
     e.preventDefault()
@@ -235,12 +326,24 @@ export default function GameMap() {
       return // Don't do normal click processing
     }
 
+    const clickedFrontlineId = getFrontlineFeatureId(e.features)
+    if (clickedFrontlineId) {
+      useUIStore.getState().clearSelection()
+      hoverUnit(null)
+      setSelectedFrontline(clickedFrontlineId)
+      setLeftPanel('stats')
+      return
+    }
+
     // Clicking empty map: deselect units and close all panels
     useUIStore.getState().clearSelection()
+    clearSelectedFrontline()
+    hoverUnit(null)
+    setHoveredFrontline(null)
     // Close desktop panels
     useUIStore.setState({ leftPanel: null, showOrbat: false, showStats: false, showEconomy: false, showIntel: false })
     useStrikeStore.getState().closeStrike()
-  }, [addRouteWaypoint])
+  }, [addRouteWaypoint, clearSelectedFrontline, hoverUnit, setHoveredFrontline, setLeftPanel, setSelectedFrontline])
 
   const onMove = useCallback((evt: { viewState: { zoom: number }; lngLat?: { lat: number; lng: number } }) => {
     setZoom(evt.viewState.zoom)
@@ -253,15 +356,22 @@ export default function GameMap() {
       setCursorElev(elev)
       setCursorCoords({ lat: evt.lngLat.lat, lng: evt.lngLat.lng })
     }
-  }, [])
+    const frontlineId = getFrontlineFeatureId(evt.features)
+    setHoveredFrontline(frontlineId)
+    if (frontlineId) {
+      setHoverPos({ x: evt.point.x, y: evt.point.y })
+      hoverPosRef.current = { x: evt.point.x, y: evt.point.y }
+    }
+  }, [setHoveredFrontline])
 
   const handleHover = useCallback((id: string | null, x?: number, y?: number) => {
     hoverUnit(id)
+    if (id) setHoveredFrontline(null)
     if (x !== undefined && y !== undefined) {
       setHoverPos({ x, y })
       hoverPosRef.current = { x, y }
     }
-  }, [hoverUnit])
+  }, [hoverUnit, setHoveredFrontline])
 
   const handleUnitClick = useCallback((id: string | null) => {
     if (!id) return
@@ -272,6 +382,7 @@ export default function GameMap() {
       return
     }
     setClusterPopup(null)
+    clearSelectedFrontline()
 
     // Check if clicked unit is an enemy — set as target and auto-select nearest armed friendly
     const clickedUnit = units.find(u => u.id === id)
@@ -302,7 +413,7 @@ export default function GameMap() {
       return
     }
     selectUnit(id)
-  }, [selectUnit, setTarget, units])
+  }, [clearSelectedFrontline, selectUnit, setTarget, units])
 
   const handleMissileClick = useCallback((id: string) => {
     setFollowedMissileId(prev => prev === id ? null : id)
@@ -371,12 +482,14 @@ export default function GameMap() {
         onLoad={onLoad}
         onMove={onMove}
         onMouseMove={onMouseMove}
+        onMouseLeave={() => setHoveredFrontline(null)}
         onContextMenu={onContextMenu}
         onClick={onMapClick}
+        interactiveLayerIds={interactiveLayerIds}
         attributionControl={false}
         maxZoom={12}
         minZoom={2}
-        cursor={routingMode ? 'crosshair' : placingCatalogId ? 'crosshair' : targetingMode ? 'crosshair' : hoveredUnitId ? 'pointer' : 'grab'}
+        cursor={routingMode ? 'crosshair' : placingCatalogId ? 'crosshair' : targetingMode ? 'crosshair' : hoveredUnitId || hoveredFrontlineId ? 'pointer' : 'grab'}
       >
         <DeckOverlay layers={layers} />
 
@@ -441,15 +554,7 @@ export default function GameMap() {
           </Source>
         )}
 
-        {/* Grid territory fills removed — GeoJSON country polygons handle territory coloring */}
-
-        {frontlines && frontlines.length > 0 && (
-          <Source id="frontline-source" type="geojson" data={createFrontlineGeoJSON(frontlines)}>
-            {FRONTLINE_LAYER_STYLES.map((style) => (
-              <Layer key={style.id} {...style} />
-            ))}
-          </Source>
-        )}
+        {/* Historical territory control overlays render after sovereign country fills. */}
 
         {losPolygons.map((poly, i) => (
           <Source key={`los-${i}`} id={`los-coverage-${i}`} type="geojson" data={poly}>
@@ -525,9 +630,15 @@ export default function GameMap() {
           const fillColorExpr = (is1939
             ? [
                 'match', ['get', 'iso_a3'],
-                'DEU', '#253550',
-                'POL', '#50351a',
-                '#151c25',
+                'DEU', '#40566f',
+                'POL', '#755536',
+                'FRA', '#32465c',
+                'GBR', '#32465c',
+                'ITA', '#5a4a37',
+                'HUN', '#5a4a37',
+                'ROU', '#5a4a37',
+                'RUS', '#4a3138',
+                '#24303d',
               ]
             : [
                 'match', ['get', 'iso_a3'],
@@ -543,7 +654,7 @@ export default function GameMap() {
               type="fill"
               paint={{
                 'fill-color': fillColorExpr,
-                'fill-opacity': 1,
+                'fill-opacity': is1939 ? 0.96 : 1,
               }}
             />
             <Layer
@@ -551,14 +662,14 @@ export default function GameMap() {
               type="line"
               paint={{
                 'line-color': (is1939
-                  ? ['match', ['get', 'iso_a3'], 'DEU', '#5a7090', 'POL', '#907050', '#334444']
+                  ? ['match', ['get', 'iso_a3'], 'DEU', '#a3b8cc', 'POL', '#d7aa82', '#5b6b73']
                   : ['match', ['get', 'iso_a3'], 'IRN', '#553333', 'USA', '#334455', '#2d4a3e']
                 ) as unknown as string,
                 'line-width': (is1939
-                  ? ['match', ['get', 'iso_a3'], 'DEU', 2.5, 'POL', 2.5, 1.2]
+                  ? ['match', ['get', 'iso_a3'], 'DEU', 2.6, 'POL', 2.6, 1.1]
                   : ['match', ['get', 'iso_a3'], 'IRN', 1.5, 0.6]
                 ) as unknown as number,
-                'line-opacity': 0.9,
+                'line-opacity': is1939 ? 1 : 0.9,
               }}
             />
             {is1939 && (
@@ -568,10 +679,10 @@ export default function GameMap() {
                 source="countries"
                 filter={['==', ['get', 'iso_a3'], 'DEU']}
                 paint={{
-                  'line-color': '#667788',
-                  'line-width': 2,
-                  'line-opacity': 0.5,
-                  'line-blur': 2,
+                  'line-color': '#74879a',
+                  'line-width': 4,
+                  'line-opacity': 0.35,
+                  'line-blur': 4,
                 }}
               />
             )}
@@ -582,10 +693,10 @@ export default function GameMap() {
                 source="countries"
                 filter={['==', ['get', 'iso_a3'], 'POL']}
                 paint={{
-                  'line-color': '#bb8855',
-                  'line-width': 2,
-                  'line-opacity': 0.5,
-                  'line-blur': 2,
+                  'line-color': '#be8d65',
+                  'line-width': 4,
+                  'line-opacity': 0.35,
+                  'line-blur': 4,
                 }}
               />
             )}
@@ -611,20 +722,39 @@ export default function GameMap() {
                 'symbol-placement': 'point' as const,
                 'text-field': ['get', 'name'],
                 'text-size': ['interpolate', ['linear'], ['zoom'], 3, 10, 6, 16, 8, 20] as unknown as number,
+                'text-font': ['Noto Sans Regular'],
                 'text-letter-spacing': 0.2,
                 'text-max-width': 6,
                 'text-transform': 'uppercase' as const,
                 'text-allow-overlap': false,
               }}
               paint={{
-                'text-color': 'rgba(180, 180, 170, 0.45)',
-                'text-halo-color': 'rgba(10, 14, 20, 0.8)',
+                'text-color': is1939 ? 'rgba(220, 220, 205, 0.72)' : 'rgba(180, 180, 170, 0.45)',
+                'text-halo-color': is1939 ? 'rgba(10, 14, 20, 0.9)' : 'rgba(10, 14, 20, 0.8)',
                 'text-halo-width': 2,
               }}
             />
           </Source>
           )
         })()}
+
+        {!!borderGeojsonPath && territories && territories.length > 0 && (
+          <Source id="territory-source" type="geojson" data={territoryGeoJSON}>
+            {TERRITORY_LAYER_STYLES.map((style) => (
+              <Layer key={String(style.id)} {...(style as any)} />
+            ))}
+          </Source>
+        )}
+
+        {/* Frontlines — render AFTER countries so they're visible on top */}
+        {frontlines && frontlines.length > 0 && (
+          <Source id="frontline-source" type="geojson" data={frontlineGeoJSON}>
+            {FRONTLINE_LAYER_STYLES.map((style) => (
+              <Layer key={String(style.id)} {...(style as any)} />
+            ))}
+          </Source>
+        )}
+
         {rngFilter !== 'off' && (() => {
           const pNation = useGameStore.getState().viewState.playerNation
           const filteredUnits = rngFilter === 'both' ? units

@@ -19,4 +19,5 @@ export const germanyEconomy: Economy = {
   sanctions_impact: 0,
   war_cost_per_day_millions: 20,
   reserves_billions: 10,
+  currency: 'RM',
 }

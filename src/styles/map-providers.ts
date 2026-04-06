@@ -14,6 +14,24 @@ export function getMapStyle(mode: MapMode, hideModernBorders = false): StyleSpec
 // OpenFreeMap vector tiles (OpenMapTiles schema, no API key)
 
 function buildDarkStyle(hideModernBorders: boolean): StyleSpecification {
+  if (hideModernBorders) {
+    return {
+      version: 8,
+      name: 'realpolitik-historical',
+      glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+      sources: {},
+      layers: [
+        {
+          id: 'background',
+          type: 'background',
+          paint: {
+            'background-color': '#0c121a',
+          },
+        },
+      ],
+    }
+  }
+
   return {
     version: 8,
     name: 'realpolitik-dark',

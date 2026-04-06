@@ -116,6 +116,8 @@ export interface ArmyGroup {
 
 export interface ControlCell {
   controller: NationId | null
+  /** Original sovereign owner; remains stable when a cell is occupied. */
+  owner?: NationId | null
   /** Accumulated force pressure (-100..+100) */
   pressure: number
   terrain: TerrainType

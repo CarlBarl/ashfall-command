@@ -61,6 +61,8 @@ export interface Economy {
   sanctions_impact: number
   war_cost_per_day_millions: number
   reserves_billions: number
+  /** Currency symbol for display (default '$') */
+  currency?: string
 }
 
 export interface Unit {

@@ -4,6 +4,7 @@ import {
   cellToLatLng,
   latLngToCell,
   extractFrontlines,
+  extractTerritories,
   processFrontline,
   resetFrontlineState,
 } from '../frontline'
@@ -257,6 +258,27 @@ describe('extractFrontlines', () => {
     const totalPoints = frontlines.reduce((sum, seg) => sum + seg.coordinates.length, 0)
     // With D-P simplification, a straight line should collapse to 2 endpoints
     expect(totalPoints).toBe(2)
+  })
+})
+
+describe('extractTerritories', () => {
+  it('keeps disconnected regions separate instead of bridging across gaps', () => {
+    const grid = makeSimpleGrid(1, 3)
+    grid.cells[0].controller = 'germany' as NationId
+    grid.cells[0].owner = 'germany' as NationId
+    grid.cells[1].controller = 'germany' as NationId
+    grid.cells[1].owner = 'poland' as NationId
+    grid.cells[2].controller = 'germany' as NationId
+    grid.cells[2].owner = 'germany' as NationId
+
+    const territories = extractTerritories(grid)
+
+    const germanHome = territories.filter((territory) => territory.nation === 'germany' && territory.owner === 'germany')
+    const occupiedPoland = territories.find((territory) => territory.nation === 'germany' && territory.owner === 'poland')
+
+    expect(germanHome).toHaveLength(2)
+    expect(occupiedPoland?.occupied).toBe(true)
+    expect(occupiedPoland?.polygon[0][0]).toEqual(occupiedPoland?.polygon[0][occupiedPoland.polygon[0].length - 1])
   })
 })
 

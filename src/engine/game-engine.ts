@@ -231,12 +231,11 @@ export class GameEngine {
       }
     }
 
-    // Initialize intel budgets (only for nations that exist in the scenario)
-    if (this.state.nations.usa && !this.state.nations.usa.intelBudget) {
-      this.state.nations.usa.intelBudget = { total_pct: 15, humint_pct: 33, sigint_pct: 34, satellite_pct: 33 }
-    }
-    if (this.state.nations.iran && !this.state.nations.iran.intelBudget) {
-      this.state.nations.iran.intelBudget = { total_pct: 10, humint_pct: 50, sigint_pct: 30, satellite_pct: 20 }
+    // Initialize intel budgets for all nations that don't have one
+    for (const nation of Object.values(this.state.nations)) {
+      if (!nation.intelBudget) {
+        nation.intelBudget = { total_pct: 10, humint_pct: 40, sigint_pct: 30, satellite_pct: 30 }
+      }
     }
 
     // Orient sector-limited SAMs toward enemy before first tick
@@ -502,12 +501,71 @@ export class GameEngine {
         }
       }
     }
+
+    // Convert ground units from grid coords to lat/lng for map display
+    const grid = state.controlGrid
+    const groundUnits: import('@/types/view').ViewGroundUnit[] = []
+    if (state.groundUnits && grid) {
+      const kmPerDegLat = 111.32
+      const kmPerDegLng = kmPerDegLat * Math.cos((grid.originLat * Math.PI) / 180)
+      for (const gu of state.groundUnits.values()) {
+        groundUnits.push({
+          id: gu.id,
+          name: gu.name,
+          nation: gu.nation,
+          type: gu.type,
+          armyGroupId: gu.armyGroupId,
+          lat: grid.originLat + (gu.gridRow * grid.cellSizeKm) / kmPerDegLat,
+          lng: grid.originLng + (gu.gridCol * grid.cellSizeKm) / kmPerDegLng,
+          strength: gu.strength,
+          morale: gu.morale,
+          organization: gu.organization,
+          stance: gu.stance,
+          status: gu.status,
+          supplyState: gu.supplyState,
+          entrenched: gu.entrenched,
+        })
+      }
+    }
+
+    // Convert generals and army groups for UI
+    const generals: import('@/types/view').ViewGeneral[] = []
+    if (state.generals) {
+      for (const gen of state.generals.values()) {
+        generals.push({
+          id: gen.id,
+          name: gen.name,
+          nation: gen.nation,
+          armyGroupId: gen.armyGroupId,
+          traits: gen.traits,
+          currentOrder: gen.currentOrder,
+        })
+      }
+    }
+
+    const armyGroups: import('@/types/view').ViewArmyGroup[] = []
+    if (state.armyGroups) {
+      for (const ag of state.armyGroups.values()) {
+        armyGroups.push({
+          id: ag.id,
+          name: ag.name,
+          nation: ag.nation,
+          generalId: ag.generalId,
+          divisionIds: ag.divisionIds,
+        })
+      }
+    }
+
     const territories = getCachedTerritories()
+    const frontlines = getCachedFrontlines()
     return {
-      frontlines: getCachedFrontlines(),
+      frontlines,
       territories: territories.length > 0 ? territories : undefined,
       generalReports: reports.length > 0 ? reports : undefined,
       researchSummary: Object.keys(researchSummary).length > 0 ? researchSummary : undefined,
+      groundUnits: groundUnits.length > 0 ? groundUnits : undefined,
+      generals: generals.length > 0 ? generals : undefined,
+      armyGroups: armyGroups.length > 0 ? armyGroups : undefined,
     }
   }
 
