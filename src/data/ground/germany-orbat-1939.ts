@@ -99,62 +99,69 @@ function ordinal(n: number): string {
   return n + (s[(v - 20) % 10] || s[v] || s[0])
 }
 
-// ─── Army Group North (Bock): cols 0-3, advancing toward Danzig/Warsaw ───
+// ─── Army Group North (Bock) ───
+// 3rd Army (East Prussia, rows 50-54, cols 40-50) + 4th Army (Pomerania, rows 3-4, cols 15-22)
 // 10 infantry, 3 panzer, 2 artillery
 
 const AGN_ID = 'de-ag-north'
 
 const agnInfantry: GroundUnit[] = [
-  makeInfantry(1, AGN_ID, 0, 2),
-  makeInfantry(2, AGN_ID, 0, 3),
-  makeInfantry(3, AGN_ID, 1, 2),
-  makeInfantry(4, AGN_ID, 1, 3),
-  makeInfantry(5, AGN_ID, 2, 2),
-  makeInfantry(6, AGN_ID, 2, 3),
-  makeInfantry(7, AGN_ID, 3, 2),
-  makeInfantry(8, AGN_ID, 3, 3),
-  makeInfantry(9, AGN_ID, 1, 4),
-  makeInfantry(10, AGN_ID, 2, 4),
+  // 3rd Army — East Prussia, attacking south toward Warsaw
+  makeInfantry(1, AGN_ID, 42, 52),
+  makeInfantry(2, AGN_ID, 44, 53),
+  makeInfantry(3, AGN_ID, 46, 51),
+  makeInfantry(4, AGN_ID, 48, 52),
+  makeInfantry(5, AGN_ID, 50, 50),
+  // 4th Army — Pomerania, attacking east across the Corridor
+  makeInfantry(6, AGN_ID, 15, 4),
+  makeInfantry(7, AGN_ID, 17, 3),
+  makeInfantry(8, AGN_ID, 19, 4),
+  makeInfantry(9, AGN_ID, 21, 3),
+  makeInfantry(10, AGN_ID, 22, 4),
 ]
 
 const agnPanzer: GroundUnit[] = [
-  makePanzer(1, AGN_ID, 1, 2),
-  makePanzer(2, AGN_ID, 2, 2),
-  makePanzer(3, AGN_ID, 3, 3),
+  makePanzer(1, AGN_ID, 43, 54),  // 3rd Army panzer
+  makePanzer(2, AGN_ID, 16, 3),   // 4th Army panzer
+  makePanzer(3, AGN_ID, 20, 3),   // 4th Army panzer
 ]
 
 const agnArtillery: GroundUnit[] = [
-  makeArtillery(1, AGN_ID, 1, 3),
-  makeArtillery(2, AGN_ID, 2, 3),
+  makeArtillery(1, AGN_ID, 45, 52),  // 3rd Army artillery
+  makeArtillery(2, AGN_ID, 18, 4),   // 4th Army artillery
 ]
 
-// ─── Army Group South (Rundstedt): cols 4-6, advancing through Krakow ───
+// ─── Army Group South (Rundstedt) ───
+// 8th Army (rows 2-4, cols 10-14) + 10th Army (rows 2-4, cols 16-22) + 14th Army (rows 1-3, cols 26-32)
 // 10 infantry, 3 panzer, 2 artillery
 
 const AGS_ID = 'de-ag-south'
 
 const agsInfantry: GroundUnit[] = [
-  makeInfantry(11, AGS_ID, 4, 2),
-  makeInfantry(12, AGS_ID, 4, 3),
-  makeInfantry(13, AGS_ID, 5, 2),
-  makeInfantry(14, AGS_ID, 5, 3),
-  makeInfantry(15, AGS_ID, 6, 2),
-  makeInfantry(16, AGS_ID, 6, 3),
-  makeInfantry(17, AGS_ID, 4, 4),
-  makeInfantry(18, AGS_ID, 5, 4),
-  makeInfantry(19, AGS_ID, 6, 4),
-  makeInfantry(20, AGS_ID, 5, 2),
+  // 8th Army — near Breslau area
+  makeInfantry(11, AGS_ID, 10, 3),
+  makeInfantry(12, AGS_ID, 12, 2),
+  makeInfantry(13, AGS_ID, 14, 4),
+  // 10th Army — Silesia, main thrust toward Lodz/Warsaw
+  makeInfantry(14, AGS_ID, 16, 2),
+  makeInfantry(15, AGS_ID, 18, 3),
+  makeInfantry(16, AGS_ID, 20, 2),
+  makeInfantry(17, AGS_ID, 22, 3),
+  // 14th Army — Slovakia border, aimed at Krakow
+  makeInfantry(18, AGS_ID, 26, 1),
+  makeInfantry(19, AGS_ID, 28, 2),
+  makeInfantry(20, AGS_ID, 30, 3),
 ]
 
 const agsPanzer: GroundUnit[] = [
-  makePanzer(4, AGS_ID, 4, 2),
-  makePanzer(5, AGS_ID, 5, 3),
-  makePanzer(6, AGS_ID, 6, 2),
+  makePanzer(4, AGS_ID, 11, 2),   // 8th Army panzer
+  makePanzer(5, AGS_ID, 17, 2),   // 10th Army panzer
+  makePanzer(6, AGS_ID, 27, 2),   // 14th Army panzer
 ]
 
 const agsArtillery: GroundUnit[] = [
-  makeArtillery(3, AGS_ID, 5, 3),
-  makeArtillery(4, AGS_ID, 6, 3),
+  makeArtillery(3, AGS_ID, 19, 3),  // 10th Army artillery
+  makeArtillery(4, AGS_ID, 29, 1),  // 14th Army artillery
 ]
 
 // ─── Exports ───
@@ -177,7 +184,7 @@ export const germanGenerals: General[] = [
       innovation: 4,
       morale: 6,
     },
-    currentOrder: { type: 'ADVANCE', objectiveCol: 2, objectiveRow: 30 },
+    currentOrder: { type: 'ADVANCE', objectiveCol: 35, objectiveRow: 30 },
     lastReportTick: 0,
     pendingReports: [],
   },
@@ -193,7 +200,7 @@ export const germanGenerals: General[] = [
       innovation: 6,
       morale: 7,
     },
-    currentOrder: { type: 'ADVANCE', objectiveCol: 5, objectiveRow: 30 },
+    currentOrder: { type: 'ADVANCE', objectiveCol: 30, objectiveRow: 22 },
     lastReportTick: 0,
     pendingReports: [],
   },
@@ -209,8 +216,8 @@ export const germanArmyGroups: ArmyGroup[] = [
     nation: 'germany' as string,
     generalId: 'de-gen-bock' as string,
     divisionIds: northDivisionIds,
-    sectorStartCol: 0,
-    sectorEndCol: 3,
+    sectorStartCol: 15,
+    sectorEndCol: 50,
   },
   {
     id: AGS_ID as string,
@@ -218,7 +225,7 @@ export const germanArmyGroups: ArmyGroup[] = [
     nation: 'germany' as string,
     generalId: 'de-gen-rundstedt' as string,
     divisionIds: southDivisionIds,
-    sectorStartCol: 4,
-    sectorEndCol: 6,
+    sectorStartCol: 10,
+    sectorEndCol: 32,
   },
 ]
