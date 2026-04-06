@@ -51,7 +51,7 @@ function buildData(): ScenarioData {
     armyGroups: [...germanArmyGroups, ...polishArmyGroups],
     controlGrid: createCentralEuropeGrid(),
     initialResearch,
-    tickScale: 3600,      // 1 tick = 1 game hour (WW2 grand-strategy timescale)
+    // tickScale omitted — 1 tick = 1 second, same as modern scenario
   }
 }
 
