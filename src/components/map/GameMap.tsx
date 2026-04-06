@@ -523,13 +523,13 @@ export default function GameMap() {
           const is1939 = !!borderGeojsonPath
           const theaterCountries = is1939 ? THEATER_COUNTRIES_1939 : THEATER_COUNTRIES_MODERN
           const primaryNations = is1939
-            ? ['DEU', '#1e2428', 'POL', '#28221a']
+            ? ['DEU', '#2a3038', 'POL', '#332a1e']
             : ['IRN', '#1a1520', 'USA', '#151a28']
           const fillColorExpr = [
             'match',
             ['get', 'iso_a3'],
             ...primaryNations,
-            ...theaterCountries.flatMap(c => [c, '#141822']),
+            ...theaterCountries.flatMap(c => [c, '#181c22']),
             '#111620',
           ] as unknown as string
           return (
@@ -547,42 +547,43 @@ export default function GameMap() {
               type="line"
               paint={{
                 'line-color': (is1939
-                  ? ['match', ['get', 'iso_a3'], 'DEU', '#555555', 'POL', '#554433', '#2d4a3e']
+                  ? ['match', ['get', 'iso_a3'], 'DEU', '#667788', 'POL', '#887755', '#3a4a4a']
                   : ['match', ['get', 'iso_a3'], 'IRN', '#553333', 'USA', '#334455', '#2d4a3e']
                 ) as unknown as string,
                 'line-width': (is1939
-                  ? ['match', ['get', 'iso_a3'], 'DEU', 1.5, 'POL', 1.5, 0.6]
+                  ? ['match', ['get', 'iso_a3'], 'DEU', 2, 'POL', 2, 1]
                   : ['match', ['get', 'iso_a3'], 'IRN', 1.5, 0.6]
                 ) as unknown as number,
-                'line-opacity': 0.7,
+                'line-opacity': 0.8,
               }}
             />
-            {is1939 ? (
-              <>
-                <Layer
-                  id="deu-glow"
-                  type="line"
-                  filter={['==', ['get', 'iso_a3'], 'DEU']}
-                  paint={{
-                    'line-color': '#888888',
-                    'line-width': 2,
-                    'line-opacity': 0.3,
-                    'line-blur': 3,
-                  }}
-                />
-                <Layer
-                  id="pol-glow"
-                  type="line"
-                  filter={['==', ['get', 'iso_a3'], 'POL']}
-                  paint={{
-                    'line-color': '#cc8844',
-                    'line-width': 2,
-                    'line-opacity': 0.3,
-                    'line-blur': 3,
-                  }}
-                />
-              </>
-            ) : (
+            {is1939 && (
+              <Layer
+                id="deu-glow"
+                type="line"
+                filter={['==', ['get', 'iso_a3'], 'DEU']}
+                paint={{
+                  'line-color': '#667788',
+                  'line-width': 2,
+                  'line-opacity': 0.4,
+                  'line-blur': 2,
+                }}
+              />
+            )}
+            {is1939 && (
+              <Layer
+                id="pol-glow"
+                type="line"
+                filter={['==', ['get', 'iso_a3'], 'POL']}
+                paint={{
+                  'line-color': '#bb8855',
+                  'line-width': 2,
+                  'line-opacity': 0.4,
+                  'line-blur': 2,
+                }}
+              />
+            )}
+            {!is1939 && (
               <Layer
                 id="iran-glow"
                 type="line"
