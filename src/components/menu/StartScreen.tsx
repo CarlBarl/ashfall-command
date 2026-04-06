@@ -302,7 +302,7 @@ export default function StartScreen() {
             letterSpacing: '0.1em',
           }}
         >
-          v0.1 // USA vs IRAN // 2026
+          v0.2 // UPDATED 2026-04-06 22:00
         </div>
       </div>
     </div>
