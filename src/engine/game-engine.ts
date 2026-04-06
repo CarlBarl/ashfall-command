@@ -295,9 +295,9 @@ export class GameEngine {
     // ─── Ground warfare systems (skip when no ground units) ───
     if (state.groundUnits && state.groundUnits.size > 0) {
       const tick = state.time.tick
-      if (tick % 6 === 0) processGroundSupply(state)
-      if (tick % 12 === 0) processGeneralAI(state, this.rng)
-      if (tick % 4 === 0) {
+      if (tick % 60 === 0) processGroundSupply(state)
+      if (tick % 120 === 0) processGeneralAI(state, this.rng)
+      if (tick % 30 === 0) {
         processGroundCombat(state, this.rng)
         processFrontline(state)
       }
