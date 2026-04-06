@@ -230,6 +230,7 @@ export default function ScenarioSelect() {
   const setScreen = useMenuStore((s) => s.setScreen)
   const setSelectedScenarioId = useMenuStore((s) => s.setSelectedScenarioId)
   const setMapCenter = useMenuStore((s) => s.setMapCenter)
+  const setBorderGeojsonPath = useMenuStore((s) => s.setBorderGeojsonPath)
   const setSelectedNation = useMenuStore((s) => s.setSelectedNation)
   const selectedNation = useMenuStore((s) => s.selectedNation)
 
@@ -258,6 +259,7 @@ export default function ScenarioSelect() {
     setSelectedScenarioId(selectedId)
     setSelectedNation(nationForScenario)
     setMapCenter(selectedScenario.mapCenter ?? null)
+    setBorderGeojsonPath(selectedScenario.borderGeojsonPath ?? null)
     setScreen('playing')
   }
 

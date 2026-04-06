@@ -27,6 +27,7 @@ interface MenuState {
   selectedNation: NationId
   selectedScenarioId: string | null
   mapCenter: { longitude: number; latitude: number; zoom: number } | null
+  borderGeojsonPath: string | null
   freeBudget: number
   freeUnits: FreeModeUnit[]
   freeEnemyUnits: FreeModeUnit[]
@@ -35,6 +36,7 @@ interface MenuState {
   setSelectedNation: (nation: NationId) => void
   setSelectedScenarioId: (id: string | null) => void
   setMapCenter: (center: { longitude: number; latitude: number; zoom: number } | null) => void
+  setBorderGeojsonPath: (path: string | null) => void
   setFreeBudget: (budget: number) => void
   addFreeUnit: (unit: FreeModeUnit) => void
   removeFreeUnit: (index: number) => void
@@ -52,6 +54,7 @@ export const useMenuStore = create<MenuState>((set, get) => ({
   selectedNation: 'usa',
   selectedScenarioId: null,
   mapCenter: null,
+  borderGeojsonPath: null,
   freeBudget: DEFAULT_BUDGET,
   freeUnits: [],
   freeEnemyUnits: [],
@@ -65,6 +68,8 @@ export const useMenuStore = create<MenuState>((set, get) => ({
   setSelectedScenarioId: (id) => set({ selectedScenarioId: id }),
 
   setMapCenter: (center) => set({ mapCenter: center }),
+
+  setBorderGeojsonPath: (path) => set({ borderGeojsonPath: path }),
 
   setFreeBudget: (budget) => set({ freeBudget: budget }),
 
