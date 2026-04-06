@@ -39,8 +39,9 @@ const DEFAULT_VIEW = {
   bearing: 0,
 }
 
-const THEATER_COUNTRIES_MODERN = ['IRQ', 'SAU', 'ARE', 'QAT', 'BHR', 'KWT', 'OMN', 'AFG', 'PAK', 'TUR']
-const THEATER_COUNTRIES_1939 = ['HUN', 'ROU', 'SVK', 'LTU', 'LVA', 'EST', 'FRA', 'ITA', 'DNK', 'SWE', 'CHE', 'BEL', 'NLD', 'YUG', 'BGR', 'FIN', 'RUS', 'NOR', 'GBR', 'GRC', 'TUR', 'ALB', 'LUX']
+// Theater countries no longer used in fill expression — kept as reference
+// const THEATER_COUNTRIES_MODERN = ['IRQ', 'SAU', 'ARE', 'QAT', 'BHR', 'KWT', 'OMN', 'AFG', 'PAK', 'TUR']
+// const THEATER_COUNTRIES_1939 = ['HUN', 'ROU', 'SVK', 'LTU', 'LVA', 'EST', 'FRA', 'ITA', 'DNK', 'SWE', 'CHE', 'BEL', 'NLD', 'YUG', 'BGR', 'FIN', 'RUS', 'NOR', 'GBR', 'GRC', 'TUR', 'ALB', 'LUX']
 
 interface CtxMenu {
   x: number
@@ -521,17 +522,20 @@ export default function GameMap() {
 
         {geoData && (() => {
           const is1939 = !!borderGeojsonPath
-          const theaterCountries = is1939 ? THEATER_COUNTRIES_1939 : THEATER_COUNTRIES_MODERN
-          const primaryNations = is1939
-            ? ['DEU', '#283040', 'POL', '#382818']
-            : ['IRN', '#1a1520', 'USA', '#151a28']
-          const fillColorExpr = [
-            'match',
-            ['get', 'iso_a3'],
-            ...primaryNations,
-            ...theaterCountries.flatMap(c => [c, '#161a20']),
-            '#0e1218',
-          ] as unknown as string
+          const fillColorExpr = (is1939
+            ? [
+                'match', ['get', 'iso_a3'],
+                'DEU', '#2a3545',
+                'POL', '#3a2818',
+                '#151a22',
+              ]
+            : [
+                'match', ['get', 'iso_a3'],
+                'IRN', '#1a1520',
+                'USA', '#151a28',
+                '#111620',
+              ]
+          ) as unknown as string
           return (
           <Source id="countries" type="geojson" data={geoData}>
             <Layer
@@ -539,7 +543,7 @@ export default function GameMap() {
               type="fill"
               paint={{
                 'fill-color': fillColorExpr,
-                'fill-opacity': 0.85,
+                'fill-opacity': 1,
               }}
             />
             <Layer
