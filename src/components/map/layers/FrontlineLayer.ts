@@ -1,17 +1,24 @@
 import type { FrontlineSegment } from '@/types/ground'
 
 const NATION_COLORS: Record<string, string> = {
+  germany: '#888888',
+  poland: '#dd7744',
   usa: '#4488cc',
   iran: '#cc4444',
-  germany: '#666666',
-  poland: '#cc6633',
+}
+
+const NATION_HIGHLIGHT_COLORS: Record<string, string> = {
+  germany: '#bbbbbb',
+  poland: '#ffaa66',
+  usa: '#66aaee',
+  iran: '#ee6666',
 }
 
 const TERRITORY_FILLS: Record<string, string> = {
   usa: 'rgba(68, 136, 204, 0.12)',
   iran: 'rgba(204, 68, 68, 0.12)',
-  germany: 'rgba(102, 102, 102, 0.12)',
-  poland: 'rgba(204, 102, 51, 0.12)',
+  germany: 'rgba(136, 136, 136, 0.12)',
+  poland: 'rgba(221, 119, 68, 0.12)',
 }
 
 /**
@@ -28,6 +35,7 @@ export function createFrontlineGeoJSON(
       sideA: seg.sideA,
       sideB: seg.sideB,
       color: NATION_COLORS[seg.sideA] ?? '#888888',
+      highlightColor: NATION_HIGHLIGHT_COLORS[seg.sideA] ?? '#bbbbbb',
     },
     geometry: {
       type: 'LineString' as const,
@@ -60,21 +68,64 @@ export function createTerritoryGeoJSON(
   return { type: 'FeatureCollection', features }
 }
 
-export const FRONTLINE_LAYER_STYLE = {
-  id: 'frontline-line',
-  type: 'line' as const,
-  source: 'frontline-source',
-  paint: {
-    'line-color': ['get', 'color'] as unknown as string,
-    'line-width': 5,
-    'line-blur': 2,
-    'line-opacity': 0.8,
+/**
+ * Multi-layer HoI-style painted frontline stack.
+ * Spread these as individual <Layer> elements in GameMap.
+ * Render order: glow (bottom) → main → highlight (top).
+ */
+export const FRONTLINE_LAYER_STYLES = [
+  // Outer glow — soft haze behind the main stroke
+  {
+    id: 'frontline-glow',
+    type: 'line' as const,
+    source: 'frontline-source',
+    paint: {
+      'line-color': ['get', 'color'] as unknown as string,
+      'line-width': 12,
+      'line-blur': 6,
+      'line-opacity': 0.15,
+    },
+    layout: {
+      'line-cap': 'round' as const,
+      'line-join': 'round' as const,
+    },
   },
-  layout: {
-    'line-cap': 'round' as const,
-    'line-join': 'round' as const,
+  // Main line — the bold painted stroke
+  {
+    id: 'frontline-main',
+    type: 'line' as const,
+    source: 'frontline-source',
+    paint: {
+      'line-color': ['get', 'color'] as unknown as string,
+      'line-width': 4,
+      'line-blur': 0,
+      'line-opacity': 0.9,
+    },
+    layout: {
+      'line-cap': 'round' as const,
+      'line-join': 'round' as const,
+    },
   },
-}
+  // Inner highlight — lighter tint for dimensionality
+  {
+    id: 'frontline-highlight',
+    type: 'line' as const,
+    source: 'frontline-source',
+    paint: {
+      'line-color': ['get', 'highlightColor'] as unknown as string,
+      'line-width': 2,
+      'line-blur': 0,
+      'line-opacity': 0.7,
+    },
+    layout: {
+      'line-cap': 'round' as const,
+      'line-join': 'round' as const,
+    },
+  },
+] as const
+
+/** @deprecated Use FRONTLINE_LAYER_STYLES array instead */
+export const FRONTLINE_LAYER_STYLE = FRONTLINE_LAYER_STYLES[1]
 
 export const TERRITORY_FILL_STYLE = {
   id: 'territory-fill',
