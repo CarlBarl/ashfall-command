@@ -525,9 +525,9 @@ export default function GameMap() {
           const fillColorExpr = (is1939
             ? [
                 'match', ['get', 'iso_a3'],
-                'DEU', '#2a3545',
-                'POL', '#3a2818',
-                '#151a22',
+                'DEU', '#253550',
+                'POL', '#50351a',
+                '#151c25',
               ]
             : [
                 'match', ['get', 'iso_a3'],
