@@ -539,6 +539,7 @@ export class GameEngine {
           armyGroupId: gen.armyGroupId,
           traits: gen.traits,
           currentOrder: gen.currentOrder,
+          pendingReports: gen.pendingReports,
         })
       }
     }

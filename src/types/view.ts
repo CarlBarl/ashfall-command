@@ -118,6 +118,7 @@ export interface ViewGeneral {
   armyGroupId: ArmyGroupId
   traits: GeneralTraits
   currentOrder: GeneralOrder | null
+  pendingReports: GeneralReport[]
 }
 
 export interface ViewArmyGroup {

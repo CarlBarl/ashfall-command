@@ -169,6 +169,7 @@ const generals: ViewGeneral[] = [
     armyGroupId: 'ag-north' as ViewGeneral['armyGroupId'],
     traits: { aggression: 0, caution: 0, logistics: 0, innovation: 0, morale: 0 },
     currentOrder: null,
+    pendingReports: [],
   },
   {
     id: 'gen-bortnowski' as ViewGeneral['id'],
@@ -177,6 +178,7 @@ const generals: ViewGeneral[] = [
     armyGroupId: 'ag-pomorze' as ViewGeneral['armyGroupId'],
     traits: { aggression: 0, caution: 0, logistics: 0, innovation: 0, morale: 0 },
     currentOrder: null,
+    pendingReports: [],
   },
   {
     id: 'gen-kutrzeba' as ViewGeneral['id'],
@@ -185,6 +187,7 @@ const generals: ViewGeneral[] = [
     armyGroupId: 'ag-poznan' as ViewGeneral['armyGroupId'],
     traits: { aggression: 0, caution: 0, logistics: 0, innovation: 0, morale: 0 },
     currentOrder: null,
+    pendingReports: [],
   },
 ]
 

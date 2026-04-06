@@ -2,7 +2,9 @@ import { useCallback } from 'react'
 import Panel from '@/components/common/Panel'
 import StatBar from '@/components/common/StatBar'
 import { useGroundStore } from '@/store/ground-store'
-import type { General, GeneralOrder, ArmyGroup, GeneralReport } from '@/types/ground'
+import { sendCommand } from '@/store/bridge'
+import type { GeneralOrder, GeneralReport } from '@/types/ground'
+import type { ViewGeneral, ViewArmyGroup } from '@/types/view'
 
 // ─── Order button definitions ───
 
@@ -26,9 +28,9 @@ const SEVERITY_COLORS: Record<string, string> = {
 
 interface GeneralPanelProps {
   /** All generals for the player nation */
-  generals: General[]
+  generals: ViewGeneral[]
   /** All army groups for the player nation */
-  armyGroups: ArmyGroup[]
+  armyGroups: ViewArmyGroup[]
 }
 
 export default function GeneralPanel({ generals, armyGroups }: GeneralPanelProps) {
@@ -36,6 +38,7 @@ export default function GeneralPanel({ generals, armyGroups }: GeneralPanelProps
   const selectedGeneralId = useGroundStore((s) => s.selectedGeneralId)
   const selectGeneral = useGroundStore((s) => s.selectGeneral)
   const setOrderingMode = useGroundStore((s) => s.setOrderingMode)
+  const setPendingOrderType = useGroundStore((s) => s.setPendingOrderType)
   const orderingMode = useGroundStore((s) => s.orderingMode)
 
   const general = generals.find((g) => g.id === selectedGeneralId)
@@ -45,12 +48,20 @@ export default function GeneralPanel({ generals, armyGroups }: GeneralPanelProps
       if (!general) return
       if (orderType === 'ADVANCE' || orderType === 'ENCIRCLE') {
         // These need a map target, enter ordering mode
+        setPendingOrderType(orderType)
         setOrderingMode(true)
+        return
       }
-      // For HOLD_LINE, WITHDRAW, RESERVE the order takes effect immediately
-      // (team lead wires sendCommand in integration)
+      // Immediate orders — send directly
+      if (orderType === 'HOLD_LINE') {
+        sendCommand({ type: 'GENERAL_ORDER', generalId: general.id, order: { type: 'HOLD_LINE' } })
+      } else if (orderType === 'RESERVE') {
+        sendCommand({ type: 'GENERAL_ORDER', generalId: general.id, order: { type: 'RESERVE' } })
+      } else if (orderType === 'WITHDRAW') {
+        sendCommand({ type: 'GENERAL_ORDER', generalId: general.id, order: { type: 'WITHDRAW', fallbackCol: 0, fallbackRow: 0 } })
+      }
     },
-    [general, setOrderingMode],
+    [general, setOrderingMode, setPendingOrderType],
   )
 
   if (!general) return null
