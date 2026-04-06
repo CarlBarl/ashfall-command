@@ -1,29 +1,8 @@
 import { useState, type CSSProperties } from 'react'
 import { useMenuStore } from '@/store/menu-store'
-
-// ── Scenario data (hardcoded fallback until @/data/scenarios/index exists) ──
-
-interface ScenarioInfo {
-  id: string
-  name: string
-  year: number
-  description: string
-  nations: string[]
-  difficulty: 'Easy' | 'Medium' | 'Hard'
-}
-
-const SCENARIOS: ScenarioInfo[] = [
-  {
-    id: 'persian_gulf_2026',
-    name: 'Persian Gulf 2026',
-    year: 2026,
-    description:
-      'Tensions boil over in the Strait of Hormuz. The US 5th Fleet faces Iran\'s layered ' +
-      'air defenses, ballistic missiles, and fast attack craft. Strike decisively or lose the initiative.',
-    nations: ['USA', 'Iran'],
-    difficulty: 'Medium',
-  },
-]
+import { scenarios } from '@/data/scenarios/index'
+import type { ScenarioDefinition } from '@/types/scenario'
+import type { NationId } from '@/types/game'
 
 // ── Styles ──────────────────────────────────────────────────────────
 
@@ -87,12 +66,6 @@ const subheader: CSSProperties = {
   marginBottom: 32,
 }
 
-const DIFFICULTY_COLORS: Record<string, string> = {
-  Easy: 'var(--status-ready)',
-  Medium: 'var(--status-engaged)',
-  Hard: 'var(--status-damaged)',
-}
-
 // ── Components ──────────────────────────────────────────────────────
 
 function ScenarioCard({
@@ -100,7 +73,7 @@ function ScenarioCard({
   selected,
   onClick,
 }: {
-  scenario: ScenarioInfo
+  scenario: ScenarioDefinition
   selected: boolean
   onClick: () => void
 }) {
@@ -131,7 +104,7 @@ function ScenarioCard({
           : {}),
       }}
     >
-      {/* Top row: name + year + difficulty */}
+      {/* Top row: name + year */}
       <div
         style={{
           display: 'flex',
@@ -161,17 +134,6 @@ function ScenarioCard({
         >
           {scenario.year}
         </span>
-        <span
-          style={{
-            fontSize: 'var(--font-size-xs)',
-            fontWeight: 600,
-            color: DIFFICULTY_COLORS[scenario.difficulty] ?? 'var(--text-secondary)',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-          }}
-        >
-          {scenario.difficulty}
-        </span>
       </div>
 
       {/* Description */}
@@ -194,11 +156,12 @@ function ScenarioCard({
             style={{
               fontSize: 'var(--font-size-xs)',
               padding: '2px 8px',
-              border: `1px solid ${n === 'USA' ? 'var(--usa-primary)' : 'var(--iran-primary)'}`,
+              border: '1px solid var(--text-muted)',
               borderRadius: 3,
-              color: n === 'USA' ? 'var(--usa-primary)' : 'var(--iran-primary)',
+              color: 'var(--text-secondary)',
               letterSpacing: '0.06em',
               fontWeight: 600,
+              textTransform: 'uppercase',
             }}
           >
             {n}
@@ -209,18 +172,90 @@ function ScenarioCard({
   )
 }
 
+function NationPicker({
+  nations,
+  selected,
+  onSelect,
+}: {
+  nations: NationId[]
+  selected: NationId
+  onSelect: (n: NationId) => void
+}) {
+  return (
+    <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 24 }}>
+      <span style={{
+        fontSize: 'var(--font-size-xs)',
+        color: 'var(--text-muted)',
+        letterSpacing: '0.1em',
+        alignSelf: 'center',
+        marginRight: 8,
+      }}>
+        PLAY AS
+      </span>
+      {nations.map((n) => {
+        const isSelected = n === selected
+        return (
+          <button
+            key={n}
+            onClick={() => onSelect(n)}
+            style={{
+              background: isSelected ? 'var(--text-accent)' : 'transparent',
+              border: isSelected
+                ? '1px solid var(--text-accent)'
+                : '1px solid var(--border-default)',
+              borderRadius: 'var(--panel-radius)',
+              padding: '8px 24px',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--font-size-sm)',
+              fontWeight: 700,
+              letterSpacing: '0.1em',
+              color: isSelected ? '#fff' : 'var(--text-secondary)',
+              textTransform: 'uppercase',
+              transition: 'all 0.15s',
+            }}
+          >
+            {n}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Main ────────────────────────────────────────────────────────────
 
 export default function ScenarioSelect() {
   const screen = useMenuStore((s) => s.screen)
   const setScreen = useMenuStore((s) => s.setScreen)
+  const setSelectedScenarioId = useMenuStore((s) => s.setSelectedScenarioId)
+  const setSelectedNation = useMenuStore((s) => s.setSelectedNation)
+  const selectedNation = useMenuStore((s) => s.selectedNation)
+
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   if (screen !== 'scenario-select') return null
 
+  const selectedScenario = selectedId ? scenarios.find((s) => s.id === selectedId) : null
+
+  // If the current nation isn't valid for the selected scenario, default to first
+  const validNations = selectedScenario?.nations ?? []
+  const nationForScenario = validNations.includes(selectedNation)
+    ? selectedNation
+    : (validNations[0] as NationId | undefined) ?? 'usa'
+
+  const handleSelectScenario = (id: string) => {
+    setSelectedId(id)
+    const sc = scenarios.find((s) => s.id === id)
+    if (sc && !sc.nations.includes(selectedNation)) {
+      setSelectedNation(sc.nations[0] as NationId)
+    }
+  }
+
   const handleLaunch = () => {
     if (!selectedId) return
-    // Transition to playing state; team lead wires this to initBridge / worker
+    setSelectedScenarioId(selectedId)
+    setSelectedNation(nationForScenario)
     setScreen('playing')
   }
 
@@ -247,16 +282,25 @@ export default function ScenarioSelect() {
         </div>
 
         {/* Scenario cards */}
-        <div style={{ marginBottom: 32 }}>
-          {SCENARIOS.map((s) => (
+        <div style={{ marginBottom: 24 }}>
+          {scenarios.map((s) => (
             <ScenarioCard
               key={s.id}
               scenario={s}
               selected={selectedId === s.id}
-              onClick={() => setSelectedId(s.id)}
+              onClick={() => handleSelectScenario(s.id)}
             />
           ))}
         </div>
+
+        {/* Nation picker — shown after selecting a scenario */}
+        {selectedScenario && (
+          <NationPicker
+            nations={validNations as NationId[]}
+            selected={nationForScenario}
+            onSelect={setSelectedNation}
+          />
+        )}
 
         {/* Launch button */}
         <div style={{ display: 'flex', justifyContent: 'center' }}>

@@ -230,41 +230,43 @@ export default function StartScreen() {
           </div>
         </div>
 
-        {/* Side selection */}
-        <div style={{ marginBottom: 8 }}>
-          <div
-            style={{
-              fontSize: 'var(--font-size-xs)',
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.2em',
-              marginBottom: 12,
-            }}
-          >
-            SELECT SIDE
-          </div>
-          <div style={sideRow}>
-            <NationToggle
-              nation="usa"
-              selected={selectedNation === 'usa'}
-              onClick={() => setSelectedNation('usa')}
-            />
-            <span
+        {/* Side selection — only for free mode (scenario mode picks nation after scenario) */}
+        {selectedMode === 'free' && (
+          <div style={{ marginBottom: 8 }}>
+            <div
               style={{
-                color: 'var(--text-muted)',
                 fontSize: 'var(--font-size-xs)',
-                letterSpacing: '0.1em',
+                color: 'var(--text-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.2em',
+                marginBottom: 12,
               }}
             >
-              VS
-            </span>
-            <NationToggle
-              nation="iran"
-              selected={selectedNation === 'iran'}
-              onClick={() => setSelectedNation('iran')}
-            />
+              SELECT SIDE
+            </div>
+            <div style={sideRow}>
+              <NationToggle
+                nation="usa"
+                selected={selectedNation === 'usa'}
+                onClick={() => setSelectedNation('usa')}
+              />
+              <span
+                style={{
+                  color: 'var(--text-muted)',
+                  fontSize: 'var(--font-size-xs)',
+                  letterSpacing: '0.1em',
+                }}
+              >
+                VS
+              </span>
+              <NationToggle
+                nation="iran"
+                selected={selectedNation === 'iran'}
+                onClick={() => setSelectedNation('iran')}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Proceed button */}
         <button

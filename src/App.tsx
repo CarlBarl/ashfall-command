@@ -38,17 +38,23 @@ export default function App() {
     const store = useMenuStore.getState()
     const mode = store.selectedMode ?? 'scenario'
 
-    // Reuse scenario data for nations/economy in both modes
-    const scenario = getScenario('persian-gulf-2026')!
+    const scenarioId = store.selectedScenarioId ?? 'persian-gulf-2026'
+    const scenario = getScenario(scenarioId)
+    if (!scenario) {
+      console.error(`Scenario not found: ${scenarioId}`)
+      return
+    }
     const data = scenario.getData()
 
     if (mode === 'scenario') {
       initFromData(store.selectedNation, data.nations, data.units, data.supplyLines, data.baseSupply, scenario.startDate)
     } else {
       // Free mode — use player-placed units + AI/manual enemy units
+      const fallback = getScenario('persian-gulf-2026')!
+      const fallbackData = fallback.getData()
       const deployStore = useDeploymentStore.getState()
       const allUnits = deployStore.confirmDeployment()
-      initFromData(store.selectedNation, data.nations, allUnits, [], {}, scenario.startDate)
+      initFromData(store.selectedNation, fallbackData.nations, allUnits, [], {}, fallback.startDate)
     }
   }, [screen])
 

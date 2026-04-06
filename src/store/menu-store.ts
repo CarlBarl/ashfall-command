@@ -25,12 +25,14 @@ interface MenuState {
   screen: 'start' | 'scenario-select' | 'free-lobby' | 'deployment' | 'playing'
   selectedMode: 'scenario' | 'free' | null
   selectedNation: NationId
+  selectedScenarioId: string | null
   freeBudget: number
   freeUnits: FreeModeUnit[]
   freeEnemyUnits: FreeModeUnit[]
   setScreen: (screen: MenuState['screen']) => void
   setSelectedMode: (mode: 'scenario' | 'free') => void
   setSelectedNation: (nation: NationId) => void
+  setSelectedScenarioId: (id: string | null) => void
   setFreeBudget: (budget: number) => void
   addFreeUnit: (unit: FreeModeUnit) => void
   removeFreeUnit: (index: number) => void
@@ -46,6 +48,7 @@ export const useMenuStore = create<MenuState>((set, get) => ({
   screen: 'start',
   selectedMode: null,
   selectedNation: 'usa',
+  selectedScenarioId: null,
   freeBudget: DEFAULT_BUDGET,
   freeUnits: [],
   freeEnemyUnits: [],
@@ -55,6 +58,8 @@ export const useMenuStore = create<MenuState>((set, get) => ({
   setSelectedMode: (mode) => set({ selectedMode: mode }),
 
   setSelectedNation: (nation) => set({ selectedNation: nation }),
+
+  setSelectedScenarioId: (id) => set({ selectedScenarioId: id }),
 
   setFreeBudget: (budget) => set({ freeBudget: budget }),
 
