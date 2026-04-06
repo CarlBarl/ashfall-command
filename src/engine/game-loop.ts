@@ -1,6 +1,8 @@
 import type { GameEngine } from './game-engine'
 
 const BASE_INTERVAL_MS = 100
+/** Max time (ms) the loop can spend ticking per interval before yielding */
+const TIME_BUDGET_MS = 80
 
 export class GameLoop {
   private engine: GameEngine
@@ -35,9 +37,13 @@ export class GameLoop {
         this.accumulator -= 1
       }
     } else {
-      // Burst N ticks per interval
-      for (let i = 0; i < speed; i++) {
+      // Burst ticks with a time budget so we never block the thread
+      const target = Math.round(speed)
+      const start = performance.now()
+      for (let i = 0; i < target; i++) {
         this.engine.tick()
+        // Check budget every 10 ticks to avoid overhead from perf.now()
+        if (i % 10 === 9 && performance.now() - start > TIME_BUDGET_MS) break
       }
     }
   }
