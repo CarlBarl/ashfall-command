@@ -66,6 +66,7 @@ export default function TopBar() {
     ? (playerState?.atWar.includes(primaryEnemyNation.id) ?? false)
     : false
   const primaryEnemyLabel = primaryEnemyNation?.name.split(' ').at(-1)?.toUpperCase() ?? 'ENEMY'
+  const hasAirNavalUnits = units.length > 0 // false in ground-only scenarios
 
   const [showHelp, setShowHelp] = useState(false)
   const [warClickPending, setWarClickPending] = useState(false)
@@ -183,8 +184,8 @@ export default function TopBar() {
 
           {/* Right: ATK + war status + ROE */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            {/* Strike planner shortcut */}
-            <StrikeBtn compact />
+            {/* Strike planner shortcut — only for air/naval scenarios */}
+            {hasAirNavalUnits && <StrikeBtn compact />}
 
             {atWarWithPrimaryEnemy ? (
               <span style={{
@@ -234,68 +235,70 @@ export default function TopBar() {
               </button>
             )}
 
-            {/* ROE dropdown */}
-            <div style={{ position: 'relative' }}>
-              <button
-                onClick={() => setRoeOpen(!roeOpen)}
-                style={{
-                  background: 'var(--bg-hover)',
-                  border: `1px solid ${dominantRoeOption?.color ?? 'var(--border-default)'}`,
-                  borderRadius: 4,
-                  color: dominantRoeOption?.color ?? 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.55rem',
-                  padding: '3px 6px',
-                  fontWeight: 600,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {dominantRoeOption?.shortLabel ?? 'ROE'}
-              </button>
+            {/* ROE dropdown — only for air/naval scenarios */}
+            {hasAirNavalUnits && (
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setRoeOpen(!roeOpen)}
+                  style={{
+                    background: 'var(--bg-hover)',
+                    border: `1px solid ${dominantRoeOption?.color ?? 'var(--border-default)'}`,
+                    borderRadius: 4,
+                    color: dominantRoeOption?.color ?? 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '0.55rem',
+                    padding: '3px 6px',
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {dominantRoeOption?.shortLabel ?? 'ROE'}
+                </button>
 
-              {roeOpen && (
-                <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: 0,
-                  marginTop: 4,
-                  background: 'var(--bg-panel)',
-                  border: '1px solid var(--border-default)',
-                  borderRadius: 'var(--panel-radius)',
-                  padding: 4,
-                  zIndex: 30,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 2,
-                  minWidth: 110,
-                }}>
-                  {ROE_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => handleTheaterRoe(opt.value)}
-                      style={{
-                        background: dominantRoe === opt.value ? opt.color : 'var(--bg-hover)',
-                        border: dominantRoe === opt.value
-                          ? `1px solid ${opt.color}`
-                          : '1px solid var(--border-default)',
-                        borderRadius: 3,
-                        color: dominantRoe === opt.value ? 'var(--bg-primary)' : 'var(--text-secondary)',
-                        cursor: 'pointer',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: 'var(--font-size-xs)',
-                        padding: '6px 10px',
-                        fontWeight: dominantRoe === opt.value ? 700 : 400,
-                        textAlign: 'left',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {opt.shortLabel}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                {roeOpen && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: 4,
+                    background: 'var(--bg-panel)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--panel-radius)',
+                    padding: 4,
+                    zIndex: 30,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 2,
+                    minWidth: 110,
+                  }}>
+                    {ROE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => handleTheaterRoe(opt.value)}
+                        style={{
+                          background: dominantRoe === opt.value ? opt.color : 'var(--bg-hover)',
+                          border: dominantRoe === opt.value
+                            ? `1px solid ${opt.color}`
+                            : '1px solid var(--border-default)',
+                          borderRadius: 3,
+                          color: dominantRoe === opt.value ? 'var(--bg-primary)' : 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 'var(--font-size-xs)',
+                          padding: '6px 10px',
+                          fontWeight: dominantRoe === opt.value ? 700 : 400,
+                          textAlign: 'left',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {opt.shortLabel}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -464,10 +467,13 @@ export default function TopBar() {
           />
         ))}
 
-        <Sep />
-
-        {/* Strike planner shortcut */}
-        <StrikeBtn compact={false} />
+        {hasAirNavalUnits && (
+          <>
+            <Sep />
+            {/* Strike planner shortcut */}
+            <StrikeBtn compact={false} />
+          </>
+        )}
 
         <Sep />
 
@@ -498,68 +504,70 @@ export default function TopBar() {
             </span>
           )}
 
-          {/* Theater ROE dropdown */}
-          <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => setRoeOpen(!roeOpen)}
-              style={{
-                background: 'var(--bg-hover)',
-                border: `1px solid ${dominantRoeOption?.color ?? 'var(--border-default)'}`,
-                borderRadius: 3,
-                color: dominantRoeOption?.color ?? 'var(--text-secondary)',
-                cursor: 'pointer',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 'var(--font-size-xs)',
-                padding: '2px 4px',
-                fontWeight: 600,
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {dominantRoeOption?.label ?? 'ROE'}
-            </button>
+          {/* Theater ROE dropdown — only for air/naval scenarios */}
+          {hasAirNavalUnits && (
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setRoeOpen(!roeOpen)}
+                style={{
+                  background: 'var(--bg-hover)',
+                  border: `1px solid ${dominantRoeOption?.color ?? 'var(--border-default)'}`,
+                  borderRadius: 3,
+                  color: dominantRoeOption?.color ?? 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 'var(--font-size-xs)',
+                  padding: '2px 4px',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {dominantRoeOption?.label ?? 'ROE'}
+              </button>
 
-            {roeOpen && (
-              <div style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                marginTop: 4,
-                background: 'var(--bg-panel)',
-                border: '1px solid var(--border-default)',
-                borderRadius: 'var(--panel-radius)',
-                padding: 4,
-                zIndex: 30,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 2,
-                minWidth: 140,
-              }}>
-                {ROE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => handleTheaterRoe(opt.value)}
-                    style={{
-                      background: dominantRoe === opt.value ? opt.color : 'var(--bg-hover)',
-                      border: dominantRoe === opt.value
-                        ? `1px solid ${opt.color}`
-                        : '1px solid var(--border-default)',
-                      borderRadius: 3,
-                      color: dominantRoe === opt.value ? 'var(--bg-primary)' : 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 'var(--font-size-xs)',
-                      padding: '4px 8px',
-                      fontWeight: dominantRoe === opt.value ? 700 : 400,
-                      textAlign: 'left',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+              {roeOpen && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  marginTop: 4,
+                  background: 'var(--bg-panel)',
+                  border: '1px solid var(--border-default)',
+                  borderRadius: 'var(--panel-radius)',
+                  padding: 4,
+                  zIndex: 30,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                  minWidth: 140,
+                }}>
+                  {ROE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => handleTheaterRoe(opt.value)}
+                      style={{
+                        background: dominantRoe === opt.value ? opt.color : 'var(--bg-hover)',
+                        border: dominantRoe === opt.value
+                          ? `1px solid ${opt.color}`
+                          : '1px solid var(--border-default)',
+                        borderRadius: 3,
+                        color: dominantRoe === opt.value ? 'var(--bg-primary)' : 'var(--text-secondary)',
+                        cursor: 'pointer',
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 'var(--font-size-xs)',
+                        padding: '4px 8px',
+                        fontWeight: dominantRoe === opt.value ? 700 : 400,
+                        textAlign: 'left',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Declare war button (only at peace) */}
           {!atWarWithPrimaryEnemy && primaryEnemyNation && (
