@@ -26,6 +26,7 @@ interface MenuState {
   selectedMode: 'scenario' | 'free' | null
   selectedNation: NationId
   selectedScenarioId: string | null
+  mapCenter: { longitude: number; latitude: number; zoom: number } | null
   freeBudget: number
   freeUnits: FreeModeUnit[]
   freeEnemyUnits: FreeModeUnit[]
@@ -33,6 +34,7 @@ interface MenuState {
   setSelectedMode: (mode: 'scenario' | 'free') => void
   setSelectedNation: (nation: NationId) => void
   setSelectedScenarioId: (id: string | null) => void
+  setMapCenter: (center: { longitude: number; latitude: number; zoom: number } | null) => void
   setFreeBudget: (budget: number) => void
   addFreeUnit: (unit: FreeModeUnit) => void
   removeFreeUnit: (index: number) => void
@@ -49,6 +51,7 @@ export const useMenuStore = create<MenuState>((set, get) => ({
   selectedMode: null,
   selectedNation: 'usa',
   selectedScenarioId: null,
+  mapCenter: null,
   freeBudget: DEFAULT_BUDGET,
   freeUnits: [],
   freeEnemyUnits: [],
@@ -60,6 +63,8 @@ export const useMenuStore = create<MenuState>((set, get) => ({
   setSelectedNation: (nation) => set({ selectedNation: nation }),
 
   setSelectedScenarioId: (id) => set({ selectedScenarioId: id }),
+
+  setMapCenter: (center) => set({ mapCenter: center }),
 
   setFreeBudget: (budget) => set({ freeBudget: budget }),
 

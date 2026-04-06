@@ -5,6 +5,7 @@ import { ElevationGrid } from './systems/elevation'
 import type { GameViewState } from '@/types/view'
 import type { Command } from '@/types/commands'
 import type { NationId, Nation, Unit, SupplyLine, WeaponStock } from '@/types/game'
+import type { GroundUnit, General, ArmyGroup, ControlGrid, ResearchState } from '@/types/ground'
 
 const engine = new GameEngine()
 const loop = new GameLoop(engine)
@@ -24,8 +25,16 @@ const api = {
     supplyLines: SupplyLine[],
     baseSupply: Record<string, WeaponStock[]>,
     startDate?: string,
+    ground?: {
+      groundUnits?: GroundUnit[]
+      generals?: General[]
+      armyGroups?: ArmyGroup[]
+      controlGrid?: ControlGrid
+      initialResearch?: Record<string, ResearchState>
+      tickScale?: number
+    },
   ): void {
-    engine.initFromData(playerNation, nations, unitList, supplyLines, baseSupply, startDate)
+    engine.initFromData(playerNation, nations, unitList, supplyLines, baseSupply, startDate, ground)
   },
 
   /** Whether the game state is initialized */

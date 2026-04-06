@@ -9,6 +9,7 @@ export interface ScenarioDefinition {
   startDate: string              // ISO date string
   nations: NationId[]            // available nations in this scenario
   defaultPlayerNation: NationId
+  mapCenter?: { longitude: number; latitude: number; zoom: number }
   getData: () => ScenarioData    // lazy-loaded to avoid import overhead
 }
 

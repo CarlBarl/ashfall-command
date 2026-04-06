@@ -23,12 +23,13 @@ import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
 import { useIntelStore } from '@/store/intel-store'
+import { useMenuStore } from '@/store/menu-store'
 import { getMapStyle } from '@/styles/map-providers'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import { iranCatalog } from '@/data/catalog/iran-catalog'
 import { usaCatalog } from '@/data/catalog/usa-catalog'
 
-const INITIAL_VIEW = {
+const DEFAULT_VIEW = {
   longitude: 51.4,
   latitude: 27.5,
   zoom: 4.5,
@@ -47,12 +48,18 @@ interface CtxMenu {
 
 export default function GameMap() {
   const mapRef = useRef<MapRef>(null)
+  const scenarioMapCenter = useMenuStore((s) => s.mapCenter)
+  const initialView = useMemo(() => {
+    if (!scenarioMapCenter) return DEFAULT_VIEW
+    return { ...DEFAULT_VIEW, ...scenarioMapCenter }
+  }, [scenarioMapCenter])
+
   const [geoData, setGeoData] = useState<GeoJSON.FeatureCollection | null>(null)
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null)
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const hoverPosRef = useRef({ x: 0, y: 0 })
   const [clusterPopup, setClusterPopup] = useState<{ cluster: UnitCluster; x: number; y: number } | null>(null)
-  const [zoom, setZoom] = useState(INITIAL_VIEW.zoom)
+  const [zoom, setZoom] = useState(initialView.zoom)
   const [followedMissileId, setFollowedMissileId] = useState<string | null>(null)
   const [cursorElev, setCursorElev] = useState<number | null>(null)
   const [cursorCoords, setCursorCoords] = useState<{ lat: number; lng: number } | null>(null)
@@ -350,7 +357,7 @@ export default function GameMap() {
     <>
       <MapGL
         ref={mapRef}
-        initialViewState={INITIAL_VIEW}
+        initialViewState={initialView}
         style={{ width: '100%', height: '100%' }}
         mapStyle={mapStyle}
         onLoad={onLoad}

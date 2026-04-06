@@ -68,5 +68,6 @@ export const fallWeiss1939: ScenarioDefinition = {
   startDate: '1939-09-01T04:45:00Z',
   nations: ['germany' as string, 'poland' as string],
   defaultPlayerNation: 'germany' as string,
+  mapCenter: { longitude: 20.0, latitude: 51.5, zoom: 5.5 },
   getData: buildData,
 }

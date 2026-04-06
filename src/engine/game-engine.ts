@@ -162,6 +162,14 @@ export class GameEngine {
     supplyLines: import('@/types/game').SupplyLine[],
     baseSupply: Record<string, import('@/types/game').WeaponStock[]>,
     startDate?: string,
+    ground?: {
+      groundUnits?: import('@/types/ground').GroundUnit[]
+      generals?: import('@/types/ground').General[]
+      armyGroups?: import('@/types/ground').ArmyGroup[]
+      controlGrid?: import('@/types/ground').ControlGrid
+      initialResearch?: Record<string, import('@/types/ground').ResearchState>
+      tickScale?: number
+    },
   ): void {
     const units = new Map<UnitId, Unit>()
     for (const u of unitList) {
@@ -173,7 +181,7 @@ export class GameEngine {
     this.state = {
       playerNation,
       initialized: true,
-      time: { tick: 0, timestamp, speed: 0, tickIntervalMs: 100 },
+      time: { tick: 0, timestamp, speed: 0, tickIntervalMs: 100, tickScale: ground?.tickScale },
       nations,
       units,
       missiles: new Map(),
@@ -194,19 +202,50 @@ export class GameEngine {
       this.state.supplyLines.set(line.id, { ...line })
     }
 
-    // Initialize intel budgets (only if not already set from scenario data)
-    if (!this.state.nations.usa.intelBudget) {
+    // ─── Ground warfare data ───
+    if (ground?.groundUnits?.length) {
+      this.state.groundUnits = new Map()
+      for (const gu of ground.groundUnits) {
+        this.state.groundUnits.set(gu.id, { ...gu })
+      }
+    }
+    if (ground?.generals?.length) {
+      this.state.generals = new Map()
+      for (const gen of ground.generals) {
+        this.state.generals.set(gen.id, { ...gen, pendingReports: [] })
+      }
+    }
+    if (ground?.armyGroups?.length) {
+      this.state.armyGroups = new Map()
+      for (const ag of ground.armyGroups) {
+        this.state.armyGroups.set(ag.id, { ...ag })
+      }
+    }
+    if (ground?.controlGrid) {
+      this.state.controlGrid = ground.controlGrid
+    }
+    if (ground?.initialResearch) {
+      this.state.research = new Map()
+      for (const [nation, rs] of Object.entries(ground.initialResearch)) {
+        this.state.research.set(nation, { ...rs })
+      }
+    }
+
+    // Initialize intel budgets (only for nations that exist in the scenario)
+    if (this.state.nations.usa && !this.state.nations.usa.intelBudget) {
       this.state.nations.usa.intelBudget = { total_pct: 15, humint_pct: 33, sigint_pct: 34, satellite_pct: 33 }
     }
-    if (!this.state.nations.iran.intelBudget) {
+    if (this.state.nations.iran && !this.state.nations.iran.intelBudget) {
       this.state.nations.iran.intelBudget = { total_pct: 10, humint_pct: 50, sigint_pct: 30, satellite_pct: 20 }
     }
 
     // Orient sector-limited SAMs toward enemy before first tick
     orientSAMRadars(this.state)
 
-    // Initialize satellite constellations
-    this.initSatellites()
+    // Initialize satellite constellations (only for modern scenarios with USA/Iran)
+    if (this.state.nations.usa && this.state.nations.iran) {
+      this.initSatellites()
+    }
   }
 
   /** Advance simulation by one tick */

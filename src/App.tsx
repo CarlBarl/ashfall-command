@@ -46,8 +46,19 @@ export default function App() {
     }
     const data = scenario.getData()
 
+    const ground = (data.groundUnits || data.generals || data.armyGroups || data.controlGrid || data.initialResearch || data.tickScale)
+      ? {
+          groundUnits: data.groundUnits,
+          generals: data.generals,
+          armyGroups: data.armyGroups,
+          controlGrid: data.controlGrid,
+          initialResearch: data.initialResearch,
+          tickScale: data.tickScale,
+        }
+      : undefined
+
     if (mode === 'scenario') {
-      initFromData(store.selectedNation, data.nations, data.units, data.supplyLines, data.baseSupply, scenario.startDate)
+      initFromData(store.selectedNation, data.nations, data.units, data.supplyLines, data.baseSupply, scenario.startDate, ground)
     } else {
       // Free mode — use player-placed units + AI/manual enemy units
       const fallback = getScenario('persian-gulf-2026')!

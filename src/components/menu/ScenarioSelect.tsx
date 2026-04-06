@@ -229,6 +229,7 @@ export default function ScenarioSelect() {
   const screen = useMenuStore((s) => s.screen)
   const setScreen = useMenuStore((s) => s.setScreen)
   const setSelectedScenarioId = useMenuStore((s) => s.setSelectedScenarioId)
+  const setMapCenter = useMenuStore((s) => s.setMapCenter)
   const setSelectedNation = useMenuStore((s) => s.setSelectedNation)
   const selectedNation = useMenuStore((s) => s.selectedNation)
 
@@ -253,9 +254,10 @@ export default function ScenarioSelect() {
   }
 
   const handleLaunch = () => {
-    if (!selectedId) return
+    if (!selectedId || !selectedScenario) return
     setSelectedScenarioId(selectedId)
     setSelectedNation(nationForScenario)
+    setMapCenter(selectedScenario.mapCenter ?? null)
     setScreen('playing')
   }
 

@@ -302,7 +302,7 @@ export default function StartScreen() {
             letterSpacing: '0.1em',
           }}
         >
-          v0.2 // UPDATED 2026-04-06 22:00
+          v0.3 // UPDATED 2026-04-06 22:30
         </div>
       </div>
     </div>

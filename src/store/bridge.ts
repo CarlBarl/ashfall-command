@@ -73,9 +73,17 @@ export async function initFromData(
   supplyLines: import('@/types/game').SupplyLine[],
   baseSupply: Record<string, import('@/types/game').WeaponStock[]>,
   startDate?: string,
+  ground?: {
+    groundUnits?: import('@/types/ground').GroundUnit[]
+    generals?: import('@/types/ground').General[]
+    armyGroups?: import('@/types/ground').ArmyGroup[]
+    controlGrid?: import('@/types/ground').ControlGrid
+    initialResearch?: Record<string, import('@/types/ground').ResearchState>
+    tickScale?: number
+  },
 ): Promise<void> {
   if (!api) throw new Error('Bridge not initialized')
-  await api.initFromData(playerNation, nations, unitList, supplyLines, baseSupply, startDate)
+  await api.initFromData(playerNation, nations, unitList, supplyLines, baseSupply, startDate, ground)
 }
 
 export async function isGameInitialized(): Promise<boolean> {
