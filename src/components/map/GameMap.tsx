@@ -77,7 +77,7 @@ export default function GameMap() {
   const showElevation = useUIStore((s) => s.showElevation)
   const mapMode = useUIStore((s) => s.mapMode)
 
-  const mapStyle = useMemo(() => getMapStyle(mapMode), [mapMode])
+  const mapStyle = useMemo(() => getMapStyle(mapMode, !!borderGeojsonPath), [mapMode, borderGeojsonPath])
 
   // Targeting state from strike-store (not ui-store compat shims)
   const targetUnitId = useStrikeStore((s) => s.targetUnitId)

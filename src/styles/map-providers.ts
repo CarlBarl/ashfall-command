@@ -6,14 +6,14 @@ export type MapMode = 'dark' | 'satellite'
 const ESRI_SAT =
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
-export function getMapStyle(mode: MapMode): StyleSpecification {
-  return mode === 'dark' ? buildDarkStyle() : buildSatelliteStyle()
+export function getMapStyle(mode: MapMode, hideModernBorders = false): StyleSpecification {
+  return mode === 'dark' ? buildDarkStyle(hideModernBorders) : buildSatelliteStyle()
 }
 
 // ── Dark CIC military command-center style ──────────────────────────
 // OpenFreeMap vector tiles (OpenMapTiles schema, no API key)
 
-function buildDarkStyle(): StyleSpecification {
+function buildDarkStyle(hideModernBorders: boolean): StyleSpecification {
   return {
     version: 8,
     name: 'realpolitik-dark',
@@ -72,18 +72,21 @@ function buildDarkStyle(): StyleSpecification {
       },
 
       // Country boundaries — dim green (military map aesthetic)
-      {
-        id: 'boundary-country',
-        type: 'line',
-        source: 'openmaptiles',
-        'source-layer': 'boundary',
-        filter: ['==', ['get', 'admin_level'], 2],
-        paint: {
-          'line-color': '#1a3a1a',
-          'line-width': 1,
-          'line-opacity': 0.7,
-        },
-      },
+      // Hidden when using historical borders (1939 GeoJSON provides its own)
+      ...(!hideModernBorders ? [
+        {
+          id: 'boundary-country',
+          type: 'line',
+          source: 'openmaptiles',
+          'source-layer': 'boundary',
+          filter: ['==', ['get', 'admin_level'], 2],
+          paint: {
+            'line-color': '#1a3a1a',
+            'line-width': 1,
+            'line-opacity': 0.7,
+          },
+        } as StyleSpecification['layers'][number],
+      ] : []),
 
       // Coastline effect — slightly brighter edge where land meets water
       {
