@@ -3,6 +3,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
 import { useIntelStore } from '@/store/intel-store'
+import { useGroundStore } from '@/store/ground-store'
 import { sendCommand, getFullState, loadState } from '@/store/bridge'
 import { saveToSlot, loadFromSlot } from '@/store/save-load'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -56,6 +57,7 @@ export default function TopBar() {
   const placingCatalogId = useIntelStore((s) => s.placingCatalogId)
 
   const units = useGameStore((s) => s.viewState.units)
+  const generals = useGameStore((s) => s.viewState.generals)
   const nations = useGameStore((s) => s.viewState.nations)
   const time = useGameStore((s) => s.viewState.time)
   const playerNation = useGameStore((s) => s.viewState.playerNation)
@@ -67,6 +69,8 @@ export default function TopBar() {
     : false
   const primaryEnemyLabel = primaryEnemyNation?.id.toUpperCase() ?? 'ENEMY'
   const hasAirNavalUnits = units.length > 0 // false in ground-only scenarios
+  const hasGenerals = (generals ?? []).length > 0
+  const selectedGeneralId = useGroundStore((s) => s.selectedGeneralId)
 
   const [showHelp, setShowHelp] = useState(false)
   const [warClickPending, setWarClickPending] = useState(false)
@@ -466,6 +470,23 @@ export default function TopBar() {
             label={label}
           />
         ))}
+
+        {/* General panel toggle — only for ground scenarios with generals */}
+        {hasGenerals && (
+          <ToggleBtn
+            active={!!selectedGeneralId}
+            onClick={() => {
+              if (selectedGeneralId) {
+                useGroundStore.getState().selectGeneral(null)
+              } else {
+                const playerGenerals = (generals ?? []).filter((g) => g.nation === playerNation)
+                const first = playerGenerals[0]
+                if (first) useGroundStore.getState().selectGeneral(first.id)
+              }
+            }}
+            label="GEN"
+          />
+        )}
 
         {hasAirNavalUnits && (
           <>

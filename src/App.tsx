@@ -8,6 +8,7 @@ import EconomyPanel from '@/components/panels/EconomyPanel'
 import OrbatPanel from '@/components/panels/OrbatPanel'
 import StatsPanel from '@/components/panels/StatsPanel'
 import IntelPanel from '@/components/panels/IntelPanel'
+import GeneralPanel from '@/components/panels/GeneralPanel'
 import StartScreen from '@/components/menu/StartScreen'
 import ScenarioSelect from '@/components/menu/ScenarioSelect'
 import FreeModeLobby from '@/components/menu/FreeModeLobby'
@@ -17,6 +18,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useMenuStore } from '@/store/menu-store'
 import { useDeploymentStore } from '@/store/deployment-store'
 import { useStrikeStore } from '@/store/strike-store'
+import { useGroundStore } from '@/store/ground-store'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { initBridge, initFromData, sendCommand } from '@/store/bridge'
 import { getScenario } from '@/data/scenarios/index'
@@ -70,6 +72,9 @@ export default function App() {
   }, [screen])
 
   const units = useGameStore((s) => s.viewState.units)
+  const generals = useGameStore((s) => s.viewState.generals)
+  const armyGroups = useGameStore((s) => s.viewState.armyGroups)
+  const selectedGeneralId = useGroundStore((s) => s.selectedGeneralId)
   const selectedUnitId = useUIStore((s) => s.selectedUnitId)
   const showOrbat = useUIStore((s) => s.showOrbat)
   const showStats = useUIStore((s) => s.showStats)
@@ -167,6 +172,7 @@ export default function App() {
       {showStats && <StatsPanel />}
       {showEconomy && <EconomyPanel />}
       {showIntel && <IntelPanel />}
+      {selectedGeneralId && <GeneralPanel generals={generals ?? []} armyGroups={armyGroups ?? []} />}
     </div>
   )
 }

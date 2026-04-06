@@ -31,7 +31,9 @@ import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
 import { useIntelStore } from '@/store/intel-store'
+import { useGroundStore } from '@/store/ground-store'
 import { useMenuStore } from '@/store/menu-store'
+import { sendCommand } from '@/store/bridge'
 import { getMapStyle } from '@/styles/map-providers'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import { iranCatalog } from '@/data/catalog/iran-catalog'
@@ -306,6 +308,27 @@ export default function GameMap() {
   const onMapClick = useCallback((e: MapLayerMouseEvent) => {
     setCtxMenu(null)
     setClusterPopup(null)
+
+    // Ground ordering mode: general orders targeting a map position
+    const groundState = useGroundStore.getState()
+    if (groundState.orderingMode && groundState.selectedGeneralId && e.lngLat) {
+      // Convert lat/lng to grid col/row
+      // The control grid: originLat=49.0, originLng=14.0, cellSizeKm=10
+      const kmPerDegLat = 111.32
+      const kmPerDegLng = kmPerDegLat * Math.cos((49.0 * Math.PI) / 180)
+      const row = Math.round((e.lngLat.lat - 49.0) / (10 / kmPerDegLat))
+      const col = Math.round((e.lngLat.lng - 14.0) / (10 / kmPerDegLng))
+
+      const orderType = groundState.pendingOrderType ?? 'ADVANCE'
+      const order = orderType === 'ENCIRCLE'
+        ? { type: 'ENCIRCLE' as const, targetCol: col, targetRow: row }
+        : { type: 'ADVANCE' as const, objectiveCol: col, objectiveRow: row }
+
+      sendCommand({ type: 'GENERAL_ORDER', generalId: groundState.selectedGeneralId, order })
+      groundState.setOrderingMode(false)
+      groundState.setPendingOrderType(null)
+      return
+    }
 
     // Route planning mode: add waypoint on map click
     const strikeState = useStrikeStore.getState()
