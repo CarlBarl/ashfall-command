@@ -33,12 +33,27 @@ export interface GameViewState {
   satelliteDetectedUnitIds: string[]
 
   // ─── Ground warfare (present only when ground units exist) ───
+  groundUnits?: ViewGroundUnit[]
   frontlines?: FrontlineSegment[]
   territories?: { nation: string; polygon: [number, number][][] }[]
   battles?: BattleIndicator[]
   encirclements?: EncirclementPocket[]
   generalReports?: GeneralReport[]
   researchSummary?: Record<string, { current: string | null; progress: number; completed: string[] }>
+}
+
+export interface ViewGroundUnit {
+  id: string
+  name: string
+  nation: string
+  type: string         // DivisionType: 'infantry' | 'panzer' | 'motorized' | etc.
+  strength: number     // 0-100
+  morale: number       // 0-100
+  organization: number // 0-100
+  stance: string       // DivisionStance
+  status: string       // GroundUnitStatus
+  position: { lng: number; lat: number }
+  armyGroupId: string
 }
 
 export interface ViewUnit {

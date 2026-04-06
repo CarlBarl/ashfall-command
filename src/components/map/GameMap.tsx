@@ -12,6 +12,8 @@ import { createImpactLayers } from './layers/ImpactLayer'
 import { createWaypointLayers } from './layers/WaypointLayer'
 import { createIntelUnitLayers } from './layers/IntelLayer'
 import { createRouteLayers } from './layers/RouteLayer'
+import { createGroundUnitLayers } from './layers/GroundUnitLayer'
+import { createFrontlineGeoJSON, FRONTLINE_LAYER_STYLE } from './layers/FrontlineLayer'
 // circle import removed — range rings handled by RangeRingLayer
 import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
 import { createSupplyLineGeoJSON } from './layers/SupplyLineLayer'
@@ -96,6 +98,8 @@ export default function GameMap() {
   const currentTime = useGameStore((s) => s.visualTimestamp)
   const currentTick = useGameStore((s) => s.viewState.time.tick)
   const supplyLines = useGameStore((s) => s.viewState.supplyLines)
+  const groundUnits = useGameStore((s) => s.viewState.groundUnits)
+  const frontlines = useGameStore((s) => s.viewState.frontlines)
 
   useEffect(() => {
     fetch('/geo/ne_50m_admin_0.geojson')
@@ -351,7 +355,8 @@ export default function GameMap() {
     ...createWaypointLayers(units, selectedUnitIds),
     ...createIntelUnitLayers(estimatedUnits),
     ...routeLayers,
-  ], [units, selectedUnitId, selectedUnitIds, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, handleMissileClick, setTarget, selectedNation, zoom, missiles, currentTime, allEvents, currentTick, estimatedUnits, routeLayers])
+    ...createGroundUnitLayers(groundUnits ?? []),
+  ], [units, selectedUnitId, selectedUnitIds, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, handleMissileClick, setTarget, selectedNation, zoom, missiles, currentTime, allEvents, currentTick, estimatedUnits, routeLayers, groundUnits])
 
   return (
     <>
@@ -430,6 +435,12 @@ export default function GameMap() {
                 'line-dasharray': [1, 4],
               }}
             />
+          </Source>
+        )}
+
+        {frontlines && frontlines.length > 0 && (
+          <Source id="frontline-source" type="geojson" data={createFrontlineGeoJSON(frontlines)}>
+            <Layer {...FRONTLINE_LAYER_STYLE} />
           </Source>
         )}
 

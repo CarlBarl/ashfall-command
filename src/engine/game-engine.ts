@@ -474,9 +474,43 @@ export class GameEngine {
     }
   }
 
+  /** Convert grid row/col to lat/lng using the control grid */
+  private gridToLatLng(row: number, col: number): { lat: number; lng: number } {
+    const grid = this.state.controlGrid
+    if (!grid) return { lat: 0, lng: 0 }
+    const kmPerDegLat = 111.0
+    const kmPerDegLng = 111.0 * Math.cos((grid.originLat * Math.PI) / 180)
+    return {
+      lat: grid.originLat + (row * grid.cellSizeKm) / kmPerDegLat,
+      lng: grid.originLng + (col * grid.cellSizeKm) / kmPerDegLng,
+    }
+  }
+
   /** Extract ground warfare data for the view state */
   private getGroundViewData(): Partial<GameViewState> {
     const { state } = this
+
+    // Ground unit positions
+    const groundUnits: import('@/types/view').ViewGroundUnit[] = []
+    if (state.groundUnits) {
+      for (const gu of state.groundUnits.values()) {
+        const pos = this.gridToLatLng(gu.gridRow, gu.gridCol)
+        groundUnits.push({
+          id: gu.id,
+          name: gu.name,
+          nation: gu.nation,
+          type: gu.type,
+          strength: gu.strength,
+          morale: gu.morale,
+          organization: gu.organization,
+          stance: gu.stance,
+          status: gu.status,
+          position: pos,
+          armyGroupId: gu.armyGroupId,
+        })
+      }
+    }
+
     // Collect general reports (one-shot delivery like events)
     const reports: import('@/types/ground').GeneralReport[] = []
     if (state.generals) {
@@ -497,6 +531,7 @@ export class GameEngine {
       }
     }
     return {
+      groundUnits: groundUnits.length > 0 ? groundUnits : undefined,
       frontlines: (state as unknown as { _cachedFrontlines?: import('@/types/ground').FrontlineSegment[] })._cachedFrontlines ?? [],
       generalReports: reports.length > 0 ? reports : undefined,
       researchSummary: Object.keys(researchSummary).length > 0 ? researchSummary : undefined,
