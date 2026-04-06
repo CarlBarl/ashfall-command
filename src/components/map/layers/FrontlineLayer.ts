@@ -1,15 +1,15 @@
 import type { FrontlineSegment } from '@/types/ground'
 
 const NATION_COLORS: Record<string, string> = {
-  germany: '#888888',
-  poland: '#dd7744',
+  germany: '#556666',
+  poland: '#996644',
   usa: '#4488cc',
   iran: '#cc4444',
 }
 
 const NATION_HIGHLIGHT_COLORS: Record<string, string> = {
-  germany: '#bbbbbb',
-  poland: '#ffaa66',
+  germany: '#778888',
+  poland: '#bb8866',
   usa: '#66aaee',
   iran: '#ee6666',
 }
@@ -74,48 +74,48 @@ export function createTerritoryGeoJSON(
  * Render order: glow (bottom) → main → highlight (top).
  */
 export const FRONTLINE_LAYER_STYLES = [
-  // Outer glow — soft haze behind the main stroke
+  // Outer glow — subtle haze
   {
     id: 'frontline-glow',
     type: 'line' as const,
     source: 'frontline-source',
     paint: {
       'line-color': ['get', 'color'] as unknown as string,
-      'line-width': 12,
-      'line-blur': 6,
-      'line-opacity': 0.15,
+      'line-width': 8,
+      'line-blur': 4,
+      'line-opacity': 0.1,
     },
     layout: {
       'line-cap': 'round' as const,
       'line-join': 'round' as const,
     },
   },
-  // Main line — the bold painted stroke
+  // Main line — the painted stroke
   {
     id: 'frontline-main',
     type: 'line' as const,
     source: 'frontline-source',
     paint: {
       'line-color': ['get', 'color'] as unknown as string,
-      'line-width': 4,
-      'line-blur': 0,
-      'line-opacity': 0.9,
+      'line-width': 2.5,
+      'line-blur': 0.5,
+      'line-opacity': 0.7,
     },
     layout: {
       'line-cap': 'round' as const,
       'line-join': 'round' as const,
     },
   },
-  // Inner highlight — lighter tint for dimensionality
+  // Inner highlight — lighter tint center
   {
     id: 'frontline-highlight',
     type: 'line' as const,
     source: 'frontline-source',
     paint: {
       'line-color': ['get', 'highlightColor'] as unknown as string,
-      'line-width': 2,
+      'line-width': 1,
       'line-blur': 0,
-      'line-opacity': 0.7,
+      'line-opacity': 0.4,
     },
     layout: {
       'line-cap': 'round' as const,

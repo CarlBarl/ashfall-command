@@ -523,7 +523,7 @@ export default function GameMap() {
           const is1939 = !!borderGeojsonPath
           const theaterCountries = is1939 ? THEATER_COUNTRIES_1939 : THEATER_COUNTRIES_MODERN
           const primaryNations = is1939
-            ? ['DEU', '#1c1e22', 'POL', '#221e18']
+            ? ['DEU', '#1e2428', 'POL', '#28221a']
             : ['IRN', '#1a1520', 'USA', '#151a28']
           const fillColorExpr = [
             'match',
@@ -539,7 +539,7 @@ export default function GameMap() {
               type="fill"
               paint={{
                 'fill-color': fillColorExpr,
-                'fill-opacity': 0.6,
+                'fill-opacity': 0.85,
               }}
             />
             <Layer
