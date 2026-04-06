@@ -40,7 +40,7 @@ const DEFAULT_VIEW = {
 }
 
 const THEATER_COUNTRIES_MODERN = ['IRQ', 'SAU', 'ARE', 'QAT', 'BHR', 'KWT', 'OMN', 'AFG', 'PAK', 'TUR']
-const THEATER_COUNTRIES_1939 = ['HUN', 'ROU', 'SVK', 'LTU', 'LVA', 'EST', 'DAN', 'FRA', 'ITA', 'DNK', 'SWE', 'CHE', 'BEL', 'NLD', 'YUG', 'BGR', 'FIN', 'SUN']
+const THEATER_COUNTRIES_1939 = ['HUN', 'ROU', 'SVK', 'LTU', 'LVA', 'EST', 'FRA', 'ITA', 'DNK', 'SWE', 'CHE', 'BEL', 'NLD', 'YUG', 'BGR', 'FIN', 'RUS', 'NOR', 'GBR', 'GRC', 'TUR', 'ALB', 'LUX']
 
 interface CtxMenu {
   x: number
@@ -596,22 +596,23 @@ export default function GameMap() {
                 }}
               />
             )}
-            {/* Country name labels */}
+            {/* Country name labels — placed at polygon centroids */}
             <Layer
               id="country-labels"
               type="symbol"
               layout={{
+                'symbol-placement': 'point' as const,
                 'text-field': ['get', 'name'],
-                'text-size': 14,
-                'text-letter-spacing': 0.15,
-                'text-max-width': 8,
+                'text-size': ['interpolate', ['linear'], ['zoom'], 3, 10, 6, 16, 8, 20] as unknown as number,
+                'text-letter-spacing': 0.2,
+                'text-max-width': 6,
                 'text-transform': 'uppercase' as const,
-                'text-font': ['Open Sans Regular'],
+                'text-allow-overlap': false,
               }}
               paint={{
-                'text-color': 'rgba(200, 200, 200, 0.25)',
-                'text-halo-color': 'rgba(0, 0, 0, 0.4)',
-                'text-halo-width': 1,
+                'text-color': 'rgba(180, 180, 170, 0.45)',
+                'text-halo-color': 'rgba(10, 14, 20, 0.8)',
+                'text-halo-width': 2,
               }}
             />
           </Source>
