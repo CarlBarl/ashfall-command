@@ -27,7 +27,7 @@ import { processEspionage, type EspionageResult } from './systems/espionage'
 import { findNavalRoute } from './systems/route-planner'
 import type { SatellitePass } from '@/types/game'
 // Ground warfare systems
-import { processFrontline, resetFrontlineState, getCachedFrontlines } from './systems/frontline'
+import { processFrontline, resetFrontlineState, getCachedFrontlines, getCachedTerritories } from './systems/frontline'
 import { processGroundCombat, resetGroundCombatState } from './systems/ground-combat'
 import { processGeneralAI, resetGeneralAIState } from './systems/general-ai'
 import { processGroundSupply, resetGroundSupplyState } from './systems/ground-supply'
@@ -502,8 +502,10 @@ export class GameEngine {
         }
       }
     }
+    const territories = getCachedTerritories()
     return {
       frontlines: getCachedFrontlines(),
+      territories: territories.length > 0 ? territories : undefined,
       generalReports: reports.length > 0 ? reports : undefined,
       researchSummary: Object.keys(researchSummary).length > 0 ? researchSummary : undefined,
     }
