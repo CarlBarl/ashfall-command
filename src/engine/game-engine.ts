@@ -28,7 +28,7 @@ import { findNavalRoute } from './systems/route-planner'
 import type { SatellitePass } from '@/types/game'
 // Ground warfare systems
 import { processFrontline, resetFrontlineState, getCachedFrontlines, getCachedTerritories } from './systems/frontline'
-import { processGroundCombat, resetGroundCombatState } from './systems/ground-combat'
+import { processGroundCombat, resetGroundCombatState, getTickBattles } from './systems/ground-combat'
 import { processGeneralAI, resetGeneralAIState } from './systems/general-ai'
 import { processGroundSupply, resetGroundSupplyState } from './systems/ground-supply'
 import { processResearch, resetResearchState } from './systems/research'
@@ -558,9 +558,11 @@ export class GameEngine {
 
     const territories = getCachedTerritories()
     const frontlines = getCachedFrontlines()
+    const battles = getTickBattles()
     return {
       frontlines,
       territories: territories.length > 0 ? territories : undefined,
+      battles: battles.length > 0 ? battles : undefined,
       generalReports: reports.length > 0 ? reports : undefined,
       researchSummary: Object.keys(researchSummary).length > 0 ? researchSummary : undefined,
       groundUnits: groundUnits.length > 0 ? groundUnits : undefined,

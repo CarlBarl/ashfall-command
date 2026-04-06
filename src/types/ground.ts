@@ -157,6 +157,18 @@ export interface BattleIndicator {
   intensity: number
   attackerNation: NationId
   defenderNation: NationId
+  /** Total attacker combat power this tick */
+  attackerPower: number
+  /** Total defender combat power this tick (includes terrain/entrenchment) */
+  defenderPower: number
+  /** attackerPower / defenderPower */
+  forceRatio: number
+  /** How much pressure changed this tick (positive = attacker winning) */
+  pressureDelta: number
+  /** Number of attacking divisions */
+  attackerUnits: number
+  /** Number of defending divisions */
+  defenderUnits: number
 }
 
 // ─── Encirclement pocket (for rendering) ───

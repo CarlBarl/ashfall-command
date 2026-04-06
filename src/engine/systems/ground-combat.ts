@@ -1,64 +1,63 @@
 /**
  * Ground Combat System for REALPOLITIK
  *
- * Resolves land battles using a Combat Results Table (CRT) inspired by
- * classic operational-level wargames. Force ratios account for terrain,
- * entrenchment, supply state, and unit hardness composition.
+ * Continuous attrition model: every tick, units in contact deal proportional
+ * damage based on their combat power. No CRT dice rolls — outcomes emerge
+ * from sustained force application over time.
  */
 
 import type {
   GroundUnit,
   GroundUnitId,
+  BattleIndicator,
+  DivisionStance,
   TerrainType,
 } from '@/types/ground'
 import type { GameState, GameEvent } from '@/types/game'
 import type { SeededRNG } from '@/engine/utils/rng'
 import { terrainModifiers } from '@/data/ground/terrain-modifiers'
+import { cellToLatLng } from './frontline'
 
-// ── Types ────────────────────────────────────────────────────────
+// ── Constants ───────────────────────────────────────────────────
 
-type CombatResult =
-  | 'attacker_eliminated'
-  | 'attacker_retreat'
-  | 'exchange'
-  | 'defender_retreat'
-  | 'defender_eliminated'
+const DAMAGE_SCALAR = 0.02        // Base damage per tick as fraction of power
+const MORALE_FACTOR = 0.7         // Morale loss relative to strength loss
+const ORG_FACTOR = 1.2            // Org loss relative to strength loss
+const ORG_COLLAPSE = 5            // Auto-retreat threshold
+const ORG_PENALTY = 20            // Halved effectiveness threshold
+const BREAKTHROUGH_THRESHOLD = 2.0 // Ratio for breakthrough bonus
+const PRESSURE_SCALAR = 0.5       // How fast cell pressure accumulates
 
-export type { CombatResult }
+// ── Stance modifiers ────────────────────────────────────────────
+
+const STANCE_ATK_MOD: Record<DivisionStance, number> = {
+  attack: 1.0,
+  defend: 0.5,
+  fortify: 0.3,
+  reserve: 0,
+  retreat: 0,
+}
+
+const STANCE_DEF_MOD: Record<DivisionStance, number> = {
+  attack: 0.3,
+  defend: 1.0,
+  fortify: 1.5,
+  reserve: 0.2,
+  retreat: 0,
+}
 
 // ── Module-level state (must reset on save/load) ─────────────────
 
-/** Cells already fought over this tick (prevent double-processing) */
-let processedCells = new Set<string>()
+/** Battle indicators collected during the current tick */
+let tickBattles: BattleIndicator[] = []
 
 export function resetGroundCombatState(): void {
-  processedCells = new Set()
+  tickBattles = []
 }
 
-// ── Combat Results Table ─────────────────────────────────────────
-
-/**
- * CRT columns indexed by odds bracket.
- * Each column has 6 entries (roll 0-5).
- * AE = attacker_eliminated, AR = attacker_retreat,
- * EX = exchange, DR = defender_retreat, DE = defender_eliminated
- */
-const CRT: Record<string, CombatResult[]> = {
-  '1:2':  ['attacker_eliminated', 'attacker_eliminated', 'attacker_retreat', 'attacker_retreat', 'attacker_retreat', 'exchange'],
-  '1:1':  ['attacker_retreat', 'attacker_retreat', 'exchange', 'exchange', 'defender_retreat', 'defender_retreat'],
-  '3:2':  ['attacker_retreat', 'exchange', 'exchange', 'defender_retreat', 'defender_retreat', 'defender_eliminated'],
-  '2:1':  ['defender_retreat', 'exchange', 'exchange', 'defender_retreat', 'defender_eliminated', 'defender_eliminated'],
-  '3:1':  ['defender_retreat', 'defender_retreat', 'defender_eliminated', 'defender_eliminated', 'defender_eliminated', 'defender_eliminated'],
-  '4:1+': ['defender_eliminated', 'defender_eliminated', 'defender_eliminated', 'defender_eliminated', 'defender_eliminated', 'defender_eliminated'],
-}
-
-function oddsColumn(ratio: number): string {
-  if (ratio < 0.5) return '1:2'
-  if (ratio < 1.0) return '1:1'
-  if (ratio < 1.5) return '3:2'
-  if (ratio < 2.0) return '2:1'
-  if (ratio < 3.0) return '3:1'
-  return '4:1+'
+/** Get the battles computed during the last processGroundCombat call */
+export function getTickBattles(): BattleIndicator[] {
+  return tickBattles
 }
 
 // ── Supply modifier ──────────────────────────────────────────────
@@ -73,10 +72,7 @@ function supplyModifier(unit: GroundUnit): number {
 
 /**
  * Compute the local force ratio for an engagement.
- *
- * Attacker power uses soft/hard attack weighted by defender hardness composition.
- * Defender power uses defense stat modified by terrain and entrenchment.
- * Both sides are modified by strength, experience, and supply.
+ * Kept for display purposes and tests.
  */
 export function computeLocalForceRatio(
   attackers: GroundUnit[],
@@ -84,19 +80,16 @@ export function computeLocalForceRatio(
   terrain: TerrainType,
   entrenchment: number,
 ): number {
-  // Average defender hardness (for weighting soft vs hard attack)
   const avgDefHardness = defenders.length > 0
     ? defenders.reduce((sum, u) => sum + u.hardness, 0) / defenders.length
     : 0
 
-  // Sum attacker power
   let attackerPower = 0
   for (const unit of attackers) {
     const baseAttack = unit.softAttack * (1 - avgDefHardness) + unit.hardAttack * avgDefHardness
     attackerPower += baseAttack * (unit.strength / 100) * unit.experience * supplyModifier(unit)
   }
 
-  // Sum defender power with terrain and entrenchment
   const terrainMod = terrainModifiers[terrain]
   const entrenchMult = 1 + entrenchment / 100
 
@@ -110,36 +103,26 @@ export function computeLocalForceRatio(
 }
 
 /**
- * Roll on the Combat Results Table.
- * Uses the seeded PRNG for deterministic replay.
- */
-export function resolveCombat(ratio: number, rng: SeededRNG): CombatResult {
-  const column = oddsColumn(ratio)
-  const roll = rng.int(0, 5)
-  return CRT[column][roll]
-}
-
-/**
  * Main ground combat processor. Called once per tick by the game engine.
  *
- * Algorithm:
- * 1. Build spatial index of ground units by grid cell
- * 2. Find frontline cells (adjacent to enemy-controlled cells)
- * 3. For each frontline cell with attacking units, resolve combat
- * 4. Apply losses, flip cells, check for routing
+ * Algorithm: continuous attrition — each side deals damage proportional
+ * to its combat power. Pressure accumulates on cells over time, and
+ * cells flip when pressure reaches 100.
  */
-export function processGroundCombat(state: GameState, rng: SeededRNG): void {
+export function processGroundCombat(state: GameState, _rng: SeededRNG): void {
   const grid = state.controlGrid
   const groundUnits = state.groundUnits
 
   if (!grid || !groundUnits?.size) return
 
-  processedCells.clear()
+  tickBattles = []
+  const unitsInCombat = new Set<GroundUnitId>()
+  const events: GameEvent[] = []
 
   // Helper to access flat row-major cells
   const getCell = (r: number, c: number) => grid.cells[r * grid.cols + c]
 
-  // Step 1: Build spatial index
+  // Step 1: Build spatial index (only active, non-routing units)
   const spatialIndex = new Map<string, GroundUnitId[]>()
   for (const [id, unit] of groundUnits) {
     if (unit.status === 'destroyed' || unit.status === 'routing') continue
@@ -152,9 +135,7 @@ export function processGroundCombat(state: GameState, rng: SeededRNG): void {
     }
   }
 
-  // Step 2-4: Find frontline cells and resolve combat
-  const events: GameEvent[] = []
-
+  // Step 2: Find cells with attackers adjacent to enemy cells
   for (let row = 0; row < grid.rows; row++) {
     for (let col = 0; col < grid.cols; col++) {
       const cell = getCell(row, col)
@@ -177,13 +158,7 @@ export function processGroundCombat(state: GameState, rng: SeededRNG): void {
         const neighborCell = getCell(nRow, nCol)
         if (neighborCell.controller === cell.controller) continue // Same side
 
-        // Target is an enemy cell
-        const targetKey = `${nRow}_${nCol}`
-        if (processedCells.has(targetKey)) continue // Already fought here
-        processedCells.add(targetKey)
-
         const attackerNation = cell.controller
-        // Capture defender nation before cell might flip
         const defenderNation = neighborCell.controller
 
         // Gather attackers: units in this cell with attack stance
@@ -210,10 +185,14 @@ export function processGroundCombat(state: GameState, rng: SeededRNG): void {
 
         // Gather defenders: units in target cell + adjacent friendly cells
         const defenderUnits: GroundUnit[] = []
+        const targetKey = `${nRow}_${nCol}`
         const targetUnitIds = spatialIndex.get(targetKey)
         if (targetUnitIds) {
           for (const id of targetUnitIds) {
-            defenderUnits.push(groundUnits.get(id)!)
+            const u = groundUnits.get(id)!
+            if (u.nation === defenderNation) {
+              defenderUnits.push(u)
+            }
           }
         }
 
@@ -226,45 +205,120 @@ export function processGroundCombat(state: GameState, rng: SeededRNG): void {
           const dUnitIds = spatialIndex.get(dKey)
           if (!dUnitIds) continue
           for (const id of dUnitIds) {
-            defenderUnits.push(groundUnits.get(id)!)
+            const u = groundUnits.get(id)!
+            if (u.nation === defenderNation) {
+              defenderUnits.push(u)
+            }
           }
         }
 
         if (attackerUnits.length === 0) continue
 
-        // Average entrenchment of defenders
+        // ── Compute attacker power ──
+        const avgDefHardness = defenderUnits.length > 0
+          ? defenderUnits.reduce((sum, u) => sum + u.hardness, 0) / defenderUnits.length
+          : 0
+
+        let attackerPower = 0
+        for (const unit of attackerUnits) {
+          let effectiveness = 1.0
+          if (unit.organization < ORG_PENALTY) effectiveness *= 0.5
+          const baseAttack = unit.softAttack * (1 - avgDefHardness) + unit.hardAttack * avgDefHardness
+          attackerPower += baseAttack * (unit.strength / 100) * unit.experience * supplyModifier(unit) * STANCE_ATK_MOD[unit.stance] * effectiveness
+        }
+
+        // ── Compute defender power ──
+        const terrainMod = terrainModifiers[neighborCell.terrain]
         const avgEntrenchment = defenderUnits.length > 0
           ? defenderUnits.reduce((sum, u) => sum + u.entrenched, 0) / defenderUnits.length
           : 0
 
-        // Compute force ratio
-        const ratio = computeLocalForceRatio(
-          attackerUnits,
-          defenderUnits,
-          neighborCell.terrain,
-          avgEntrenchment,
+        let rawDefPower = 0
+        for (const unit of defenderUnits) {
+          let effectiveness = 1.0
+          if (unit.organization < ORG_PENALTY) effectiveness *= 0.5
+          rawDefPower += unit.defense * (unit.strength / 100) * unit.experience * supplyModifier(unit) * STANCE_DEF_MOD[unit.stance] * effectiveness
+        }
+        const totalDefPower = rawDefPower * terrainMod.defenseModifier * (1 + avgEntrenchment / 100)
+
+        // ── Breakthrough check ──
+        let attackerDamageMultiplier = 1.0
+        let defenderDamageMultiplier = 1.0
+
+        const breakthroughPower = attackerUnits.reduce(
+          (sum, u) => sum + u.breakthrough * (u.strength / 100), 0,
         )
+        if (totalDefPower > 0 && breakthroughPower / totalDefPower > BREAKTHROUGH_THRESHOLD) {
+          attackerDamageMultiplier = 0.5  // attackers take less damage
+          defenderDamageMultiplier = 1.5  // defenders take more damage
+        }
 
-        // Roll CRT
-        const result = resolveCombat(ratio, rng)
+        // ── Apply damage to both sides ──
+        const defDamagePerUnit = defenderUnits.length > 0
+          ? (attackerPower * DAMAGE_SCALAR / defenderUnits.length)
+          : 0
+        const atkDamagePerUnit = attackerUnits.length > 0
+          ? (totalDefPower * DAMAGE_SCALAR / attackerUnits.length)
+          : 0
 
-        // Apply losses
-        applyLosses(result, attackerUnits, defenderUnits, groundUnits, rng)
+        for (const unit of defenderUnits) {
+          const dmg = defDamagePerUnit * defenderDamageMultiplier
+          unit.strength = Math.max(0, unit.strength - dmg)
+          unit.morale = Math.max(0, unit.morale - dmg * MORALE_FACTOR)
+          unit.organization = Math.max(0, unit.organization - dmg * ORG_FACTOR)
+          unitsInCombat.add(unit.id)
+        }
 
-        // Cell control changes
-        if (result === 'defender_retreat' || result === 'defender_eliminated') {
+        for (const unit of attackerUnits) {
+          const dmg = atkDamagePerUnit * attackerDamageMultiplier
+          unit.strength = Math.max(0, unit.strength - dmg)
+          unit.morale = Math.max(0, unit.morale - dmg * MORALE_FACTOR)
+          unit.organization = Math.max(0, unit.organization - dmg * ORG_FACTOR)
+          unitsInCombat.add(unit.id)
+        }
+
+        // ── Status checks ──
+        for (const unit of [...attackerUnits, ...defenderUnits]) {
+          if (unit.strength <= 0) {
+            unit.status = 'destroyed'
+          } else if (unit.organization < ORG_COLLAPSE && unit.status === 'active') {
+            unit.stance = 'retreat'
+            unit.status = 'routing'
+          } else if (unit.morale < 15 && unit.status === 'active') {
+            unit.status = 'routing'
+          }
+        }
+
+        // ── Pressure accumulation on the cell ──
+        const pressureDelta = (attackerPower - totalDefPower) * PRESSURE_SCALAR
+        neighborCell.pressure = clamp(neighborCell.pressure + pressureDelta, -100, 100)
+
+        let cellFlipped = false
+        if (neighborCell.pressure >= 100) {
           neighborCell.controller = attackerNation
+          neighborCell.pressure = 0
+          neighborCell.fortification = Math.max(0, neighborCell.fortification - 0.5)
+          cellFlipped = true
         }
 
-        if (result === 'attacker_eliminated') {
-          // Destroy weakest attacking division
-          const weakest = attackerUnits.reduce((min, u) =>
-            u.strength < min.strength ? u : min, attackerUnits[0])
-          weakest.status = 'destroyed'
-          weakest.strength = 0
-        }
+        // ── Collect BattleIndicator ──
+        const pos = cellToLatLng(nRow, nCol, grid)
+        const forceRatio = attackerPower / Math.max(1, totalDefPower)
 
-        // Emit battle event
+        tickBattles.push({
+          position: { lat: pos.lat, lng: pos.lng },
+          intensity: Math.min(100, (attackerPower + totalDefPower) / 10),
+          attackerNation: attackerNation!,
+          defenderNation: defenderNation!,
+          attackerPower,
+          defenderPower: totalDefPower,
+          forceRatio,
+          pressureDelta,
+          attackerUnits: attackerUnits.length,
+          defenderUnits: defenderUnits.length,
+        })
+
+        // ── Emit battle event ──
         events.push({
           type: 'BATTLE_RESULT',
           tick: state.time.tick,
@@ -274,17 +328,31 @@ export function processGroundCombat(state: GameState, rng: SeededRNG): void {
           cellCol: nCol,
           attackerLosses: 0,
           defenderLosses: 0,
-          cellFlipped: result === 'defender_retreat' || result === 'defender_eliminated',
+          cellFlipped,
         })
       }
     }
   }
 
-  // Step 5: Check for routing (morale < 15)
-  for (const [, unit] of groundUnits) {
+  // ── Recovery for units NOT in combat this tick ──
+  for (const unit of groundUnits.values()) {
     if (unit.status === 'destroyed') continue
-    if (unit.morale < 15 && unit.status !== 'routing') {
-      unit.status = 'routing'
+    if (!unitsInCombat.has(unit.id)) {
+      // Org recovery
+      if (unit.stance === 'reserve') {
+        unit.organization = Math.min(100, unit.organization + 5)
+      } else if (unit.stance === 'defend' || unit.stance === 'fortify') {
+        unit.organization = Math.min(100, unit.organization + 3)
+      } else {
+        unit.organization = Math.min(100, unit.organization + 1)
+      }
+      // Morale recovery
+      unit.morale = Math.min(100, unit.morale + 1)
+      // Routing units with recovered morale become active again
+      if (unit.status === 'routing' && unit.morale >= 30 && unit.organization >= 20) {
+        unit.status = 'active'
+        unit.stance = 'defend'
+      }
     }
   }
 
@@ -305,56 +373,12 @@ function getNeighbors(row: number, col: number, maxRows: number, maxCols: number
   return result
 }
 
-function applyLosses(
-  result: CombatResult,
-  attackers: GroundUnit[],
-  defenders: GroundUnit[],
-  allUnits: Map<GroundUnitId, GroundUnit>,
-  rng: SeededRNG,
-): void {
-  // Strength damage ranges by result (percentage points of strength)
-  const strengthDamage: Record<CombatResult, { atk: [number, number]; def: [number, number] }> = {
-    'attacker_eliminated': { atk: [15, 20], def: [5, 8] },
-    'attacker_retreat':    { atk: [10, 15], def: [5, 10] },
-    'exchange':            { atk: [10, 15], def: [10, 15] },
-    'defender_retreat':    { atk: [5, 10], def: [10, 15] },
-    'defender_eliminated': { atk: [5, 8], def: [15, 20] },
-  }
-
-  // Morale damage ranges by result
-  const moraleDamage: Record<CombatResult, { atk: [number, number]; def: [number, number] }> = {
-    'attacker_eliminated': { atk: [25, 30], def: [10, 15] },
-    'attacker_retreat':    { atk: [15, 25], def: [10, 15] },
-    'exchange':            { atk: [15, 20], def: [15, 20] },
-    'defender_retreat':    { atk: [10, 15], def: [15, 25] },
-    'defender_eliminated': { atk: [10, 15], def: [25, 30] },
-  }
-
-  const sDmg = strengthDamage[result]
-  const mDmg = moraleDamage[result]
-
-  // Apply to attackers
-  for (const unit of attackers) {
-    const u = allUnits.get(unit.id)
-    if (!u || u.status === 'destroyed') continue
-    u.strength = Math.max(0, u.strength - rng.int(sDmg.atk[0], sDmg.atk[1]))
-    u.morale = Math.max(0, u.morale - rng.int(mDmg.atk[0], mDmg.atk[1]))
-    if (u.strength <= 0) u.status = 'destroyed'
-  }
-
-  // Apply to defenders
-  for (const unit of defenders) {
-    const u = allUnits.get(unit.id)
-    if (!u || u.status === 'destroyed') continue
-    u.strength = Math.max(0, u.strength - rng.int(sDmg.def[0], sDmg.def[1]))
-    u.morale = Math.max(0, u.morale - rng.int(mDmg.def[0], mDmg.def[1]))
-    if (u.strength <= 0) u.status = 'destroyed'
-  }
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
 }
 
 /**
- * Emit ground combat events. Uses the same pattern as existing systems
- * (combat.ts, logistics.ts, etc.) — push to events/pendingEvents with cap.
+ * Emit ground combat events. Uses the same pattern as existing systems.
  */
 function emitEvents(state: GameState, events: GameEvent[]): void {
   state.events.push(...events)

@@ -300,7 +300,7 @@ describe('processFrontline', () => {
     // Should not throw, grid should be unchanged
   })
 
-  it('flips cells when attacker pressure exceeds defense', () => {
+  it('does not flip cells (cell flipping moved to ground-combat)', () => {
     const grid = makeSimpleGrid(4, 6)
     // Left half USA, right half Iran
     for (let r = 0; r < 4; r++) {
@@ -318,10 +318,10 @@ describe('processFrontline', () => {
     const state = makeState(grid, attackers)
     processFrontline(state)
 
-    // Some Iranian border cells should have flipped to USA
+    // processFrontline no longer flips cells -- that's now ground-combat's job
     const iranBorderCells = [1, 2].map(r => grid.cells[r * 6 + 3])
     const anyFlipped = iranBorderCells.some(c => c.controller === 'usa')
-    expect(anyFlipped).toBe(true)
+    expect(anyFlipped).toBe(false)
   })
 
   it('does not flip when defenders are entrenched', () => {

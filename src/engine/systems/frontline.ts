@@ -3,9 +3,6 @@ import type {
   ControlGrid,
   ControlCell,
   FrontlineSegment,
-  GroundUnit,
-  GroundUnitId,
-  DivisionStance,
   TerrainType,
 } from '@/types/ground'
 
@@ -20,12 +17,10 @@ interface TerritoryPolygon {
 }
 
 let cachedTerritories: TerritoryPolygon[] = []
-let gridDirty = true
 
 export function resetFrontlineState(): void {
   cachedFrontlines = []
   cachedTerritories = []
-  gridDirty = true
 }
 
 /** Get the cached frontlines (computed by processFrontline) */
@@ -99,212 +94,25 @@ export function initControlGrid(
   }
 }
 
-// ── Terrain defense multipliers ─────────────────────────────────
-
-const TERRAIN_DEFENSE: Record<TerrainType, number> = {
-  plains: 1.0,
-  desert: 1.0,
-  hills: 1.5,
-  forest: 1.3,
-  urban: 2.0,
-  mountains: 2.5,
-  marsh: 1.4,
-  river: 0.5,
-}
-
-// ── Stance modifiers ────────────────────────────────────────────
-
-const STANCE_ATTACK_MODIFIER: Record<DivisionStance, number> = {
-  attack: 1.0,
-  defend: 0.5,
-  fortify: 0.3,
-  reserve: 0,
-  retreat: 0,
-}
-
-const STANCE_DEFENSE_MODIFIER: Record<DivisionStance, number> = {
-  attack: 0.3,
-  defend: 1.0,
-  fortify: 1.5,
-  reserve: 0.2,
-  retreat: 0,
-}
-
 // ── Frontline processing ────────────────────────────────────────
-
-/** Pressure threshold: attacker pressure must exceed this ratio of defender pressure to flip */
-const FLIP_THRESHOLD = 1.5
 
 /** 4-directional neighbor offsets */
 const NEIGHBORS: [number, number][] = [
   [-1, 0], [1, 0], [0, -1], [0, 1],
 ]
 
-function getCell(grid: ControlGrid, row: number, col: number): ControlCell | null {
-  if (row < 0 || row >= grid.rows || col < 0 || col >= grid.cols) return null
-  return grid.cells[row * grid.cols + col]
-}
-
-function buildSpatialIndex(
-  groundUnits: Map<GroundUnitId, GroundUnit>,
-): Map<string, GroundUnitId[]> {
-  const index = new Map<string, GroundUnitId[]>()
-  for (const [id, unit] of groundUnits) {
-    const key = `${unit.gridRow}_${unit.gridCol}`
-    const list = index.get(key)
-    if (list) {
-      list.push(id)
-    } else {
-      index.set(key, [id])
-    }
-  }
-  return index
-}
-
-function computePressure(
-  units: GroundUnit[],
-  modifierMap: Record<DivisionStance, number>,
-): number {
-  let pressure = 0
-  for (const unit of units) {
-    const stanceMod = modifierMap[unit.stance]
-    pressure += unit.strength * stanceMod * (0.5 + unit.experience * 0.5)
-  }
-  return pressure
-}
-
-function getUnitsInCell(
-  row: number,
-  col: number,
-  nation: NationId,
-  spatialIndex: Map<string, GroundUnitId[]>,
-  groundUnits: Map<GroundUnitId, GroundUnit>,
-): GroundUnit[] {
-  const key = `${row}_${col}`
-  const ids = spatialIndex.get(key)
-  if (!ids) return []
-  const result: GroundUnit[] = []
-  for (const id of ids) {
-    const unit = groundUnits.get(id)
-    if (unit && unit.nation === nation) {
-      result.push(unit)
-    }
-  }
-  return result
-}
-
-function getUnitsInCellAndNeighbors(
-  row: number,
-  col: number,
-  grid: ControlGrid,
-  nation: NationId,
-  spatialIndex: Map<string, GroundUnitId[]>,
-  groundUnits: Map<GroundUnitId, GroundUnit>,
-): GroundUnit[] {
-  const units: GroundUnit[] = []
-  units.push(...getUnitsInCell(row, col, nation, spatialIndex, groundUnits))
-  for (const [dr, dc] of NEIGHBORS) {
-    const nr = row + dr
-    const nc = col + dc
-    if (nr >= 0 && nr < grid.rows && nc >= 0 && nc < grid.cols) {
-      units.push(...getUnitsInCell(nr, nc, nation, spatialIndex, groundUnits))
-    }
-  }
-  return units
-}
-
 export function processFrontline(state: GameState): void {
   // Access extended state fields
   const extState = state as GameState & {
     controlGrid?: ControlGrid
-    groundUnits?: Map<GroundUnitId, GroundUnit>
   }
 
-  if (!extState.controlGrid || !extState.groundUnits?.size) {
-    // If grid exists but no units, still compute frontlines on first call
-    if (extState.controlGrid && gridDirty) {
-      cachedFrontlines = extractFrontlines(extState.controlGrid)
-      cachedTerritories = extractTerritories(extState.controlGrid)
-      gridDirty = false
-    }
-    return
-  }
+  if (!extState.controlGrid) return
 
-  const grid = extState.controlGrid
-  const groundUnits = extState.groundUnits
-
-  // Build spatial index
-  const spatialIndex = buildSpatialIndex(groundUnits)
-
-  let cellFlipped = false
-
-  // Iterate all cells, looking for frontline cells
-  for (let row = 0; row < grid.rows; row++) {
-    for (let col = 0; col < grid.cols; col++) {
-      const cell = grid.cells[row * grid.cols + col]
-      const controller = cell.controller
-
-      // Check if this is a frontline cell (adjacent to different controller)
-      let hasEnemyNeighbor = false
-      const attackingNations = new Set<NationId>()
-
-      for (const [dr, dc] of NEIGHBORS) {
-        const neighbor = getCell(grid, row + dr, col + dc)
-        if (neighbor && neighbor.controller !== controller) {
-          hasEnemyNeighbor = true
-          if (neighbor.controller !== null) {
-            attackingNations.add(neighbor.controller)
-          }
-        }
-      }
-
-      if (!hasEnemyNeighbor) continue
-
-      // For each attacking nation, compute pressure
-      for (const attackerNation of attackingNations) {
-        // Attacker: units from attackerNation in adjacent cells
-        const attackerUnits = getUnitsInCellAndNeighbors(
-          row, col, grid, attackerNation, spatialIndex, groundUnits,
-        )
-        const attackPressure = computePressure(attackerUnits, STANCE_ATTACK_MODIFIER)
-
-        if (attackPressure <= 0) continue
-
-        // Defender: units of the current controller in this cell and neighbors
-        let defenderUnits: GroundUnit[] = []
-        if (controller !== null) {
-          defenderUnits = getUnitsInCellAndNeighbors(
-            row, col, grid, controller, spatialIndex, groundUnits,
-          )
-        }
-        const defenderPressure = computePressure(defenderUnits, STANCE_DEFENSE_MODIFIER)
-
-        // Defense bonus from terrain and fortification
-        const terrainMod = TERRAIN_DEFENSE[cell.terrain]
-        const fortMod = 1 + cell.fortification // 1.0 to 2.0
-        const totalDefense = (defenderPressure + 10) * terrainMod * fortMod
-        // Base defense of 10 means even undefended cells resist somewhat
-
-        if (attackPressure > totalDefense * FLIP_THRESHOLD) {
-          cell.controller = attackerNation
-          cellFlipped = true
-          // Reduce fortification when cell is captured
-          cell.fortification = Math.max(0, cell.fortification - 0.5)
-        }
-      }
-    }
-  }
-
-  if (cellFlipped) {
-    gridDirty = true
-  }
-
-  // Recompute frontlines and territories if dirty
-  if (gridDirty) {
-    cachedFrontlines = extractFrontlines(grid)
-    cachedTerritories = extractTerritories(grid)
-    gridDirty = false
-  }
+  // Always recompute frontlines and territories from the current grid state.
+  // Cell flipping is now handled exclusively by ground-combat.ts.
+  cachedFrontlines = extractFrontlines(extState.controlGrid)
+  cachedTerritories = extractTerritories(extState.controlGrid)
 }
 
 // ── Frontline extraction (marching squares) ─────────────────────

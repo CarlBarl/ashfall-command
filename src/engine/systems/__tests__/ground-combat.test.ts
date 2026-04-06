@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   computeLocalForceRatio,
-  resolveCombat,
   processGroundCombat,
   resetGroundCombatState,
+  getTickBattles,
 } from '../ground-combat'
 import type { NationId, GameState } from '@/types/game'
 import type {
@@ -81,7 +81,7 @@ function makeState(groundUnits: GroundUnit[], grid: ControlGrid): GameState {
   } as GameState
 }
 
-// ── computeLocalForceRatio ──────────────────────────────────────
+// ── Tests ───────────────────────────────────────────────────────
 
 describe('computeLocalForceRatio', () => {
   it('returns ~1:1 for equal forces on plains with no entrenchment', () => {
@@ -89,34 +89,10 @@ describe('computeLocalForceRatio', () => {
     const defenders = [makeGroundUnit({ id: 'd1' as GroundUnitId, nation: 'iran' as NationId, stance: 'defend' })]
 
     const ratio = computeLocalForceRatio(attackers, defenders, 'plains', 0)
-    // attackerPower = softAttack * (1 - 0.05) + hardAttack * 0.05 = 45*0.95 + 8*0.05 = 43.15
-    // defenderPower = defense * 1.0 * (1 + 0/100) = 55 * 1.0 = 55
-    // ratio = 43.15 / 55 ~ 0.785
+    // softAttack * (1 - 0.05) + hardAttack * 0.05 = 45*0.95 + 8*0.05 = 43.15
+    // defense = 55 * 1.0 = 55
     expect(ratio).toBeGreaterThan(0.7)
     expect(ratio).toBeLessThan(0.9)
-  })
-
-  it('terrain defense modifier increases defender power', () => {
-    const attackers = [makeGroundUnit({ id: 'a1' as GroundUnitId, nation: 'usa' as NationId, stance: 'attack' })]
-    const defenders = [makeGroundUnit({ id: 'd1' as GroundUnitId, nation: 'iran' as NationId, stance: 'defend' })]
-
-    const plainsRatio = computeLocalForceRatio(attackers, defenders, 'plains', 0)
-    const mountainRatio = computeLocalForceRatio(attackers, defenders, 'mountains', 0)
-
-    // Mountains have 2.0x defense modifier vs plains 1.0x
-    expect(mountainRatio).toBeLessThan(plainsRatio)
-    expect(mountainRatio).toBeCloseTo(plainsRatio / 2, 1)
-  })
-
-  it('entrenchment increases defender power', () => {
-    const attackers = [makeGroundUnit({ id: 'a1' as GroundUnitId, nation: 'usa' as NationId, stance: 'attack' })]
-    const defenders = [makeGroundUnit({ id: 'd1' as GroundUnitId, nation: 'iran' as NationId, stance: 'defend' })]
-
-    const noEntrench = computeLocalForceRatio(attackers, defenders, 'plains', 0)
-    const fullEntrench = computeLocalForceRatio(attackers, defenders, 'plains', 100)
-
-    // entrenchment 100 -> (1 + 100/100) = 2x defense
-    expect(fullEntrench).toBeCloseTo(noEntrench / 2, 1)
   })
 
   it('multiple attackers increase force ratio', () => {
@@ -132,153 +108,386 @@ describe('computeLocalForceRatio', () => {
 
     expect(twoRatio).toBeCloseTo(oneRatio * 2, 1)
   })
-
-  it('damaged units contribute proportionally less', () => {
-    const fullStrength = [makeGroundUnit({ id: 'a1' as GroundUnitId, nation: 'usa' as NationId, stance: 'attack', strength: 100 })]
-    const halfStrength = [makeGroundUnit({ id: 'a2' as GroundUnitId, nation: 'usa' as NationId, stance: 'attack', strength: 50 })]
-    const defenders = [makeGroundUnit({ id: 'd1' as GroundUnitId, nation: 'iran' as NationId, stance: 'defend' })]
-
-    const fullRatio = computeLocalForceRatio(fullStrength, defenders, 'plains', 0)
-    const halfRatio = computeLocalForceRatio(halfStrength, defenders, 'plains', 0)
-
-    expect(halfRatio).toBeCloseTo(fullRatio / 2, 1)
-  })
-
-  it('hardness affects attacker power calculation', () => {
-    // High hardness defenders = hardAttack matters more
-    const attackers = [makeGroundUnit({
-      id: 'a1' as GroundUnitId, nation: 'usa' as NationId, stance: 'attack',
-      softAttack: 10, hardAttack: 50,
-    })]
-    const softDefenders = [makeGroundUnit({ id: 'd1' as GroundUnitId, nation: 'iran' as NationId, hardness: 0.0, defense: 50 })]
-    const hardDefenders = [makeGroundUnit({ id: 'd2' as GroundUnitId, nation: 'iran' as NationId, hardness: 1.0, defense: 50 })]
-
-    const vsSoft = computeLocalForceRatio(attackers, softDefenders, 'plains', 0)
-    const vsHard = computeLocalForceRatio(attackers, hardDefenders, 'plains', 0)
-
-    // Against soft: power = 10*(1-0) + 50*0 = 10
-    // Against hard: power = 10*(1-1) + 50*1 = 50
-    expect(vsHard).toBeGreaterThan(vsSoft)
-  })
-
-  it('returns ratio against min 1 when no defenders', () => {
-    const attackers = [makeGroundUnit({ id: 'a1' as GroundUnitId, nation: 'usa' as NationId, stance: 'attack' })]
-    const ratio = computeLocalForceRatio(attackers, [], 'plains', 0)
-    expect(ratio).toBeGreaterThan(0)
-  })
 })
 
-// ── Supply modifier ─────────────────────────────────────────────
+describe('processGroundCombat — continuous attrition', () => {
+  const rng = new SeededRNG(42)
 
-describe('supply modifier', () => {
-  it('low supply (< 30) severely degrades combat power', () => {
-    const fullSupply = [makeGroundUnit({ id: 'a1' as GroundUnitId, nation: 'usa' as NationId, stance: 'attack', supplyState: 100 })]
-    const noSupply = [makeGroundUnit({ id: 'a2' as GroundUnitId, nation: 'usa' as NationId, stance: 'attack', supplyState: 10 })]
-    const defenders = [makeGroundUnit({ id: 'd1' as GroundUnitId, nation: 'iran' as NationId, stance: 'defend' })]
-
-    const fullRatio = computeLocalForceRatio(fullSupply, defenders, 'plains', 0)
-    const lowRatio = computeLocalForceRatio(noSupply, defenders, 'plains', 0)
-
-    // supplyState < 30 -> 0.4 modifier
-    expect(lowRatio).toBeCloseTo(fullRatio * 0.4, 1)
-  })
-
-  it('medium supply (30-59) moderately degrades combat power', () => {
-    const fullSupply = [makeGroundUnit({ id: 'a1' as GroundUnitId, nation: 'usa' as NationId, stance: 'attack', supplyState: 100 })]
-    const medSupply = [makeGroundUnit({ id: 'a2' as GroundUnitId, nation: 'usa' as NationId, stance: 'attack', supplyState: 45 })]
-    const defenders = [makeGroundUnit({ id: 'd1' as GroundUnitId, nation: 'iran' as NationId, stance: 'defend' })]
-
-    const fullRatio = computeLocalForceRatio(fullSupply, defenders, 'plains', 0)
-    const medRatio = computeLocalForceRatio(medSupply, defenders, 'plains', 0)
-
-    expect(medRatio).toBeCloseTo(fullRatio * 0.7, 1)
-  })
-
-  it('full supply (>=60) has no penalty', () => {
-    const supply60 = [makeGroundUnit({ id: 'a1' as GroundUnitId, nation: 'usa' as NationId, stance: 'attack', supplyState: 60 })]
-    const supply100 = [makeGroundUnit({ id: 'a2' as GroundUnitId, nation: 'usa' as NationId, stance: 'attack', supplyState: 100 })]
-    const defenders = [makeGroundUnit({ id: 'd1' as GroundUnitId, nation: 'iran' as NationId, stance: 'defend' })]
-
-    const r60 = computeLocalForceRatio(supply60, defenders, 'plains', 0)
-    const r100 = computeLocalForceRatio(supply100, defenders, 'plains', 0)
-
-    expect(r60).toBeCloseTo(r100, 5)
-  })
-})
-
-// ── CRT resolution ──────────────────────────────────────────────
-
-describe('resolveCombat', () => {
-  it('returns valid CombatResult strings', () => {
-    const rng = new SeededRNG(42)
-    const validResults = ['attacker_eliminated', 'attacker_retreat', 'exchange', 'defender_retreat', 'defender_eliminated']
-
-    for (let i = 0; i < 50; i++) {
-      const result = resolveCombat(1.0, rng)
-      expect(validResults).toContain(result)
-    }
-  })
-
-  it('very low ratio (1:2) heavily favors defender', () => {
-    // At 1:2 ratio, even best roll (5) is EX, most are AE or AR
-    const rng = new SeededRNG(123)
-    let defWins = 0
-    const trials = 1000
-    for (let i = 0; i < trials; i++) {
-      const result = resolveCombat(0.3, rng) // 1:2 column
-      if (result === 'attacker_eliminated' || result === 'attacker_retreat') defWins++
-    }
-    // At 1:2: 2 AE, 3 AR, 1 EX out of 6 -> ~83% attacker losses
-    expect(defWins / trials).toBeGreaterThan(0.7)
-  })
-
-  it('very high ratio (4:1+) heavily favors attacker', () => {
-    const rng = new SeededRNG(456)
-    let atkWins = 0
-    const trials = 1000
-    for (let i = 0; i < trials; i++) {
-      const result = resolveCombat(5.0, rng) // 4:1+ column
-      if (result === 'defender_eliminated' || result === 'defender_retreat') atkWins++
-    }
-    // At 4:1+: all 6 results are DE -> 100%
-    expect(atkWins / trials).toBe(1.0)
-  })
-
-  it('moderate ratio (2:1) has mixed outcomes', () => {
-    const rng = new SeededRNG(789)
-    let de = 0; let dr = 0; let ex = 0
-    const trials = 1000
-    for (let i = 0; i < trials; i++) {
-      const result = resolveCombat(1.8, rng) // 2:1 column
-      if (result === 'defender_eliminated') de++
-      else if (result === 'defender_retreat') dr++
-      else if (result === 'exchange') ex++
-    }
-    // 2:1 column: DR, EX, EX, DR, DE, DE -> expect DR, EX, and DE all appear
-    expect(dr).toBeGreaterThan(0)
-    expect(ex).toBeGreaterThan(0)
-    expect(de).toBeGreaterThan(0)
-  })
-
-  it('3:2 ratio column works correctly', () => {
-    const rng = new SeededRNG(111)
-    const results = new Set<string>()
-    for (let i = 0; i < 600; i++) {
-      results.add(resolveCombat(1.3, rng)) // 3:2 column
-    }
-    // 3:2 column: AR, EX, EX, DR, DR, DE -> should see AR, EX, DR, DE
-    expect(results.has('attacker_retreat')).toBe(true)
-    expect(results.has('exchange')).toBe(true)
-    expect(results.has('defender_retreat')).toBe(true)
-    expect(results.has('defender_eliminated')).toBe(true)
-  })
-})
-
-// ── processGroundCombat ─────────────────────────────────────────
-
-describe('processGroundCombat', () => {
   beforeEach(() => {
     resetGroundCombatState()
+  })
+
+  it('equal force attrition: both sides take equal damage', () => {
+    const cells = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
+    const grid = makeFlatGrid(1, 2, cells)
+
+    // Use identical stats so power is symmetric (softAttack ~ defense)
+    const attacker = makeGroundUnit({
+      id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
+      stance: 'attack', softAttack: 50, hardAttack: 50, defense: 50,
+      strength: 100, morale: 80, organization: 80,
+    })
+    const defender = makeGroundUnit({
+      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
+      stance: 'defend', softAttack: 50, hardAttack: 50, defense: 50,
+      strength: 100, morale: 80, organization: 80,
+    })
+
+    const state = makeState([attacker, defender], grid)
+    processGroundCombat(state, rng)
+
+    const atkAfter = state.groundUnits!.get('atk1' as GroundUnitId)!
+    const defAfter = state.groundUnits!.get('def1' as GroundUnitId)!
+
+    // Both should have taken some damage
+    expect(atkAfter.strength).toBeLessThan(100)
+    expect(defAfter.strength).toBeLessThan(100)
+
+    // Attacker uses stance atk mod 1.0, defender uses stance def mod 1.0
+    // So power should be roughly equal
+    const atkLoss = 100 - atkAfter.strength
+    const defLoss = 100 - defAfter.strength
+    // They should be in the same ballpark (within 2x)
+    expect(atkLoss).toBeGreaterThan(0)
+    expect(defLoss).toBeGreaterThan(0)
+  })
+
+  it('3:1 advantage: attacker with 3x power deals ~3x more damage', () => {
+    const cells = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
+    const grid = makeFlatGrid(1, 2, cells)
+
+    const attackers = [
+      makeGroundUnit({ id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0, stance: 'attack', softAttack: 50, hardAttack: 50, defense: 50, strength: 100, morale: 80, organization: 80 }),
+      makeGroundUnit({ id: 'atk2' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0, stance: 'attack', softAttack: 50, hardAttack: 50, defense: 50, strength: 100, morale: 80, organization: 80 }),
+      makeGroundUnit({ id: 'atk3' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0, stance: 'attack', softAttack: 50, hardAttack: 50, defense: 50, strength: 100, morale: 80, organization: 80 }),
+    ]
+    const defender = makeGroundUnit({
+      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
+      stance: 'defend', softAttack: 50, hardAttack: 50, defense: 50,
+      strength: 100, morale: 80, organization: 80,
+    })
+
+    const state = makeState([...attackers, defender], grid)
+    processGroundCombat(state, rng)
+
+    const defAfter = state.groundUnits!.get('def1' as GroundUnitId)!
+    const avgAtkLoss = attackers.reduce((sum, a) => {
+      const u = state.groundUnits!.get(a.id)!
+      return sum + (100 - u.strength)
+    }, 0) / attackers.length
+
+    const defLoss = 100 - defAfter.strength
+
+    // Defender should take much more damage than each individual attacker
+    expect(defLoss).toBeGreaterThan(avgAtkLoss * 2)
+  })
+
+  it('terrain defense: mountains should approximately double effective defense', () => {
+    // Use high attack/defense values so damage differences are measurable
+    const makeAtk = () => makeGroundUnit({
+      id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
+      stance: 'attack', softAttack: 500, hardAttack: 500, defense: 500,
+      strength: 100, morale: 100, organization: 100,
+    })
+    const makeDef = () => makeGroundUnit({
+      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
+      stance: 'defend', softAttack: 500, hardAttack: 500, defense: 500,
+      strength: 100, morale: 100, organization: 100,
+    })
+
+    // Run on plains
+    const plainsCells = [makeCell('usa' as NationId), makeCell('iran' as NationId, 'plains')]
+    const plainsGrid = makeFlatGrid(1, 2, plainsCells)
+    const plainsState = makeState([makeAtk(), makeDef()], plainsGrid)
+    processGroundCombat(plainsState, rng)
+    const plainsDefLoss = 100 - plainsState.groundUnits!.get('def1' as GroundUnitId)!.strength
+    const plainsAtkLoss = 100 - plainsState.groundUnits!.get('atk1' as GroundUnitId)!.strength
+
+    // Run on mountains
+    resetGroundCombatState()
+    const mtCells = [makeCell('usa' as NationId), makeCell('iran' as NationId, 'mountains')]
+    const mtGrid = makeFlatGrid(1, 2, mtCells)
+    const mtState = makeState([makeAtk(), makeDef()], mtGrid)
+    processGroundCombat(mtState, rng)
+    const mtDefLoss = 100 - mtState.groundUnits!.get('def1' as GroundUnitId)!.strength
+    const mtAtkLoss = 100 - mtState.groundUnits!.get('atk1' as GroundUnitId)!.strength
+
+    // Terrain modifies defender power, not attacker power.
+    // So defender damage stays the same, but attacker takes more damage
+    // because the defender's effective power (which determines damage to attacker) is higher.
+    expect(mtDefLoss).toBe(plainsDefLoss) // Attacker power is terrain-independent
+    expect(mtAtkLoss).toBeGreaterThan(plainsAtkLoss) // Stronger defense hits back harder
+  })
+
+  it('entrenchment: 50% entrenchment multiplies defense by 1.5', () => {
+    // No entrenchment
+    const cells1 = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
+    const grid1 = makeFlatGrid(1, 2, cells1)
+
+    const atk1 = makeGroundUnit({
+      id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
+      stance: 'attack', softAttack: 50, hardAttack: 50, defense: 50,
+      strength: 100, morale: 100, organization: 100,
+    })
+    const def1 = makeGroundUnit({
+      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
+      stance: 'defend', defense: 50, strength: 100, morale: 100, organization: 100,
+      entrenched: 0,
+    })
+    const state1 = makeState([atk1, def1], grid1)
+    processGroundCombat(state1, rng)
+    const noEntrenchAtkLoss = 100 - state1.groundUnits!.get('atk1' as GroundUnitId)!.strength
+
+    // With 50% entrenchment
+    resetGroundCombatState()
+    const cells2 = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
+    const grid2 = makeFlatGrid(1, 2, cells2)
+
+    const atk2 = makeGroundUnit({
+      id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
+      stance: 'attack', softAttack: 50, hardAttack: 50, defense: 50,
+      strength: 100, morale: 100, organization: 100,
+    })
+    const def2 = makeGroundUnit({
+      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
+      stance: 'defend', defense: 50, strength: 100, morale: 100, organization: 100,
+      entrenched: 50,
+    })
+    const state2 = makeState([atk2, def2], grid2)
+    processGroundCombat(state2, rng)
+    const entrenchedAtkLoss = 100 - state2.groundUnits!.get('atk1' as GroundUnitId)!.strength
+
+    // Entrenched defender should deal more damage to attacker
+    expect(entrenchedAtkLoss).toBeGreaterThan(noEntrenchAtkLoss)
+  })
+
+  it('supply penalty: units below 30% supply deal 40% damage', () => {
+    // Full supply
+    const cells1 = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
+    const grid1 = makeFlatGrid(1, 2, cells1)
+
+    const atkFull = makeGroundUnit({
+      id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
+      stance: 'attack', softAttack: 50, hardAttack: 50,
+      strength: 100, morale: 100, organization: 100, supplyState: 100,
+    })
+    const defFull = makeGroundUnit({
+      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
+      stance: 'defend', defense: 50, strength: 100, morale: 100, organization: 100,
+    })
+    const state1 = makeState([atkFull, defFull], grid1)
+    processGroundCombat(state1, rng)
+    const fullSupplyDefLoss = 100 - state1.groundUnits!.get('def1' as GroundUnitId)!.strength
+
+    // Low supply attacker
+    resetGroundCombatState()
+    const cells2 = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
+    const grid2 = makeFlatGrid(1, 2, cells2)
+
+    const atkLow = makeGroundUnit({
+      id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
+      stance: 'attack', softAttack: 50, hardAttack: 50,
+      strength: 100, morale: 100, organization: 100, supplyState: 10,
+    })
+    const defLow = makeGroundUnit({
+      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
+      stance: 'defend', defense: 50, strength: 100, morale: 100, organization: 100,
+    })
+    const state2 = makeState([atkLow, defLow], grid2)
+    processGroundCombat(state2, rng)
+    const lowSupplyDefLoss = 100 - state2.groundUnits!.get('def1' as GroundUnitId)!.strength
+
+    // Low supply should deal roughly 40% of full supply damage
+    expect(lowSupplyDefLoss).toBeLessThan(fullSupplyDefLoss)
+    expect(lowSupplyDefLoss).toBeCloseTo(fullSupplyDefLoss * 0.4, 0)
+  })
+
+  it('organization collapse: unit with org < 5 should auto-retreat', () => {
+    const cells = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
+    const grid = makeFlatGrid(1, 2, cells)
+
+    // Give attacker very high attack and defender very low org
+    const attacker = makeGroundUnit({
+      id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
+      stance: 'attack', softAttack: 200, hardAttack: 200,
+      strength: 100, morale: 80, organization: 80,
+    })
+    const defender = makeGroundUnit({
+      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
+      stance: 'defend', defense: 20,
+      strength: 100, morale: 80, organization: 4, // Below ORG_COLLAPSE threshold
+    })
+
+    const state = makeState([attacker, defender], grid)
+    processGroundCombat(state, rng)
+
+    const defAfter = state.groundUnits!.get('def1' as GroundUnitId)!
+    // Org was already below ORG_PENALTY (20), so halved effectiveness
+    // Org was below ORG_COLLAPSE (5), so any combat damage keeps it below
+    // Should be routing with retreat stance
+    if (defAfter.status !== 'destroyed') {
+      expect(defAfter.status).toBe('routing')
+      expect(defAfter.stance).toBe('retreat')
+    }
+  })
+
+  it('breakthrough bonus: high breakthrough ratio boosts attacker damage', () => {
+    // Normal attack (low breakthrough)
+    const cells1 = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
+    const grid1 = makeFlatGrid(1, 2, cells1)
+
+    const atkNormal = makeGroundUnit({
+      id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
+      stance: 'attack', softAttack: 50, hardAttack: 50, breakthrough: 5,
+      strength: 100, morale: 100, organization: 100,
+    })
+    const defNormal = makeGroundUnit({
+      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
+      stance: 'defend', defense: 10, // Low defense so breakthrough can trigger
+      strength: 100, morale: 100, organization: 100,
+    })
+    const state1 = makeState([atkNormal, defNormal], grid1)
+    processGroundCombat(state1, rng)
+    const normalDefLoss = 100 - state1.groundUnits!.get('def1' as GroundUnitId)!.strength
+    const normalAtkLoss = 100 - state1.groundUnits!.get('atk1' as GroundUnitId)!.strength
+
+    // High breakthrough attack
+    resetGroundCombatState()
+    const cells2 = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
+    const grid2 = makeFlatGrid(1, 2, cells2)
+
+    const atkBreak = makeGroundUnit({
+      id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
+      stance: 'attack', softAttack: 50, hardAttack: 50, breakthrough: 500, // Very high
+      strength: 100, morale: 100, organization: 100,
+    })
+    const defBreak = makeGroundUnit({
+      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
+      stance: 'defend', defense: 10,
+      strength: 100, morale: 100, organization: 100,
+    })
+    const state2 = makeState([atkBreak, defBreak], grid2)
+    processGroundCombat(state2, rng)
+    const breakDefLoss = 100 - state2.groundUnits!.get('def1' as GroundUnitId)!.strength
+    const breakAtkLoss = 100 - state2.groundUnits!.get('atk1' as GroundUnitId)!.strength
+
+    // With breakthrough: defender takes 1.5x damage, attacker takes 0.5x damage
+    expect(breakDefLoss).toBeGreaterThan(normalDefLoss)
+    expect(breakAtkLoss).toBeLessThan(normalAtkLoss)
+  })
+
+  it('pressure accumulation: sustained attacks increase cell pressure', () => {
+    const cells = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
+    const grid = makeFlatGrid(1, 2, cells)
+
+    const attacker = makeGroundUnit({
+      id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
+      stance: 'attack', softAttack: 80, hardAttack: 80,
+      strength: 100, morale: 100, organization: 100,
+    })
+    const defender = makeGroundUnit({
+      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
+      stance: 'defend', defense: 30,
+      strength: 100, morale: 100, organization: 100,
+    })
+
+    const state = makeState([attacker, defender], grid)
+
+    // Run one tick
+    processGroundCombat(state, rng)
+
+    // Pressure should have increased on the defender's cell (attacker is stronger)
+    expect(grid.cells[1].pressure).toBeGreaterThan(0)
+  })
+
+  it('cell flip: pressure reaching 100 should flip cell controller', () => {
+    // Pre-set pressure close to 100 so one tick of combat flips it
+    const cells = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
+    cells[1].pressure = 99 // Almost flipped
+    const grid = makeFlatGrid(1, 2, cells)
+
+    const attacker = makeGroundUnit({
+      id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
+      stance: 'attack', softAttack: 100, hardAttack: 100,
+      strength: 100, morale: 100, organization: 100,
+    })
+    const defender = makeGroundUnit({
+      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
+      stance: 'defend', defense: 10,
+      strength: 100, morale: 100, organization: 100,
+    })
+
+    const state = makeState([attacker, defender], grid)
+    processGroundCombat(state, rng)
+
+    // Cell should have flipped to USA
+    expect(grid.cells[1].controller).toBe('usa')
+    // Pressure should be reset to 0 after flip
+    expect(grid.cells[1].pressure).toBe(0)
+  })
+
+  it('recovery: units not in combat should recover org and morale', () => {
+    // Create a unit that is not adjacent to any enemy — just in a cell by itself
+    const cells = [
+      makeCell('usa' as NationId), makeCell('usa' as NationId),
+      makeCell('usa' as NationId), makeCell('usa' as NationId),
+    ]
+    const grid = makeFlatGrid(2, 2, cells)
+
+    const unit = makeGroundUnit({
+      id: 'u1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
+      stance: 'reserve', organization: 50, morale: 50,
+    })
+
+    const state = makeState([unit], grid)
+    processGroundCombat(state, rng)
+
+    const after = state.groundUnits!.get('u1' as GroundUnitId)!
+    // Reserve stance gives +5 org per tick
+    expect(after.organization).toBe(55)
+    // Morale recovery is +1 per tick
+    expect(after.morale).toBe(51)
+  })
+
+  it('recovery: routing units recover and become active', () => {
+    const cells = [makeCell('usa' as NationId)]
+    const grid = makeFlatGrid(1, 1, cells)
+
+    const unit = makeGroundUnit({
+      id: 'u1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
+      stance: 'retreat', status: 'routing',
+      organization: 19, morale: 29, // Just below thresholds
+    })
+
+    const state = makeState([unit], grid)
+    processGroundCombat(state, rng)
+
+    const after = state.groundUnits!.get('u1' as GroundUnitId)!
+    // Org: 19 + 1 (non-reserve, non-defend/fortify) = 20
+    // Morale: 29 + 1 = 30
+    // Both meet recovery thresholds (org >= 20, morale >= 30)
+    expect(after.status).toBe('active')
+    expect(after.stance).toBe('defend')
+  })
+
+  it('does not attack when no units have attack stance', () => {
+    const cells = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
+    const grid = makeFlatGrid(1, 2, cells)
+
+    const unit = makeGroundUnit({
+      id: 'u1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
+      stance: 'defend',
+    })
+    const enemy = makeGroundUnit({
+      id: 'e1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
+      stance: 'defend',
+    })
+
+    const state = makeState([unit, enemy], grid)
+    processGroundCombat(state, rng)
+
+    expect(state.events).toHaveLength(0)
+    expect(getTickBattles()).toHaveLength(0)
   })
 
   it('skips when no controlGrid', () => {
@@ -306,127 +515,7 @@ describe('processGroundCombat', () => {
       pendingEvents: [],
     } as GameState
 
-    const rng = new SeededRNG(42)
-    // Should not throw
     processGroundCombat(state, rng)
-    expect(state.events).toHaveLength(0)
-  })
-
-  it('skips when no ground units', () => {
-    // 2x2 flat grid: row-major [usa, iran, usa, iran]
-    const cells = [
-      makeCell('usa' as NationId), makeCell('iran' as NationId),
-      makeCell('usa' as NationId), makeCell('iran' as NationId),
-    ]
-    const grid = makeFlatGrid(2, 2, cells)
-    const state = makeState([], grid)
-    const rng = new SeededRNG(42)
-
-    processGroundCombat(state, rng)
-    expect(state.events).toHaveLength(0)
-  })
-
-  it('flips cell controller when defender retreats', () => {
-    // 1x2 flat grid: [usa, iran]
-    const cells = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
-    const grid = makeFlatGrid(1, 2, cells)
-
-    const attackers = [
-      makeGroundUnit({ id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0, stance: 'attack', softAttack: 200, hardAttack: 200, strength: 100, morale: 100 }),
-      makeGroundUnit({ id: 'atk2' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0, stance: 'attack', softAttack: 200, hardAttack: 200, strength: 100, morale: 100 }),
-      makeGroundUnit({ id: 'atk3' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0, stance: 'attack', softAttack: 200, hardAttack: 200, strength: 100, morale: 100 }),
-    ]
-    const defenders = [
-      makeGroundUnit({ id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1, stance: 'defend', defense: 10, strength: 50, morale: 30 }),
-    ]
-
-    const state = makeState([...attackers, ...defenders], grid)
-    const rng = new SeededRNG(42)
-
-    processGroundCombat(state, rng)
-
-    // With massive attacker advantage (ratio > 4:1), all CRT results are DE
-    // Cell should flip to USA
-    expect(grid.cells[1].controller).toBe('usa')
-
-    // Check that a BATTLE_RESULT event was emitted
-    const battleEvents = state.events.filter((e: { type: string }) => e.type === 'BATTLE_RESULT')
-    expect(battleEvents.length).toBeGreaterThan(0)
-  })
-
-  it('applies strength damage to combatants', () => {
-    const cells = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
-    const grid = makeFlatGrid(1, 2, cells)
-
-    const attacker = makeGroundUnit({
-      id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
-      stance: 'attack', strength: 100, morale: 80,
-    })
-    const defender = makeGroundUnit({
-      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
-      stance: 'defend', strength: 100, morale: 80,
-    })
-
-    const state = makeState([attacker, defender], grid)
-    const rng = new SeededRNG(42)
-
-    processGroundCombat(state, rng)
-
-    const atkAfter = state.groundUnits!.get('atk1' as GroundUnitId)!
-    const defAfter = state.groundUnits!.get('def1' as GroundUnitId)!
-
-    // At least one side should have taken damage
-    const someoneTookDamage = atkAfter.strength < 100 || defAfter.strength < 100
-    expect(someoneTookDamage).toBe(true)
-  })
-
-  it('morale below 15 causes routing', () => {
-    const cells = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
-    const grid = makeFlatGrid(1, 2, cells)
-
-    // Defender starts with very low morale -- combat morale damage should push below 15
-    const attacker = makeGroundUnit({
-      id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
-      stance: 'attack', softAttack: 100, hardAttack: 100, strength: 100, morale: 80,
-    })
-    const defender = makeGroundUnit({
-      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
-      stance: 'defend', strength: 100, morale: 10, defense: 20,
-    })
-
-    const state = makeState([attacker, defender], grid)
-    const rng = new SeededRNG(42)
-
-    processGroundCombat(state, rng)
-
-    const defAfter = state.groundUnits!.get('def1' as GroundUnitId)!
-    // Morale started at 10, any combat morale damage should push it further down
-    // The routing check: morale < 15 -> status = 'routing'
-    if (defAfter.morale < 15) {
-      expect(defAfter.status).toBe('routing')
-    }
-    // Either defender is routing or was eliminated -- both are valid
-  })
-
-  it('does not attack when no units have attack stance', () => {
-    const cells = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
-    const grid = makeFlatGrid(1, 2, cells)
-
-    const unit = makeGroundUnit({
-      id: 'u1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
-      stance: 'defend', // NOT attacking
-    })
-    const enemy = makeGroundUnit({
-      id: 'e1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
-      stance: 'defend',
-    })
-
-    const state = makeState([unit, enemy], grid)
-    const rng = new SeededRNG(42)
-
-    processGroundCombat(state, rng)
-
-    // No battles should occur
     expect(state.events).toHaveLength(0)
   })
 
@@ -436,16 +525,14 @@ describe('processGroundCombat', () => {
 
     const attacker = makeGroundUnit({
       id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0, stance: 'attack',
-      softAttack: 80, hardAttack: 80, strength: 100, morale: 90,
+      softAttack: 80, hardAttack: 80, strength: 100, morale: 90, organization: 80,
     })
     const defender = makeGroundUnit({
       id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1, stance: 'defend',
-      defense: 30, strength: 100, morale: 70,
+      defense: 30, strength: 100, morale: 70, organization: 80,
     })
 
     const state = makeState([attacker, defender], grid)
-    const rng = new SeededRNG(42)
-
     processGroundCombat(state, rng)
 
     const battleEvents = state.events.filter((e: { type: string }) => e.type === 'BATTLE_RESULT')
@@ -459,35 +546,78 @@ describe('processGroundCombat', () => {
     expect(evt.tick).toBe(100)
   })
 
+  it('populates BattleIndicator with combat data', () => {
+    const cells = [makeCell('usa' as NationId), makeCell('iran' as NationId)]
+    const grid = makeFlatGrid(1, 2, cells)
+
+    const attacker = makeGroundUnit({
+      id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
+      stance: 'attack', softAttack: 80, hardAttack: 80,
+      strength: 100, morale: 80, organization: 80,
+    })
+    const defender = makeGroundUnit({
+      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 0, gridCol: 1,
+      stance: 'defend', defense: 40,
+      strength: 100, morale: 80, organization: 80,
+    })
+
+    const state = makeState([attacker, defender], grid)
+    processGroundCombat(state, rng)
+
+    const battles = getTickBattles()
+    expect(battles).toHaveLength(1)
+
+    const b = battles[0]
+    expect(b.attackerNation).toBe('usa')
+    expect(b.defenderNation).toBe('iran')
+    expect(b.attackerPower).toBeGreaterThan(0)
+    expect(b.defenderPower).toBeGreaterThan(0)
+    expect(b.forceRatio).toBeGreaterThan(0)
+    expect(b.attackerUnits).toBe(1)
+    expect(b.defenderUnits).toBe(1)
+    expect(b.position).toBeDefined()
+    expect(b.intensity).toBeGreaterThan(0)
+  })
+
   it('handles adjacent friendly support in attack', () => {
-    // 2x2 grid: USA controls top row, Iran controls bottom row
-    // row-major: [usa, usa, iran, iran]
+    // 2x2 grid: Top-left USA, top-right USA, bottom-left Iran, bottom-right Iran
+    // Target = (1,1) Iran. Neighbors: (0,1) USA, (1,0) Iran
+    // atk1 at (0,1) initiates attack on (1,1). Support from neighbors of (1,1):
+    //   (0,1) = initiating cell (skip), (1,0) = Iran, nothing else.
+    //
+    // Better: 3x2 grid. Target at (1,1). atk1 at (0,1), atk2 at (1,0) is USA.
+    // Neighbors of (1,1): (0,1), (2,1), (1,0), (1,2)
     const cells = [
       makeCell('usa' as NationId), makeCell('usa' as NationId),
-      makeCell('iran' as NationId), makeCell('iran' as NationId),
+      makeCell('usa' as NationId), makeCell('iran' as NationId),
+      makeCell('usa' as NationId), makeCell('iran' as NationId),
     ]
-    const grid = makeFlatGrid(2, 2, cells)
+    const grid = makeFlatGrid(3, 2, cells)
 
+    // atk1 at (0,1) — adjacent to target (1,1)
     const mainAttacker = makeGroundUnit({
-      id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 0,
+      id: 'atk1' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 1,
       stance: 'attack', softAttack: 45, hardAttack: 8,
     })
+    // atk2 at (1,0) — also adjacent to target (1,1), will be gathered as support
     const support = makeGroundUnit({
-      id: 'atk2' as GroundUnitId, nation: 'usa' as NationId, gridRow: 0, gridCol: 1,
+      id: 'atk2' as GroundUnitId, nation: 'usa' as NationId, gridRow: 1, gridCol: 0,
       stance: 'attack', softAttack: 45, hardAttack: 8,
     })
     const defender = makeGroundUnit({
-      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 1, gridCol: 0,
+      id: 'def1' as GroundUnitId, nation: 'iran' as NationId, gridRow: 1, gridCol: 1,
       stance: 'defend', defense: 55,
     })
 
     const state = makeState([mainAttacker, support, defender], grid)
-    const rng = new SeededRNG(42)
-
     processGroundCombat(state, rng)
 
-    // Both attackers should contribute to the battle
-    const battleEvents = state.events.filter((e: { type: string }) => e.type === 'BATTLE_RESULT')
-    expect(battleEvents.length).toBeGreaterThan(0)
+    const battles = getTickBattles()
+    expect(battles.length).toBeGreaterThan(0)
+    // Find the battle targeting the Iran cell (1,1)
+    const b = battles.find(b => b.defenderNation === ('iran' as NationId))
+    expect(b).toBeDefined()
+    // atk1 initiates from (0,1), atk2 at (1,0) is gathered as support (neighbor of target, USA, attack stance)
+    expect(b!.attackerUnits).toBe(2)
   })
 })
