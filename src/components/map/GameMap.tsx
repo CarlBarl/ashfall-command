@@ -13,7 +13,7 @@ import { createWaypointLayers } from './layers/WaypointLayer'
 import { createIntelUnitLayers } from './layers/IntelLayer'
 import { createRouteLayers } from './layers/RouteLayer'
 // GroundUnitLayer removed — ground units are data behind the frontline, not visible icons
-import { createFrontlineGeoJSON, FRONTLINE_LAYER_STYLES, createTerritoryGeoJSON, TERRITORY_FILL_STYLE, TERRITORY_OUTLINE_STYLE } from './layers/FrontlineLayer'
+import { createFrontlineGeoJSON, FRONTLINE_LAYER_STYLES } from './layers/FrontlineLayer'
 // circle import removed — range rings handled by RangeRingLayer
 import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
 import { createSupplyLineGeoJSON } from './layers/SupplyLineLayer'
@@ -102,7 +102,6 @@ export default function GameMap() {
   const supplyLines = useGameStore((s) => s.viewState.supplyLines)
   // groundUnits removed — they're data behind the frontline, not map objects
   const frontlines = useGameStore((s) => s.viewState.frontlines)
-  const territories = useGameStore((s) => s.viewState.territories)
 
   useEffect(() => {
     const geoPath = borderGeojsonPath || '/geo/ne_50m_admin_0.geojson'
@@ -441,12 +440,7 @@ export default function GameMap() {
           </Source>
         )}
 
-        {territories && territories.length > 0 && (
-          <Source id="territory-source" type="geojson" data={createTerritoryGeoJSON(territories)}>
-            <Layer {...TERRITORY_FILL_STYLE} />
-            <Layer {...TERRITORY_OUTLINE_STYLE} />
-          </Source>
-        )}
+        {/* Grid territory fills removed — GeoJSON country polygons handle territory coloring */}
 
         {frontlines && frontlines.length > 0 && (
           <Source id="frontline-source" type="geojson" data={createFrontlineGeoJSON(frontlines)}>
@@ -529,7 +523,7 @@ export default function GameMap() {
           const is1939 = !!borderGeojsonPath
           const theaterCountries = is1939 ? THEATER_COUNTRIES_1939 : THEATER_COUNTRIES_MODERN
           const primaryNations = is1939
-            ? ['DEU', '#1a1a20', 'POL', '#201a15']
+            ? ['DEU', '#1c1e22', 'POL', '#221e18']
             : ['IRN', '#1a1520', 'USA', '#151a28']
           const fillColorExpr = [
             'match',
@@ -601,6 +595,24 @@ export default function GameMap() {
                 }}
               />
             )}
+            {/* Country name labels */}
+            <Layer
+              id="country-labels"
+              type="symbol"
+              layout={{
+                'text-field': ['get', 'name'],
+                'text-size': 14,
+                'text-letter-spacing': 0.15,
+                'text-max-width': 8,
+                'text-transform': 'uppercase' as const,
+                'text-font': ['Open Sans Regular'],
+              }}
+              paint={{
+                'text-color': 'rgba(200, 200, 200, 0.25)',
+                'text-halo-color': 'rgba(0, 0, 0, 0.4)',
+                'text-halo-width': 1,
+              }}
+            />
           </Source>
           )
         })()}

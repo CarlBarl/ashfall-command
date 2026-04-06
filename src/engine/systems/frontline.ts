@@ -375,7 +375,7 @@ export function extractFrontlines(grid: ControlGrid): FrontlineSegment[] {
 
     for (const polyline of polylines) {
       // Apply Douglas-Peucker simplification
-      const simplified = douglasPeucker(polyline, 0.01) // epsilon in degrees
+      const simplified = douglasPeucker(polyline, 0.03) // epsilon in degrees (~3km smoothing)
 
       if (simplified.length < 2) continue
 
