@@ -523,14 +523,14 @@ export default function GameMap() {
           const is1939 = !!borderGeojsonPath
           const theaterCountries = is1939 ? THEATER_COUNTRIES_1939 : THEATER_COUNTRIES_MODERN
           const primaryNations = is1939
-            ? ['DEU', '#2a3038', 'POL', '#332a1e']
+            ? ['DEU', '#283040', 'POL', '#382818']
             : ['IRN', '#1a1520', 'USA', '#151a28']
           const fillColorExpr = [
             'match',
             ['get', 'iso_a3'],
             ...primaryNations,
-            ...theaterCountries.flatMap(c => [c, '#181c22']),
-            '#111620',
+            ...theaterCountries.flatMap(c => [c, '#161a20']),
+            '#0e1218',
           ] as unknown as string
           return (
           <Source id="countries" type="geojson" data={geoData}>
@@ -547,25 +547,26 @@ export default function GameMap() {
               type="line"
               paint={{
                 'line-color': (is1939
-                  ? ['match', ['get', 'iso_a3'], 'DEU', '#667788', 'POL', '#887755', '#3a4a4a']
+                  ? ['match', ['get', 'iso_a3'], 'DEU', '#5a7090', 'POL', '#907050', '#334444']
                   : ['match', ['get', 'iso_a3'], 'IRN', '#553333', 'USA', '#334455', '#2d4a3e']
                 ) as unknown as string,
                 'line-width': (is1939
-                  ? ['match', ['get', 'iso_a3'], 'DEU', 2, 'POL', 2, 1]
+                  ? ['match', ['get', 'iso_a3'], 'DEU', 2.5, 'POL', 2.5, 1.2]
                   : ['match', ['get', 'iso_a3'], 'IRN', 1.5, 0.6]
                 ) as unknown as number,
-                'line-opacity': 0.8,
+                'line-opacity': 0.9,
               }}
             />
             {is1939 && (
               <Layer
                 id="deu-glow"
                 type="line"
+                source="countries"
                 filter={['==', ['get', 'iso_a3'], 'DEU']}
                 paint={{
                   'line-color': '#667788',
                   'line-width': 2,
-                  'line-opacity': 0.4,
+                  'line-opacity': 0.5,
                   'line-blur': 2,
                 }}
               />
@@ -574,11 +575,12 @@ export default function GameMap() {
               <Layer
                 id="pol-glow"
                 type="line"
+                source="countries"
                 filter={['==', ['get', 'iso_a3'], 'POL']}
                 paint={{
                   'line-color': '#bb8855',
                   'line-width': 2,
-                  'line-opacity': 0.4,
+                  'line-opacity': 0.5,
                   'line-blur': 2,
                 }}
               />
@@ -587,6 +589,7 @@ export default function GameMap() {
               <Layer
                 id="iran-glow"
                 type="line"
+                source="countries"
                 filter={['==', ['get', 'iso_a3'], 'IRN']}
                 paint={{
                   'line-color': '#cc4444',
