@@ -1,4 +1,5 @@
 import type { NationId, Unit, Nation, SupplyLine, WeaponStock, Position, UnitCategory } from './game'
+import type { ArmyGroup, ControlGrid, General, GroundUnit, ResearchState } from './ground'
 
 export interface ScenarioDefinition {
   id: string
@@ -12,10 +13,18 @@ export interface ScenarioDefinition {
 }
 
 export interface ScenarioData {
-  nations: Record<NationId, Nation>
+  nations: Record<string, Nation>
   units: Unit[]
   supplyLines: SupplyLine[]
   baseSupply: Record<string, WeaponStock[]>
+  // ─── Ground warfare (optional) ───
+  groundUnits?: GroundUnit[]
+  generals?: General[]
+  armyGroups?: ArmyGroup[]
+  controlGrid?: ControlGrid
+  initialResearch?: Record<string, ResearchState>
+  /** Game-seconds per tick. Default 1 (modern). WW2 = 3600 (1 tick = 1 hour). */
+  tickScale?: number
 }
 
 export interface FreeModeConfig {

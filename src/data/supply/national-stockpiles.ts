@@ -1,4 +1,3 @@
-import type { NationId } from '@/types/game'
 import type { NationalStockpile } from '@/types/logistics'
 
 /**
@@ -14,7 +13,7 @@ import type { NationalStockpile } from '@/types/logistics'
  * - Iran: Mass-produced drones are cheap and fast; precision missiles
  *   are scarce and slow.
  */
-export const nationalStockpiles: Record<NationId, NationalStockpile> = {
+export const nationalStockpiles: Record<string, NationalStockpile> = {
   usa: {
     nationId: 'usa',
     depotId: 'diego_garcia', // Rear logistics hub (BIOT)

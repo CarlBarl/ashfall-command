@@ -8,7 +8,7 @@ import { buildUnit } from '@/engine/systems/ai-placement'
 import { generateAIForce } from '@/engine/systems/ai-placement'
 import { SeededRNG } from '@/engine/utils/rng'
 
-const CATALOGS: Record<NationId, UnitCatalogEntry[]> = {
+const CATALOGS: Record<string, UnitCatalogEntry[]> = {
   usa: usaCatalog,
   iran: iranCatalog,
 }

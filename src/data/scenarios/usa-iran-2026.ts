@@ -1,12 +1,12 @@
 import type { ScenarioDefinition, ScenarioData } from '@/types/scenario'
-import type { Nation, NationId } from '@/types/game'
+import type { Nation } from '@/types/game'
 import { usaUnits } from '@/data/units/usa-orbat'
 import { iranUnits } from '@/data/units/iran-orbat'
 import { usaBaseSupply, usaSupplyLines } from '@/data/supply/usa-supply'
 import { iranBaseSupply, iranSupplyLines } from '@/data/supply/iran-supply'
 
 function buildData(): ScenarioData {
-  const nations: Record<NationId, Nation> = {
+  const nations: Record<string, Nation> = {
     usa: {
       id: 'usa',
       name: 'United States of America',

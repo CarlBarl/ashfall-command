@@ -70,7 +70,7 @@ const IRAN_BUDGET: BudgetAllocation = { ad: 0.30, offensive: 0.30, flex: 0.20, b
 const USA_BUDGET: BudgetAllocation = { ad: 0.30, offensive: 0.05, flex: 0.45, base: 0.20 }
 
 // Catalog IDs grouped by role for budget allocation
-const ROLE_MAP: Record<NationId, Record<keyof BudgetAllocation, string[]>> = {
+const ROLE_MAP: Record<string, Record<keyof BudgetAllocation, string[]>> = {
   iran: {
     ad: ['iran_s300', 'iran_bavar373', 'iran_khordad', 'iran_tor'],
     offensive: ['iran_shahab3', 'iran_sejjil2', 'iran_fateh110', 'iran_zolfaghar', 'iran_soumar'],

@@ -1,4 +1,5 @@
 import type { GameTime, IntelBudget, NationId, Position, ROE, UnitId, WeaponId } from './game'
+import type { ArmyGroupId, GeneralId, GeneralOrder, GroundUnitId, TechId } from './ground'
 
 export type Command =
   | { type: 'MOVE_UNIT'; unitId: UnitId; waypoints: Position[] }
@@ -11,3 +12,8 @@ export type Command =
   | { type: 'LAUNCH_SAM'; launcherId: UnitId; weaponId: WeaponId; missileId: string }
   | { type: 'SET_HEADING'; unitId: UnitId; heading: number }
   | { type: 'SET_INTEL_BUDGET'; budget: IntelBudget }
+  // ─── Ground warfare commands ───
+  | { type: 'GENERAL_ORDER'; generalId: GeneralId; order: GeneralOrder }
+  | { type: 'REASSIGN_DIVISION'; divisionId: GroundUnitId; targetArmyGroupId: ArmyGroupId }
+  | { type: 'SET_RESEARCH'; nation: NationId; techId: TechId }
+  | { type: 'SET_RESEARCH_BUDGET'; nation: NationId; budget: number }

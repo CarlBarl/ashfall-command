@@ -8,12 +8,12 @@ import type { ViewUnit } from '@/types/view'
 
 const NATIONS: NationId[] = ['usa', 'iran']
 
-const NATION_LABELS: Record<NationId, string> = {
+const NATION_LABELS: Record<string, string> = {
   usa: 'United States',
   iran: 'Iran',
 }
 
-const NATION_COLORS: Record<NationId, string> = {
+const NATION_COLORS: Record<string, string> = {
   usa: 'var(--usa-primary)',
   iran: 'var(--iran-primary)',
 }

@@ -25,12 +25,12 @@ const STATUS_COLORS: Record<string, string> = {
   reloading: 'var(--status-engaged)',
 }
 
-const NATION_COLORS: Record<NationId, string> = {
+const NATION_COLORS: Record<string, string> = {
   usa: 'var(--usa-primary)',
   iran: 'var(--iran-primary)',
 }
 
-const NATION_LABELS: Record<NationId, string> = {
+const NATION_LABELS: Record<string, string> = {
   usa: 'UNITED STATES',
   iran: 'IRAN',
 }

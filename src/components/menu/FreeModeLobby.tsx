@@ -5,7 +5,7 @@ import type { UnitCatalogEntry } from '@/types/scenario'
 import { usaCatalog } from '@/data/catalog/usa-catalog'
 import { iranCatalog } from '@/data/catalog/iran-catalog'
 
-const CATALOGS: Record<NationId, UnitCatalogEntry[]> = {
+const CATALOGS: Record<string, UnitCatalogEntry[]> = {
   usa: usaCatalog,
   iran: iranCatalog,
 }

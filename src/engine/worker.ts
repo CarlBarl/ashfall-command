@@ -19,7 +19,7 @@ const api = {
   /** Initialize from custom data (scenario/free mode) */
   initFromData(
     playerNation: NationId,
-    nations: Record<NationId, Nation>,
+    nations: Record<string, Nation>,
     unitList: Unit[],
     supplyLines: SupplyLine[],
     baseSupply: Record<string, WeaponStock[]>,

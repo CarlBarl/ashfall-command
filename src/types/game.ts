@@ -1,4 +1,4 @@
-export type NationId = 'usa' | 'iran'
+export type NationId = string & { readonly __brand?: 'NationId' }
 export type UnitId = string
 export type WeaponId = string
 
@@ -17,6 +17,8 @@ export interface GameTime {
   speed: number
   /** Real ms between ticks — always 100ms */
   tickIntervalMs: number
+  /** Game-seconds per tick. Default 1 (modern). WW2 = 3600 (1 tick = 1 hour). */
+  tickScale?: number
 }
 
 export interface SatellitePass {
@@ -44,7 +46,7 @@ export interface Nation {
   id: NationId
   name: string
   economy: Economy
-  relations: Record<NationId, number> // -100..+100
+  relations: Record<string, number> // -100..+100
   atWar: NationId[]
   satellites?: SatellitePass[]
   intelBudget?: IntelBudget
@@ -264,7 +266,7 @@ export interface GameState {
   /** false until initGame() is called — tick() is a no-op while uninitialized */
   initialized: boolean
   time: GameTime
-  nations: Record<NationId, Nation>
+  nations: Record<string, Nation>
   units: Map<UnitId, Unit>
   missiles: Map<string, Missile>
   engagements: Map<string, Engagement>
@@ -272,6 +274,13 @@ export interface GameState {
   events: GameEvent[]
   /** Events accumulated since last getViewState() call */
   pendingEvents: GameEvent[]
+
+  // ─── Ground warfare (optional, present only in ground scenarios) ───
+  groundUnits?: Map<import('./ground').GroundUnitId, import('./ground').GroundUnit>
+  generals?: Map<import('./ground').GeneralId, import('./ground').General>
+  armyGroups?: Map<import('./ground').ArmyGroupId, import('./ground').ArmyGroup>
+  controlGrid?: import('./ground').ControlGrid
+  research?: Map<string, import('./ground').ResearchState>
 }
 
 export type GameEvent =
@@ -285,3 +294,11 @@ export type GameEvent =
   | { type: 'SUPPLY_LINE_CUT'; lineId: string; tick: number }
   | { type: 'UNIT_REPAIRED'; unitId: UnitId; healthRestored: number; tick: number }
   | { type: 'POINT_DEFENSE_KILL'; unitId: UnitId; missileId: string; specId: string; tick: number }
+  // ─── Ground warfare events ───
+  | { type: 'BATTLE_RESULT'; cellRow: number; cellCol: number; attackerNation: NationId; defenderNation: NationId; attackerLosses: number; defenderLosses: number; cellFlipped: boolean; tick: number }
+  | { type: 'FRONTLINE_SHIFT'; nation: NationId; cellsGained: number; cellsLost: number; tick: number }
+  | { type: 'ENCIRCLEMENT'; nation: NationId; divisionCount: number; tick: number }
+  | { type: 'GENERAL_REPORT'; generalId: string; report: import('./ground').GeneralReport; tick: number }
+  | { type: 'TECH_COMPLETED'; nation: NationId; techId: string; techName: string; tick: number }
+  | { type: 'DIVISION_DESTROYED'; divisionId: string; divisionName: string; nation: NationId; tick: number }
+  | { type: 'DIVISION_ROUTING'; divisionId: string; divisionName: string; nation: NationId; tick: number }

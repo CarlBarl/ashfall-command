@@ -31,7 +31,7 @@ let hourlyThroughput = new Map<string, number>()
 let shipmentCounter = 0
 
 /** Deep copy of national stockpile state (mutable at runtime) */
-let runtimeStockpiles: Record<NationId, NationalStockpile> | null = null
+let runtimeStockpiles: Record<string, NationalStockpile> | null = null
 
 // ═══════════════════════════════════════════════
 //  PUBLIC API — matches logistics.ts interface
@@ -86,11 +86,11 @@ export function loadShipments(shipments: SupplyShipment[]): void {
   }
 }
 
-export function getStockpilesSnapshot(): Record<NationId, NationalStockpile> | null {
+export function getStockpilesSnapshot(): Record<string, NationalStockpile> | null {
   return runtimeStockpiles ? deepCopyStockpiles(runtimeStockpiles) : null
 }
 
-export function loadStockpiles(stockpiles: Record<NationId, NationalStockpile>): void {
+export function loadStockpiles(stockpiles: Record<string, NationalStockpile>): void {
   runtimeStockpiles = deepCopyStockpiles(stockpiles)
 }
 
@@ -609,7 +609,7 @@ function emitEvents(state: GameState, events: GameEvent[]): void {
 }
 
 /** Deep copy stockpile data to avoid mutating the static definitions */
-function deepCopyStockpiles(src: Record<NationId, NationalStockpile>): Record<NationId, NationalStockpile> {
+function deepCopyStockpiles(src: Record<string, NationalStockpile>): Record<string, NationalStockpile> {
   return {
     usa: {
       ...src.usa,

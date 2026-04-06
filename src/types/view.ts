@@ -15,6 +15,7 @@ import type {
   WeaponLoadout,
   WeaponStock,
 } from './game'
+import type { BattleIndicator, EncirclementPocket, FrontlineSegment, GeneralReport } from './ground'
 
 /** Flat, serializable snapshot sent from Worker → Main at 30fps */
 export interface GameViewState {
@@ -30,6 +31,14 @@ export interface GameViewState {
   pendingEventCount: number
   /** Unit IDs recently detected by satellite passes (fades after ~60 ticks) */
   satelliteDetectedUnitIds: string[]
+
+  // ─── Ground warfare (present only when ground units exist) ───
+  frontlines?: FrontlineSegment[]
+  territories?: { nation: string; polygon: [number, number][][] }[]
+  battles?: BattleIndicator[]
+  encirclements?: EncirclementPocket[]
+  generalReports?: GeneralReport[]
+  researchSummary?: Record<string, { current: string | null; progress: number; completed: string[] }>
 }
 
 export interface ViewUnit {

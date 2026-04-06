@@ -26,6 +26,12 @@ import { processSatellites, resetSatelliteState, getSatelliteDetections } from '
 import { processEspionage, type EspionageResult } from './systems/espionage'
 import { findNavalRoute } from './systems/route-planner'
 import type { SatellitePass } from '@/types/game'
+// Ground warfare systems
+import { processFrontline, resetFrontlineState } from './systems/frontline'
+import { processGroundCombat, resetGroundCombatState } from './systems/ground-combat'
+import { processGeneralAI, resetGeneralAIState } from './systems/general-ai'
+import { processGroundSupply, resetGroundSupplyState } from './systems/ground-supply'
+import { processResearch, resetResearchState } from './systems/research'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
 const SCENARIO_START = new Date('2026-06-15T06:00:00Z').getTime()
@@ -151,7 +157,7 @@ export class GameEngine {
   /** Initialize from scenario data (used by the game mode menu) */
   initFromData(
     playerNation: NationId,
-    nations: Record<NationId, import('@/types/game').Nation>,
+    nations: Record<string, import('@/types/game').Nation>,
     unitList: Unit[],
     supplyLines: import('@/types/game').SupplyLine[],
     baseSupply: Record<string, import('@/types/game').WeaponStock[]>,
@@ -208,7 +214,8 @@ export class GameEngine {
     if (!this.state.initialized) return
     const { state } = this
     state.time.tick++
-    state.time.timestamp += TICK_MS
+    const scale = state.time.tickScale ?? 1
+    state.time.timestamp += TICK_MS * scale
 
     processMovement(state, this.elevationGrid)
     processReadiness(state)
@@ -241,6 +248,18 @@ export class GameEngine {
 
     // Espionage: HUMINT reveals + SIGINT multiplier
     this.lastEspionageResult = processEspionage(state, this.rng)
+
+    // ─── Ground warfare systems (skip when no ground units) ───
+    if (state.groundUnits && state.groundUnits.size > 0) {
+      const tick = state.time.tick
+      if (tick % 6 === 0) processGroundSupply(state)
+      if (tick % 12 === 0) processGeneralAI(state, this.rng)
+      if (tick % 4 === 0) {
+        processGroundCombat(state, this.rng)
+        processFrontline(state)
+      }
+      if (tick % 720 === 0) processResearch(state)
+    }
 
     // Cap pendingEvents to prevent unbounded growth during fast-forward
     if (state.pendingEvents.length > 2000) {
@@ -355,6 +374,42 @@ export class GameEngine {
         if (nation) nation.intelBudget = cmd.budget
         break
       }
+      // ─── Ground warfare commands ───
+      case 'GENERAL_ORDER': {
+        const general = state.generals?.get(cmd.generalId)
+        if (general) general.currentOrder = cmd.order
+        break
+      }
+      case 'REASSIGN_DIVISION': {
+        const div = state.groundUnits?.get(cmd.divisionId)
+        if (div && state.armyGroups) {
+          // Remove from old army group
+          const oldAG = state.armyGroups.get(div.armyGroupId)
+          if (oldAG) {
+            oldAG.divisionIds = oldAG.divisionIds.filter(id => id !== cmd.divisionId)
+          }
+          // Add to new army group
+          const newAG = state.armyGroups.get(cmd.targetArmyGroupId)
+          if (newAG) {
+            newAG.divisionIds.push(cmd.divisionId)
+            div.armyGroupId = cmd.targetArmyGroupId
+          }
+        }
+        break
+      }
+      case 'SET_RESEARCH': {
+        const rs = state.research?.get(cmd.nation)
+        if (rs) {
+          rs.currentResearch = cmd.techId
+          rs.researchProgress = 0
+        }
+        break
+      }
+      case 'SET_RESEARCH_BUDGET': {
+        const rs = state.research?.get(cmd.nation)
+        if (rs) rs.monthlyBudget = cmd.budget
+        break
+      }
     }
   }
 
@@ -375,6 +430,37 @@ export class GameEngine {
       events,
       pendingEventCount: state.events.length,
       satelliteDetectedUnitIds: Array.from(getSatelliteDetections(state.time.tick)),
+      // Ground warfare data (from cache, no recomputation)
+      ...(state.groundUnits?.size ? this.getGroundViewData() : {}),
+    }
+  }
+
+  /** Extract ground warfare data for the view state */
+  private getGroundViewData(): Partial<GameViewState> {
+    const { state } = this
+    // Collect general reports (one-shot delivery like events)
+    const reports: import('@/types/ground').GeneralReport[] = []
+    if (state.generals) {
+      for (const gen of state.generals.values()) {
+        reports.push(...gen.pendingReports)
+        gen.pendingReports = []
+      }
+    }
+    // Build research summary
+    const researchSummary: Record<string, { current: string | null; progress: number; completed: string[] }> = {}
+    if (state.research) {
+      for (const [nation, rs] of state.research) {
+        researchSummary[nation] = {
+          current: rs.currentResearch,
+          progress: rs.researchProgress,
+          completed: Array.from(rs.completedTechs),
+        }
+      }
+    }
+    return {
+      frontlines: (state as unknown as { _cachedFrontlines?: import('@/types/ground').FrontlineSegment[] })._cachedFrontlines ?? [],
+      generalReports: reports.length > 0 ? reports : undefined,
+      researchSummary: Object.keys(researchSummary).length > 0 ? researchSummary : undefined,
     }
   }
 
@@ -413,6 +499,12 @@ export class GameEngine {
     resetRepairState()
     resetDroneAIState()
     resetSatelliteState()
+    // Ground warfare resets
+    resetFrontlineState()
+    resetGroundCombatState()
+    resetGeneralAIState()
+    resetGroundSupplyState()
+    resetResearchState()
   }
 
   /** Set up satellite constellations for each nation */
