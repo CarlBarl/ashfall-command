@@ -69,5 +69,6 @@ export const fallWeiss1939: ScenarioDefinition = {
   nations: ['germany' as string, 'poland' as string],
   defaultPlayerNation: 'germany' as string,
   mapCenter: { longitude: 20.0, latitude: 51.5, zoom: 5.5 },
+  borderGeojsonPath: '/geo/europe_1939.geojson',
   getData: buildData,
 }

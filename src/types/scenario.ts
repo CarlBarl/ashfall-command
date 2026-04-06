@@ -10,6 +10,7 @@ export interface ScenarioDefinition {
   nations: NationId[]            // available nations in this scenario
   defaultPlayerNation: NationId
   mapCenter?: { longitude: number; latitude: number; zoom: number }
+  borderGeojsonPath?: string     // scenario-specific border GeoJSON (e.g. historical borders)
   getData: () => ScenarioData    // lazy-loaded to avoid import overhead
 }
 

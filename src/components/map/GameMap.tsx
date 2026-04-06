@@ -39,7 +39,8 @@ const DEFAULT_VIEW = {
   bearing: 0,
 }
 
-const THEATER_COUNTRIES = ['IRQ', 'SAU', 'ARE', 'QAT', 'BHR', 'KWT', 'OMN', 'AFG', 'PAK', 'TUR']
+const THEATER_COUNTRIES_MODERN = ['IRQ', 'SAU', 'ARE', 'QAT', 'BHR', 'KWT', 'OMN', 'AFG', 'PAK', 'TUR']
+const THEATER_COUNTRIES_1939 = ['HUN', 'ROU', 'SVK', 'LTU', 'LVA', 'EST', 'DAN', 'FRA', 'ITA', 'DNK', 'SWE', 'CHE', 'BEL', 'NLD', 'YUG', 'BGR', 'FIN', 'SUN']
 
 interface CtxMenu {
   x: number
@@ -51,6 +52,7 @@ interface CtxMenu {
 export default function GameMap() {
   const mapRef = useRef<MapRef>(null)
   const scenarioMapCenter = useMenuStore((s) => s.mapCenter)
+  const borderGeojsonPath = useMenuStore((s) => s.borderGeojsonPath)
   const initialView = useMemo(() => {
     if (!scenarioMapCenter) return DEFAULT_VIEW
     return { ...DEFAULT_VIEW, ...scenarioMapCenter }
@@ -102,10 +104,11 @@ export default function GameMap() {
   const frontlines = useGameStore((s) => s.viewState.frontlines)
 
   useEffect(() => {
-    fetch('/geo/ne_50m_admin_0.geojson')
+    const geoPath = borderGeojsonPath || '/geo/ne_50m_admin_0.geojson'
+    fetch(geoPath)
       .then(r => r.json())
       .then(setGeoData)
-  }, [])
+  }, [borderGeojsonPath])
 
   // Load elevation grid on main thread for LOS visualization
   const [gridReady, setGridReady] = useState(false)
@@ -513,20 +516,26 @@ export default function GameMap() {
           </Source>
         ))}
 
-        {geoData && (
+        {geoData && (() => {
+          const is1939 = !!borderGeojsonPath
+          const theaterCountries = is1939 ? THEATER_COUNTRIES_1939 : THEATER_COUNTRIES_MODERN
+          const primaryNations = is1939
+            ? ['DEU', '#1a1a20', 'POL', '#201a15']
+            : ['IRN', '#1a1520', 'USA', '#151a28']
+          const fillColorExpr = [
+            'match',
+            ['get', 'iso_a3'],
+            ...primaryNations,
+            ...theaterCountries.flatMap(c => [c, '#141822']),
+            '#111620',
+          ] as unknown as string
+          return (
           <Source id="countries" type="geojson" data={geoData}>
             <Layer
               id="country-fill"
               type="fill"
               paint={{
-                'fill-color': [
-                  'match',
-                  ['get', 'iso_a3'],
-                  'IRN', '#1a1520',
-                  'USA', '#151a28',
-                  ...THEATER_COUNTRIES.flatMap(c => [c, '#141822']),
-                  '#111620',
-                ],
+                'fill-color': fillColorExpr,
                 'fill-opacity': 0.6,
               }}
             />
@@ -534,30 +543,58 @@ export default function GameMap() {
               id="country-borders"
               type="line"
               paint={{
-                'line-color': [
-                  'match',
-                  ['get', 'iso_a3'],
-                  'IRN', '#553333',
-                  'USA', '#334455',
-                  '#2d4a3e',
-                ],
-                'line-width': ['match', ['get', 'iso_a3'], 'IRN', 1.5, 0.6],
+                'line-color': (is1939
+                  ? ['match', ['get', 'iso_a3'], 'DEU', '#555555', 'POL', '#554433', '#2d4a3e']
+                  : ['match', ['get', 'iso_a3'], 'IRN', '#553333', 'USA', '#334455', '#2d4a3e']
+                ) as unknown as string,
+                'line-width': (is1939
+                  ? ['match', ['get', 'iso_a3'], 'DEU', 1.5, 'POL', 1.5, 0.6]
+                  : ['match', ['get', 'iso_a3'], 'IRN', 1.5, 0.6]
+                ) as unknown as number,
                 'line-opacity': 0.7,
               }}
             />
-            <Layer
-              id="iran-glow"
-              type="line"
-              filter={['==', ['get', 'iso_a3'], 'IRN']}
-              paint={{
-                'line-color': '#cc4444',
-                'line-width': 2,
-                'line-opacity': 0.3,
-                'line-blur': 3,
-              }}
-            />
+            {is1939 ? (
+              <>
+                <Layer
+                  id="deu-glow"
+                  type="line"
+                  filter={['==', ['get', 'iso_a3'], 'DEU']}
+                  paint={{
+                    'line-color': '#888888',
+                    'line-width': 2,
+                    'line-opacity': 0.3,
+                    'line-blur': 3,
+                  }}
+                />
+                <Layer
+                  id="pol-glow"
+                  type="line"
+                  filter={['==', ['get', 'iso_a3'], 'POL']}
+                  paint={{
+                    'line-color': '#cc8844',
+                    'line-width': 2,
+                    'line-opacity': 0.3,
+                    'line-blur': 3,
+                  }}
+                />
+              </>
+            ) : (
+              <Layer
+                id="iran-glow"
+                type="line"
+                filter={['==', ['get', 'iso_a3'], 'IRN']}
+                paint={{
+                  'line-color': '#cc4444',
+                  'line-width': 2,
+                  'line-opacity': 0.3,
+                  'line-blur': 3,
+                }}
+              />
+            )}
           </Source>
-        )}
+          )
+        })()}
         {rngFilter !== 'off' && (() => {
           const pNation = useGameStore.getState().viewState.playerNation
           const filteredUnits = rngFilter === 'both' ? units
