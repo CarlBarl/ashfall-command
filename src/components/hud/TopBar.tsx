@@ -65,7 +65,7 @@ export default function TopBar() {
   const atWarWithPrimaryEnemy = primaryEnemyNation
     ? (playerState?.atWar.includes(primaryEnemyNation.id) ?? false)
     : false
-  const primaryEnemyLabel = primaryEnemyNation?.name.split(' ').at(-1)?.toUpperCase() ?? 'ENEMY'
+  const primaryEnemyLabel = primaryEnemyNation?.id.toUpperCase() ?? 'ENEMY'
   const hasAirNavalUnits = units.length > 0 // false in ground-only scenarios
 
   const [showHelp, setShowHelp] = useState(false)

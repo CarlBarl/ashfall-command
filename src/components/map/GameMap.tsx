@@ -13,7 +13,7 @@ import { createWaypointLayers } from './layers/WaypointLayer'
 import { createIntelUnitLayers } from './layers/IntelLayer'
 import { createRouteLayers } from './layers/RouteLayer'
 // GroundUnitLayer removed — ground units are data behind the frontline, not visible icons
-import { createFrontlineGeoJSON, FRONTLINE_LAYER_STYLE } from './layers/FrontlineLayer'
+import { createFrontlineGeoJSON, FRONTLINE_LAYER_STYLES, createTerritoryGeoJSON, TERRITORY_FILL_STYLE, TERRITORY_OUTLINE_STYLE } from './layers/FrontlineLayer'
 // circle import removed — range rings handled by RangeRingLayer
 import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
 import { createSupplyLineGeoJSON } from './layers/SupplyLineLayer'
@@ -102,6 +102,7 @@ export default function GameMap() {
   const supplyLines = useGameStore((s) => s.viewState.supplyLines)
   // groundUnits removed — they're data behind the frontline, not map objects
   const frontlines = useGameStore((s) => s.viewState.frontlines)
+  const territories = useGameStore((s) => s.viewState.territories)
 
   useEffect(() => {
     const geoPath = borderGeojsonPath || '/geo/ne_50m_admin_0.geojson'
@@ -440,9 +441,18 @@ export default function GameMap() {
           </Source>
         )}
 
+        {territories && territories.length > 0 && (
+          <Source id="territory-source" type="geojson" data={createTerritoryGeoJSON(territories)}>
+            <Layer {...TERRITORY_FILL_STYLE} />
+            <Layer {...TERRITORY_OUTLINE_STYLE} />
+          </Source>
+        )}
+
         {frontlines && frontlines.length > 0 && (
           <Source id="frontline-source" type="geojson" data={createFrontlineGeoJSON(frontlines)}>
-            <Layer {...FRONTLINE_LAYER_STYLE} />
+            {FRONTLINE_LAYER_STYLES.map((style) => (
+              <Layer key={style.id} {...style} />
+            ))}
           </Source>
         )}
 
