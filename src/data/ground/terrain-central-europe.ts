@@ -8,8 +8,9 @@ import type { ControlGrid, ControlCell, TerrainType } from '@/types/ground'
  * North edge: ~54.4N (Baltic coast)
  * East edge: ~23.5E (eastern Poland)
  *
- * Germany controls rows 0-4 (the border zone).
- * Poland controls rows 5+ (interior Poland).
+ * Control is determined by point-in-polygon against the 1939
+ * Poland border (extracted from europe_1939.geojson), with a
+ * special carve-out for the East Prussia German exclave.
  *
  * Terrain is generated deterministically from row/col patterns
  * with real geographic features placed at approximate positions:
@@ -22,6 +23,38 @@ import type { ControlGrid, ControlCell, TerrainType } from '@/types/ground'
  *   - Poznan urban area at ~row 35, col 18
  *   - Forests concentrated in central-northern Poland
  */
+
+// ── 1939 Poland border polygon [lng, lat] ──────────────────────
+// Extracted from public/geo/europe_1939.geojson (iso_a3: "POL")
+const POLAND_1939: [number, number][] = [
+  [22.6, 49.1], [23.5, 49.1], [24, 49], [24.7, 49], [25.5, 49.4],
+  [26.5, 49.8], [27, 50.5], [27.5, 51], [27.8, 51.5], [27.5, 52],
+  [27, 52.3], [26, 52.5], [25, 52], [24.5, 52.2], [24, 52.3],
+  [23.5, 52], [23.5, 52.5], [24, 53], [24, 53.5], [25.5, 54.2],
+  [26, 54.3], [26.5, 55.2], [25.8, 55.3], [21.3, 55.3], [21, 55.3],
+  [20, 54.9], [19.8, 54.4], [19.4, 54.2], [18.7, 54.4], [18.3, 54.8],
+  [17, 54.8], [16.2, 54.4], [14.2, 53.9], [14.2, 53.3], [14.5, 52.6],
+  [15, 52], [14.8, 51.7], [15, 51.1], [16, 51], [17, 51],
+  [18.2, 50.6], [18.6, 50.5], [19, 50.4], [19.8, 50.3], [20.8, 50.2],
+  [22.1, 50], [22.6, 49.6], [22.6, 49.1],
+]
+
+const KM_PER_DEG = 111.0
+const DEG_TO_RAD = Math.PI / 180
+
+/** Ray-casting point-in-polygon test */
+function pointInPoland(lng: number, lat: number): boolean {
+  let inside = false
+  const poly = POLAND_1939
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1]
+    const xj = poly[j][0], yj = poly[j][1]
+    if ((yi > lat) !== (yj > lat) && lng < (xj - xi) * (lat - yi) / (yj - yi) + xi) {
+      inside = !inside
+    }
+  }
+  return inside
+}
 
 /** Deterministic terrain assignment based on grid position */
 function getTerrain(row: number, col: number): TerrainType {
@@ -75,17 +108,19 @@ function getTerrain(row: number, col: number): TerrainType {
   return 'plains' // remaining 5% still plains (river/urban placed above)
 }
 
-/** Determine initial controller based on the 1939 border */
+/** Determine initial controller based on the 1939 border polygon */
 function getController(row: number, col: number): string | null {
-  // Germany controls rows 0-4 (southern border zone / Silesia / Pomerania)
-  // Also East Prussia in the northeast corner
-  if (row <= 4) return 'germany'
-  if (row >= 50 && col >= 40) return 'germany' // East Prussia pocket
+  // East Prussia exclave: German territory in the northeast
+  if (row >= 50 && col >= 40) return 'germany'
 
-  // Poland controls the rest
-  if (row >= 5) return 'poland'
+  // Convert grid cell to lat/lng (same math as cellToLatLng in frontline.ts)
+  const lat = 49.0 + row * (10 / KM_PER_DEG)
+  const cosLat = Math.cos(lat * DEG_TO_RAD)
+  const lng = 14.0 + col * (10 / (KM_PER_DEG * cosLat))
 
-  return null
+  // Points inside the 1939 Poland polygon are Polish; everything else is German
+  // (Germany surrounded Poland on three sides: west, south, and the East Prussian exclave)
+  return pointInPoland(lng, lat) ? 'poland' : 'germany'
 }
 
 export function createCentralEuropeGrid(): ControlGrid {

@@ -12,16 +12,23 @@ import type {
 // ── Module-level state (must be reset on save/load) ─────────────
 
 let cachedFrontlines: FrontlineSegment[] = []
+let cachedTerritories: { nation: string; polygon: [number, number][][] }[] = []
 let gridDirty = true
 
 export function resetFrontlineState(): void {
   cachedFrontlines = []
+  cachedTerritories = []
   gridDirty = true
 }
 
 /** Get the cached frontlines (computed by processFrontline) */
 export function getCachedFrontlines(): FrontlineSegment[] {
   return cachedFrontlines
+}
+
+/** Get the cached territory polygons (computed by processFrontline) */
+export function getCachedTerritories(): { nation: string; polygon: [number, number][][] }[] {
+  return cachedTerritories
 }
 
 // ── Coordinate conversion ───────────────────────────────────────
@@ -209,6 +216,7 @@ export function processFrontline(state: GameState): void {
     // If grid exists but no units, still compute frontlines on first call
     if (extState.controlGrid && gridDirty) {
       cachedFrontlines = extractFrontlines(extState.controlGrid)
+      cachedTerritories = extractTerritories(extState.controlGrid)
       gridDirty = false
     }
     return
@@ -283,9 +291,10 @@ export function processFrontline(state: GameState): void {
     gridDirty = true
   }
 
-  // Recompute frontlines if dirty
+  // Recompute frontlines and territories if dirty
   if (gridDirty) {
     cachedFrontlines = extractFrontlines(grid)
+    cachedTerritories = extractTerritories(grid)
     gridDirty = false
   }
 }
@@ -535,4 +544,159 @@ function douglasPeucker(
 
   // All intermediate points are within epsilon — return just endpoints
   return [points[0], points[points.length - 1]]
+}
+
+// ── Territory polygon extraction ───────────────────────────────
+
+/**
+ * Extracts territory fill polygons from the control grid.
+ *
+ * For each nation, scans each row for contiguous runs of cells,
+ * then traces the outline of these horizontal strips to produce
+ * a closed polygon ring. Uses Douglas-Peucker simplification to
+ * keep the vertex count manageable.
+ */
+export function extractTerritories(
+  grid: ControlGrid,
+): { nation: string; polygon: [number, number][][] }[] {
+  // Collect row spans for each nation: Map<nation, Map<row, [minCol, maxCol][]>>
+  const nationSpans = new Map<string, Map<number, [number, number][]>>()
+
+  for (let row = 0; row < grid.rows; row++) {
+    let runStart = -1
+    let runNation: string | null = null
+
+    for (let col = 0; col <= grid.cols; col++) {
+      const cell = col < grid.cols ? grid.cells[row * grid.cols + col] : null
+      const controller = cell?.controller ?? null
+
+      if (controller === runNation && col < grid.cols) continue
+
+      // End current run
+      if (runNation !== null && runStart >= 0) {
+        let spans = nationSpans.get(runNation)
+        if (!spans) {
+          spans = new Map()
+          nationSpans.set(runNation, spans)
+        }
+        let rowSpans = spans.get(row)
+        if (!rowSpans) {
+          rowSpans = []
+          spans.set(row, rowSpans)
+        }
+        rowSpans.push([runStart, col - 1])
+      }
+
+      // Start new run
+      runStart = col
+      runNation = controller
+    }
+  }
+
+  const results: { nation: string; polygon: [number, number][][] }[] = []
+
+  for (const [nation, spans] of nationSpans) {
+    // For each nation, trace the outline of all row-spans
+    const rings = traceSpanOutline(spans, grid)
+    if (rings.length > 0) {
+      results.push({ nation, polygon: rings })
+    }
+  }
+
+  return results
+}
+
+/**
+ * Traces the outer boundary of a set of row-spans to produce polygon ring(s).
+ *
+ * Strategy: walk along the right edge going down, then the bottom edge going
+ * left, then the left edge going up, then the top edge going right. For each
+ * row, we use the leftmost and rightmost column extent.
+ *
+ * This produces a single simplified outline per nation. For nations with
+ * multiple disconnected regions, each contiguous block of rows becomes a
+ * separate ring.
+ */
+function traceSpanOutline(
+  spans: Map<number, [number, number][]>,
+  grid: ControlGrid,
+): [number, number][][] {
+  // Find all rows that have spans, sorted
+  const rows = Array.from(spans.keys()).sort((a, b) => a - b)
+  if (rows.length === 0) return []
+
+  // Split into contiguous row groups
+  const groups: number[][] = []
+  let currentGroup: number[] = [rows[0]]
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i] - rows[i - 1] <= 1) {
+      currentGroup.push(rows[i])
+    } else {
+      groups.push(currentGroup)
+      currentGroup = [rows[i]]
+    }
+  }
+  groups.push(currentGroup)
+
+  const rings: [number, number][][] = []
+
+  for (const group of groups) {
+    // For each row in the group, find overall min/max col
+    const rowExtents: { row: number; minCol: number; maxCol: number }[] = []
+    for (const row of group) {
+      const rowSpans = spans.get(row)!
+      let minCol = Infinity
+      let maxCol = -Infinity
+      for (const [start, end] of rowSpans) {
+        if (start < minCol) minCol = start
+        if (end > maxCol) maxCol = end
+      }
+      rowExtents.push({ row, minCol, maxCol })
+    }
+
+    // Trace outline: right side going down, then left side going up
+    const outline: [number, number][] = []
+
+    // Right edge: top to bottom (col = maxCol + 1)
+    for (const ext of rowExtents) {
+      const topRight = cellToLatLng(ext.row, ext.maxCol + 1, grid)
+      outline.push([topRight.lng, topRight.lat])
+    }
+    // Bottom-right corner of last row
+    const last = rowExtents[rowExtents.length - 1]
+    const bottomRight = cellToLatLng(last.row + 1, last.maxCol + 1, grid)
+    outline.push([bottomRight.lng, bottomRight.lat])
+
+    // Bottom edge of last row
+    const bottomLeft = cellToLatLng(last.row + 1, last.minCol, grid)
+    outline.push([bottomLeft.lng, bottomLeft.lat])
+
+    // Left edge: bottom to top (col = minCol)
+    for (let i = rowExtents.length - 1; i >= 0; i--) {
+      const ext = rowExtents[i]
+      const botLeft = cellToLatLng(ext.row + 1, ext.minCol, grid)
+      outline.push([botLeft.lng, botLeft.lat])
+    }
+
+    // Top-left corner of first row
+    const first = rowExtents[0]
+    const topLeft = cellToLatLng(first.row, first.minCol, grid)
+    outline.push([topLeft.lng, topLeft.lat])
+
+    // Close the ring
+    outline.push(outline[0])
+
+    // Simplify to reduce vertex count
+    const simplified = douglasPeucker(outline, 0.02)
+    // Ensure ring is closed after simplification
+    if (simplified.length >= 3) {
+      if (simplified[0][0] !== simplified[simplified.length - 1][0] ||
+          simplified[0][1] !== simplified[simplified.length - 1][1]) {
+        simplified.push(simplified[0])
+      }
+      rings.push(simplified)
+    }
+  }
+
+  return rings
 }
