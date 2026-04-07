@@ -23,3 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# AI dev artifacts
+CLAUDE.md
+.claude/
+output/
+progress.md
