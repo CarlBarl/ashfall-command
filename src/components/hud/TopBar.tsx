@@ -22,22 +22,23 @@ const ROE_OPTIONS: { value: ROE; label: string; shortLabel: string; color: strin
   { value: 'hold_fire', label: 'HOLD FIRE', shortLabel: 'HOLD', color: 'var(--status-damaged)' },
 ]
 
-const INLINE_SPEEDS = [0, 0.1, 6, 600] as const
+// Speed = ticks per 100ms, 1 tick = 1 game second → speed 360 = 1 game-hour per real second
+const INLINE_SPEEDS = [0, 0.1, 6, 360] as const
 const INLINE_LABELS: Record<number, string> = {
   0: '||',
   0.1: '1s',
   6: '1m',
-  600: '1h',
+  360: '1h',
 }
 
-const ALL_SPEEDS = [0, 0.1, 1, 6, 60, 600, 3600] as const
+const ALL_SPEEDS = [0, 0.1, 1, 6, 60, 360, 3600] as const
 const ALL_SPEED_LABELS: Record<number, string> = {
   0: '||',
   0.1: '1s/s',
   1: '10s/s',
   6: '1m/s',
   60: '10m/s',
-  600: '1hr/s',
+  360: '1h/s',
   3600: '10h/s',
 }
 
@@ -68,7 +69,7 @@ export default function TopBar() {
     ? (playerState?.atWar.includes(primaryEnemyNation.id) ?? false)
     : false
   const primaryEnemyLabel = primaryEnemyNation?.id.toUpperCase() ?? 'ENEMY'
-  const hasAirNavalUnits = units.length > 0
+  const hasUnits = units.length > 0
 
   const [showHelp, setShowHelp] = useState(false)
   const [warClickPending, setWarClickPending] = useState(false)
@@ -113,7 +114,6 @@ export default function TopBar() {
     setWarClickPending(false)
   }
 
-  // Format game date+time (reused from TimeControls)
   const gameDate = new Date(time.timestamp)
   const dateStr = gameDate.toLocaleDateString('en-US', {
     month: 'short', day: 'numeric',
@@ -186,8 +186,7 @@ export default function TopBar() {
 
           {/* Right: ATK + war status + ROE */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            {/* Strike planner shortcut — only for air/naval scenarios */}
-            {hasAirNavalUnits && <StrikeBtn compact />}
+            {hasUnits && <StrikeBtn compact />}
 
             {atWarWithPrimaryEnemy ? (
               <span style={{
@@ -237,8 +236,7 @@ export default function TopBar() {
               </button>
             )}
 
-            {/* ROE dropdown — only for air/naval scenarios */}
-            {hasAirNavalUnits && (
+            {hasUnits && (
               <div style={{ position: 'relative' }}>
                 <button
                   onClick={() => setRoeOpen(!roeOpen)}
@@ -469,7 +467,7 @@ export default function TopBar() {
           />
         ))}
 
-        {hasAirNavalUnits && (
+        {hasUnits && (
           <>
             <Sep />
             {/* Strike planner shortcut */}
@@ -524,8 +522,8 @@ export default function TopBar() {
             </span>
           )}
 
-          {/* Theater ROE dropdown — only for air/naval scenarios */}
-          {hasAirNavalUnits && (
+          {/* Theater ROE dropdown */}
+          {hasUnits && (
             <div style={{ position: 'relative' }}>
               <button
                 onClick={() => setRoeOpen(!roeOpen)}

@@ -1,4 +1,4 @@
-import type { GameState, GameEvent, Missile, Unit, WeaponSpec, ADSystemSpec, Position } from '@/types/game'
+import type { GameState, GameEvent, Missile, NationId, Unit, WeaponSpec, ADSystemSpec, Position } from '@/types/game'
 import type { ElevationGrid } from './elevation'
 import type { SeededRNG } from '../utils/rng'
 import { weaponSpecs } from '@/data/weapons/missiles'
@@ -1139,6 +1139,7 @@ function resolveImpacts(state: GameState): void {
         damage,
         tick: state.time.tick,
       })
+      bumpAttackCounter(state, target.nation)
 
       if (target.health <= 0) {
         target.status = 'destroyed'
@@ -1147,6 +1148,7 @@ function resolveImpacts(state: GameState): void {
           unitId: target.id,
           tick: state.time.tick,
         })
+        bumpAttackCounter(state, target.nation)
       } else if (target.health < 50) {
         target.status = 'damaged'
       }
@@ -1175,6 +1177,11 @@ function updateReloads(state: GameState): void {
 // ===============================================
 //  HELPERS
 // ===============================================
+
+function bumpAttackCounter(state: GameState, nation: NationId): void {
+  const counters = (state.attackCounters ??= {})
+  counters[nation] = (counters[nation] ?? 0) + 1
+}
 
 function emitEvents(state: GameState, events: GameEvent[]): void {
   state.events.push(...events)

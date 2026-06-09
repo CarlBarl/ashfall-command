@@ -63,7 +63,6 @@ function makeState(units: Unit[], missiles: Missile[] = [], timestamp = 1500): G
     },
     units: unitMap,
     missiles: missileMap,
-    engagements: new Map(),
     supplyLines: new Map(),
     shippingLanes: new Map(),
     events: [],

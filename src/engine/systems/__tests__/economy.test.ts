@@ -33,7 +33,6 @@ function makeState(opts: { throughput?: number; storedOilPrice?: number; tick?: 
     },
     units: new Map(),
     missiles: new Map(),
-    engagements: new Map(),
     supplyLines: new Map(),
     shippingLanes: new Map([['hormuz', makeLane(throughput)]]),
     events: [],

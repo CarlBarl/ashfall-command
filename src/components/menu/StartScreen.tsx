@@ -217,13 +217,13 @@ export default function StartScreen() {
           <div style={modeRow}>
             <ModeCard
               label="SCENARIO"
-              description="Historical scenarios with preset forces and objectives"
+              description="Pre-built scenarios with preset forces and objectives"
               selected={selectedMode === 'scenario'}
               onClick={() => setSelectedMode('scenario')}
             />
             <ModeCard
               label="FREE MODE"
-              description="Sandbox: custom budget, pick your own forces"
+              description="Sandbox: pick your own forces within a budget"
               selected={selectedMode === 'free'}
               onClick={() => setSelectedMode('free')}
             />
@@ -292,18 +292,6 @@ export default function StartScreen() {
         >
           CONTINUE
         </button>
-
-        {/* Version tag */}
-        <div
-          style={{
-            marginTop: 48,
-            fontSize: 'var(--font-size-xs)',
-            color: 'var(--text-muted)',
-            letterSpacing: '0.1em',
-          }}
-        >
-          v0.0.15 // UPDATED 2026-04-06 18:30
-        </div>
       </div>
     </div>
   )

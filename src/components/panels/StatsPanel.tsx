@@ -23,6 +23,7 @@ interface NationStats {
   samInterceptors: number
   samInterceptorsMax: number
   missilesLaunched: number
+  missilesIncoming: number
   missilesIntercepted: number
 }
 
@@ -31,7 +32,7 @@ function isSAM(weaponId: string): boolean {
   return spec?.type === 'sam'
 }
 
-function computeNationStats(
+export function computeNationStats(
   units: ViewUnit[],
   events: GameEvent[],
   nationId: NationId,
@@ -60,11 +61,13 @@ function computeNationStats(
 
   const unitIds = new Set(nationUnits.map(u => u.id))
   let missilesLaunched = 0
+  let missilesIncoming = 0
   let missilesIntercepted = 0
 
   for (const event of events) {
-    if (event.type === 'MISSILE_LAUNCHED' && unitIds.has(event.launcherId)) {
-      missilesLaunched++
+    if (event.type === 'MISSILE_LAUNCHED') {
+      if (unitIds.has(event.launcherId)) missilesLaunched++
+      if (unitIds.has(event.targetId)) missilesIncoming++
     }
     if (event.type === 'MISSILE_INTERCEPTED' && unitIds.has(event.interceptorId)) {
       missilesIntercepted++
@@ -75,7 +78,7 @@ function computeNationStats(
     total, destroyed, damaged,
     offensiveMissiles, offensiveMissilesMax,
     samInterceptors, samInterceptorsMax,
-    missilesLaunched, missilesIntercepted,
+    missilesLaunched, missilesIncoming, missilesIntercepted,
   }
 }
 
@@ -94,7 +97,7 @@ function ModernNationBlock({ nationId, nationLabel, units, events }: { nationId:
         letterSpacing: '0.06em',
         marginBottom: 6,
         paddingBottom: 4,
-        borderBottom: `1px solid ${color}44`,
+        borderBottom: `1px solid color-mix(in srgb, ${color} 27%, transparent)`,
       }}>
         {nationLabel}
       </div>
@@ -125,7 +128,7 @@ function ModernNationBlock({ nationId, nationLabel, units, events }: { nationId:
       <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
         <Stat label="Fired (offensive)" value={stats.missilesLaunched} color="var(--text-secondary)" />
         <Stat label="Shot down (AD)" value={stats.missilesIntercepted} color="var(--status-ready)" />
-        <ExchangeRatio launched={stats.missilesLaunched} intercepted={stats.missilesIntercepted} />
+        <ExchangeRatio incoming={stats.missilesIncoming} intercepted={stats.missilesIntercepted} />
       </div>
     </div>
   )
@@ -140,9 +143,9 @@ function Stat({ label, value, color }: { label: string; value: number; color: st
   )
 }
 
-function ExchangeRatio({ launched, intercepted }: { launched: number; intercepted: number }) {
-  if (launched === 0) return null
-  const pct = Math.round((intercepted / launched) * 100)
+function ExchangeRatio({ incoming, intercepted }: { incoming: number; intercepted: number }) {
+  if (incoming === 0) return null
+  const pct = Math.round((intercepted / incoming) * 100)
   const color = pct >= 70 ? 'var(--status-ready)' : pct >= 40 ? 'var(--status-engaged)' : 'var(--status-damaged)'
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 48 }}>

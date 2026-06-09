@@ -6,32 +6,14 @@ export type MapMode = 'dark' | 'satellite'
 const ESRI_SAT =
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
-export function getMapStyle(mode: MapMode, hideModernBorders = false): StyleSpecification {
-  return mode === 'dark' ? buildDarkStyle(hideModernBorders) : buildSatelliteStyle()
+export function getMapStyle(mode: MapMode): StyleSpecification {
+  return mode === 'dark' ? buildDarkStyle() : buildSatelliteStyle()
 }
 
 // ── Dark CIC military command-center style ──────────────────────────
 // OpenFreeMap vector tiles (OpenMapTiles schema, no API key)
 
-function buildDarkStyle(hideModernBorders: boolean): StyleSpecification {
-  if (hideModernBorders) {
-    return {
-      version: 8,
-      name: 'realpolitik-historical',
-      glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
-      sources: {},
-      layers: [
-        {
-          id: 'background',
-          type: 'background',
-          paint: {
-            'background-color': '#0c121a',
-          },
-        },
-      ],
-    }
-  }
-
+function buildDarkStyle(): StyleSpecification {
   return {
     version: 8,
     name: 'realpolitik-dark',
@@ -90,21 +72,18 @@ function buildDarkStyle(hideModernBorders: boolean): StyleSpecification {
       },
 
       // Country boundaries — dim green (military map aesthetic)
-      // Hidden when using historical borders (1939 GeoJSON provides its own)
-      ...(!hideModernBorders ? [
-        {
-          id: 'boundary-country',
-          type: 'line',
-          source: 'openmaptiles',
-          'source-layer': 'boundary',
-          filter: ['==', ['get', 'admin_level'], 2],
-          paint: {
-            'line-color': '#1a3a1a',
-            'line-width': 1,
-            'line-opacity': 0.7,
-          },
-        } as StyleSpecification['layers'][number],
-      ] : []),
+      {
+        id: 'boundary-country',
+        type: 'line',
+        source: 'openmaptiles',
+        'source-layer': 'boundary',
+        filter: ['==', ['get', 'admin_level'], 2],
+        paint: {
+          'line-color': '#1a3a1a',
+          'line-width': 1,
+          'line-opacity': 0.7,
+        },
+      },
 
       // Coastline effect — slightly brighter edge where land meets water
       {

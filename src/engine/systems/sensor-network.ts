@@ -10,7 +10,6 @@ import { haversine } from '../utils/geo'
 export interface NetworkDetection {
   missile: Missile
   detectedBy: UnitId
-  quality: 'tracked' | 'detected'
   distKm: number
   timeToImpactMs: number
 }
@@ -18,7 +17,9 @@ export interface NetworkDetection {
 export interface SensorNetwork {
   /** unit → hub IDs it's connected to */
   connections: Map<UnitId, UnitId[]>
-  /** nation → missileId → best detection from any networked unit */
+  /** hub → missileId → best detection relayed to that hub */
+  hubDetections: Map<UnitId, Map<string, NetworkDetection>>
+  /** nation → missileId → best detection from any of the nation's hubs (common picture) */
   sharedDetections: Map<NationId, Map<string, NetworkDetection>>
   /** nation → set of enemy unit IDs detected via ELINT (radar emission interception) */
   elintDetections: Map<NationId, Set<UnitId>>
@@ -34,8 +35,9 @@ export interface SensorNetwork {
  * 1. Find all hubs (units with datalink_range_km > 0, not destroyed)
  * 2. Connect each sensor-capable unit to hubs within datalink range (same nation)
  * 3. Run detectThreats() for each radar unit → local detections
- * 4. Propagate: if unit A detects missile X and shares a hub with unit B,
- *    unit B also gets the detection (at 'detected' quality)
+ * 4. Propagate detections to the hubs each detector is connected to, then union
+ *    every hub's picture into a per-nation common picture. Quality is resolved
+ *    per receiving unit at query time (detectThreatsNetworked).
  */
 export function buildSensorNetwork(
   state: GameState,
@@ -109,7 +111,6 @@ export function buildSensorNetwork(
           hubMap.set(threat.missile.id, {
             missile: threat.missile,
             detectedBy: unitId,
-            quality: 'tracked', // original detector has tracked quality
             distKm: threat.distKm,
             timeToImpactMs: threat.timeToImpactMs,
           })
@@ -118,38 +119,21 @@ export function buildSensorNetwork(
     }
   }
 
-  // Now build per-nation shared detections by collecting from all hubs
-  for (const unit of state.units.values()) {
-    if (unit.status === 'destroyed') continue
-    if (unit.sensors.length === 0) continue
+  // Union every hub's picture into the nation-wide common picture
+  for (const hub of hubs) {
+    const hubMap = hubDetections.get(hub.id)
+    if (!hubMap) continue
 
-    const unitHubs = connections.get(unit.id)
-    if (!unitHubs) continue
-
-    let nationMap = sharedDetections.get(unit.nation)
+    let nationMap = sharedDetections.get(hub.nation)
     if (!nationMap) {
       nationMap = new Map()
-      sharedDetections.set(unit.nation, nationMap)
+      sharedDetections.set(hub.nation, nationMap)
     }
 
-    for (const hubId of unitHubs) {
-      const hubMap = hubDetections.get(hubId)
-      if (!hubMap) continue
-
-      for (const [missileId, detection] of hubMap) {
-        const existing = nationMap.get(missileId)
-
-        // Determine quality: if this unit is the original detector, quality is 'tracked';
-        // otherwise it's a shared 'detected' quality
-        const isOwnDetection = detection.detectedBy === unit.id
-        const quality: 'tracked' | 'detected' = isOwnDetection ? 'tracked' : 'detected'
-
-        if (!existing || quality === 'tracked' && existing.quality !== 'tracked') {
-          nationMap.set(missileId, {
-            ...detection,
-            quality,
-          })
-        }
+    for (const [missileId, detection] of hubMap) {
+      const existing = nationMap.get(missileId)
+      if (!existing || detection.distKm < existing.distKm) {
+        nationMap.set(missileId, detection)
       }
     }
   }
@@ -185,7 +169,7 @@ export function buildSensorNetwork(
     }
   }
 
-  return { connections, sharedDetections, elintDetections }
+  return { connections, hubDetections, sharedDetections, elintDetections }
 }
 
 // ---------------------------------------------------------------------------
@@ -200,9 +184,9 @@ export interface NetworkedThreat extends DetectedThreat {
 /**
  * Get threats visible to an AD unit, combining own radar + network data.
  *
- * 1. Get own local detections via detectThreats()
- * 2. Query network for threats detected by other units on shared hubs
- * 3. Merge, deduplicate by missile ID, prefer own detections
+ * 1. Own local detections via detectThreats() → 'own'
+ * 2. Detections relayed on a hub this unit is connected to → 'tracked'
+ * 3. Nation-wide common picture from hubs it does NOT share → 'detected'
  */
 export function detectThreatsNetworked(
   state: GameState,
@@ -221,20 +205,33 @@ export function detectThreatsNetworked(
     })
   }
 
-  // --- Network detections from shared hubs ---
   const unitHubs = network.connections.get(adUnit.id)
   if (unitHubs && unitHubs.length > 0) {
-    const nationMap = network.sharedDetections.get(adUnit.nation)
-    if (nationMap) {
-      for (const [missileId, detection] of nationMap) {
-        // Skip if already detected by own radar (own > network)
+    // --- Live tracks relayed on shared hubs ---
+    for (const hubId of unitHubs) {
+      const hubMap = network.hubDetections.get(hubId)
+      if (!hubMap) continue
+      for (const [missileId, detection] of hubMap) {
         if (resultMap.has(missileId)) continue
-
         resultMap.set(missileId, {
           missile: detection.missile,
           distKm: detection.distKm,
           timeToImpactMs: detection.timeToImpactMs,
-          networkQuality: detection.quality,
+          networkQuality: 'tracked',
+        })
+      }
+    }
+
+    // --- Degraded nation-wide picture (no shared hub with the detector) ---
+    const nationMap = network.sharedDetections.get(adUnit.nation)
+    if (nationMap) {
+      for (const [missileId, detection] of nationMap) {
+        if (resultMap.has(missileId)) continue
+        resultMap.set(missileId, {
+          missile: detection.missile,
+          distKm: detection.distKm,
+          timeToImpactMs: detection.timeToImpactMs,
+          networkQuality: 'detected',
         })
       }
     }

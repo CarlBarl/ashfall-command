@@ -10,13 +10,11 @@ interface UIState {
   selectedUnitId: UnitId | null
   hoveredUnitId: UnitId | null
   // Map overlays
-  showRangeRings: boolean
   rngFilter: 'off' | 'friendly' | 'enemy' | 'both'
 
   // Map display
   mapMode: MapMode
   showElevation: boolean
-  showRadarLOS: boolean
 
   // Left sidebar — radio group (only one at a time)
   leftPanel: LeftPanel
@@ -40,10 +38,8 @@ interface UIState {
   losFilter: 'off' | 'friendly' | 'enemy' | 'both'
 
   // Actions — map
-  toggleRangeRings: () => void
   cycleMapMode: () => void
   toggleElevation: () => void
-  cycleLOSFilter: () => void  // off → both → friendly → enemy → off
   toggleIntelCoverage: () => void
 
   // Actions — panels
@@ -52,19 +48,14 @@ interface UIState {
 
   // Right-side panels
   toggleIntel: () => void
-
-  // Legacy compat — togglePanel still used by TopBar for left panels
-  togglePanel: (panel: string) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
   selectedUnitIds: new Set(),
   selectedUnitId: null,
   hoveredUnitId: null,
-  showRangeRings: false,
   mapMode: 'dark' as MapMode,
   showElevation: false,
-  showRadarLOS: false,
   showIntelCoverage: false,
   losFilter: 'off' as 'off' | 'friendly' | 'enemy' | 'both',
   rngFilter: 'off' as 'off' | 'friendly' | 'enemy' | 'both',
@@ -101,27 +92,11 @@ export const useUIStore = create<UIState>((set) => ({
   hoverUnit: (id) => set({ hoveredUnitId: id }),
 
   // Map
-  toggleRangeRings: () => set((s) => ({ showRangeRings: !s.showRangeRings })),
   cycleMapMode: () => set((s) => ({ mapMode: (s.mapMode === 'dark' ? 'satellite' : 'dark') as MapMode })),
   toggleElevation: () => set((s) => ({ showElevation: !s.showElevation })),
-  toggleRadarLOS: () => set((s) => ({ showRadarLOS: !s.showRadarLOS })),
-  cycleLOSFilter: () => set((s) => {
-    const order: ('off' | 'friendly' | 'enemy' | 'both')[] = ['off', 'both', 'friendly', 'enemy']
-    const idx = order.indexOf(s.losFilter)
-    return { losFilter: order[(idx + 1) % order.length] }
-  }),
   toggleIntelCoverage: () => set((s) => ({ showIntelCoverage: !s.showIntelCoverage })),
 
   toggleIntel: () => set((s) => ({ showIntel: !s.showIntel })),
-
-  togglePanel: (panel) => {
-    if (panel === 'orbat' || panel === 'stats' || panel === 'economy') {
-      set((s) => {
-        const next = s.leftPanel === panel ? null : panel
-        return { leftPanel: next, showOrbat: next === 'orbat', showStats: next === 'stats', showEconomy: next === 'economy' }
-      })
-    }
-  },
 
   // Panels — radio group
   setLeftPanel: (panel) => set({

@@ -1,11 +1,11 @@
-import type { GameState, UnitId, Position } from '@/types/game'
+import type { GameState, NationId, UnitId, Position } from '@/types/game'
 
 // ---------------------------------------------------------------------------
 // Module-level state — tracks recently revealed units (fades after 60 ticks)
 // ---------------------------------------------------------------------------
 
-/** unitId → tick when satellite detected it */
-const satelliteDetections = new Map<UnitId, number>()
+/** detecting nation → (unitId → tick when its satellite detected it) */
+const satelliteDetections = new Map<NationId, Map<UnitId, number>>()
 
 /** How many ticks a satellite detection remains visible before fading */
 const DETECTION_FADE_TICKS = 60
@@ -15,14 +15,16 @@ export function resetSatelliteState(): void {
   satelliteDetections.clear()
 }
 
-/** Get the set of currently-visible satellite detections */
-export function getSatelliteDetections(currentTick: number): Set<UnitId> {
+/** Get the set of satellite detections currently visible to a nation */
+export function getSatelliteDetections(nation: NationId, currentTick: number): Set<UnitId> {
   const visible = new Set<UnitId>()
-  for (const [unitId, detectedTick] of satelliteDetections) {
+  const nationMap = satelliteDetections.get(nation)
+  if (!nationMap) return visible
+  for (const [unitId, detectedTick] of nationMap) {
     if (currentTick - detectedTick <= DETECTION_FADE_TICKS) {
       visible.add(unitId)
     } else {
-      satelliteDetections.delete(unitId)
+      nationMap.delete(unitId)
     }
   }
   return visible
@@ -59,7 +61,12 @@ export function processSatellites(state: GameState): UnitId[] {
         const dist = pointToLineDistKm(unit.position, trackStart, trackEnd)
         if (dist <= sat.swathWidth_km / 2) {
           revealed.push(unit.id)
-          satelliteDetections.set(unit.id, state.time.tick)
+          let nationMap = satelliteDetections.get(nation.id)
+          if (!nationMap) {
+            nationMap = new Map()
+            satelliteDetections.set(nation.id, nationMap)
+          }
+          nationMap.set(unit.id, state.time.tick)
         }
       }
     }

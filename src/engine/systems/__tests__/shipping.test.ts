@@ -70,7 +70,6 @@ function makeState(units: Unit[], opts: { atWar?: boolean; tick?: number; lane?:
     },
     units: new Map(units.map(u => [u.id, u])),
     missiles: new Map(),
-    engagements: new Map(),
     supplyLines: new Map(),
     shippingLanes: new Map([[lane.id, lane]]),
     events: [],

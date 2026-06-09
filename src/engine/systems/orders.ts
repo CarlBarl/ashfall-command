@@ -1,63 +1,32 @@
-import type { GameState, NationId, ROE, UnitId } from '@/types/game'
-import type { Command } from '@/types/commands'
+import type { GameState, ROE, UnitId } from '@/types/game'
 import { haversine } from '../utils/geo'
 import { detectThreats } from './detection'
 import type { ElevationGrid } from './elevation'
 
-/** Module-level command queue — units can have pending commands */
-const commandQueues = new Map<UnitId, Command[]>()
+/**
+ * Per-unit set of missile IDs that weapons_tight units should NOT engage this tick.
+ * Cleared at the start of each processOrders call.
+ */
+const suppressedMissiles = new Map<UnitId, Set<string>>()
 
 /** Reset module-level state — must be called on save/load */
 export function resetOrdersState(): void {
-  commandQueues.clear()
-}
-
-/** Enqueue a command for a unit */
-export function enqueueCommand(unitId: UnitId, cmd: Command): void {
-  let queue = commandQueues.get(unitId)
-  if (!queue) {
-    queue = []
-    commandQueues.set(unitId, queue)
-  }
-  queue.push(cmd)
-}
-
-/** Dequeue one command per unit per tick. Returns commands to execute. */
-function drainQueues(): Command[] {
-  const commands: Command[] = []
-  for (const [unitId, queue] of commandQueues) {
-    if (queue.length > 0) {
-      commands.push(queue.shift()!)
-    }
-    if (queue.length === 0) {
-      commandQueues.delete(unitId)
-    }
-  }
-  return commands
+  suppressedMissiles.clear()
 }
 
 const WEAPONS_TIGHT_RANGE_KM = 50
 
 /**
- * Process orders each tick:
- * - Drain one queued command per unit
- * - Enforce ROE: weapons_tight units only keep engagements that threaten
- *   themselves or nearby friendlies (within 50km)
- *
- * Returns commands to be executed by the engine.
+ * Enforce ROE each tick: weapons_tight units only keep engagements that threaten
+ * themselves or nearby friendlies (within 50km).
  */
-export function processOrders(state: GameState, elevationGrid?: ElevationGrid | null): Command[] {
+export function processOrders(state: GameState, elevationGrid?: ElevationGrid | null): void {
   // Clear per-tick per-unit suppression state before re-evaluating
   suppressedMissiles.clear()
-
-  // Drain one queued command per unit
-  const commands = drainQueues()
 
   // Enforce weapons_tight ROE constraints
   // (hold_fire is enforced in combat.ts; weapons_free needs no filtering)
   enforceWeaponsTight(state, elevationGrid)
-
-  return commands
 }
 
 /**
@@ -95,28 +64,8 @@ function enforceWeaponsTight(state: GameState, elevationGrid?: ElevationGrid | n
   }
 }
 
-/**
- * Per-unit set of missile IDs that weapons_tight units should NOT engage this tick.
- * Cleared at the start of each processOrders call.
- */
-const suppressedMissiles = new Map<UnitId, Set<string>>()
-
 /** Check if a missile is suppressed for a given unit (weapons_tight filtering) */
 export function isSuppressedForTight(missileId: string, unit: { id: UnitId; roe: ROE }): boolean {
   if (unit.roe !== 'weapons_tight') return false
   return suppressedMissiles.get(unit.id)?.has(missileId) ?? false
-}
-
-/**
- * Generate SET_ROE commands for every unit belonging to a nation.
- * Useful for theater-wide ROE presets.
- */
-export function setTheaterROE(state: GameState, nation: NationId, roe: ROE): Command[] {
-  const commands: Command[] = []
-  for (const unit of state.units.values()) {
-    if (unit.nation === nation && unit.status !== 'destroyed') {
-      commands.push({ type: 'SET_ROE', unitId: unit.id, roe })
-    }
-  }
-  return commands
 }

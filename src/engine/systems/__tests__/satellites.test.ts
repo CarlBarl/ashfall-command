@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { processSatellites, resetSatelliteState } from '../satellites'
+import { processSatellites, resetSatelliteState, getSatelliteDetections } from '../satellites'
 import type { GameState, Unit, NationId, SatellitePass } from '@/types/game'
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -64,7 +64,6 @@ function makeState(units: Unit[], satellites: { usa?: SatellitePass[]; iran?: Sa
     },
     units: unitMap,
     missiles: new Map(),
-    engagements: new Map(),
     supplyLines: new Map(),
     shippingLanes: new Map(),
     events: [],
@@ -260,5 +259,38 @@ describe('processSatellites', () => {
     // (iran_base would appear twice if optical also detected it)
     const count = revealed.filter(id => id === 'iran_base').length
     expect(count).toBe(1)
+  })
+
+  it('keeps detections separate per nation', () => {
+    resetSatelliteState()
+    const iranUnit = makeUnit({
+      id: 'iran_sam',
+      nation: 'iran',
+      position: { lat: 33, lng: 53 }, // on the USA sat track
+    })
+    const usaUnit = makeUnit({
+      id: 'usa_base',
+      nation: 'usa',
+      position: { lat: 27, lng: 47 }, // on the Iran sat track, far from the USA track
+    })
+
+    const usaSat = makeSatellite({ id: 'usa_optical_1', nation: 'usa' })
+    const iranSat = makeSatellite({
+      id: 'iran_optical_1',
+      nation: 'iran',
+      groundTrack: { startLat: 25, startLng: 45, endLat: 29, endLng: 49 },
+    })
+
+    const state = makeState([iranUnit, usaUnit], { usa: [usaSat], iran: [iranSat] })
+    processSatellites(state)
+
+    const usaSees = getSatelliteDetections('usa', state.time.tick)
+    const iranSees = getSatelliteDetections('iran', state.time.tick)
+
+    // Each nation only sees what ITS satellites swept — no cross-contamination
+    expect(usaSees.has('iran_sam')).toBe(true)
+    expect(usaSees.has('usa_base')).toBe(false)
+    expect(iranSees.has('usa_base')).toBe(true)
+    expect(iranSees.has('iran_sam')).toBe(false)
   })
 })

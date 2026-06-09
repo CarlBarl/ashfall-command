@@ -1,22 +1,11 @@
 import { create } from 'zustand'
 import type { NationId, UnitCategory } from '@/types/game'
 
-// ── Fallback types (until @/types/scenario exists) ──────────────────
-
 export interface FreeModeUnit {
   catalogId: string
   name: string
   category: UnitCategory
   cost_millions: number
-}
-
-export interface GameModeConfig {
-  mode: 'scenario' | 'free'
-  playerNation: NationId
-  scenarioId?: string
-  freeBudget?: number
-  freeUnits?: FreeModeUnit[]
-  freeEnemyUnits?: FreeModeUnit[]
 }
 
 // ── Store ───────────────────────────────────────────────────────────
@@ -35,18 +24,16 @@ interface MenuState {
   setSelectedNation: (nation: NationId) => void
   setSelectedScenarioId: (id: string | null) => void
   setMapCenter: (center: { longitude: number; latitude: number; zoom: number } | null) => void
-  setFreeBudget: (budget: number) => void
   addFreeUnit: (unit: FreeModeUnit) => void
   removeFreeUnit: (index: number) => void
   addFreeEnemyUnit: (unit: FreeModeUnit) => void
   removeFreeEnemyUnit: (index: number) => void
   resetFreeMode: () => void
-  getGameConfig: (scenarioId?: string) => GameModeConfig
 }
 
 const DEFAULT_BUDGET = 15_000 // millions USD
 
-export const useMenuStore = create<MenuState>((set, get) => ({
+export const useMenuStore = create<MenuState>((set) => ({
   screen: 'start',
   selectedMode: null,
   selectedNation: 'usa',
@@ -65,8 +52,6 @@ export const useMenuStore = create<MenuState>((set, get) => ({
   setSelectedScenarioId: (id) => set({ selectedScenarioId: id }),
 
   setMapCenter: (center) => set({ mapCenter: center }),
-
-  setFreeBudget: (budget) => set({ freeBudget: budget }),
 
   addFreeUnit: (unit) =>
     set((s) => {
@@ -93,16 +78,4 @@ export const useMenuStore = create<MenuState>((set, get) => ({
 
   resetFreeMode: () =>
     set({ freeBudget: DEFAULT_BUDGET, freeUnits: [], freeEnemyUnits: [] }),
-
-  getGameConfig: (scenarioId) => {
-    const s = get()
-    return {
-      mode: s.selectedMode ?? 'scenario',
-      playerNation: s.selectedNation,
-      scenarioId,
-      freeBudget: s.freeBudget,
-      freeUnits: s.freeUnits,
-      freeEnemyUnits: s.freeEnemyUnits,
-    }
-  },
 }))

@@ -1,4 +1,4 @@
-import type { GameState, NationId, UnitId } from '@/types/game'
+import type { GameState, NationId } from '@/types/game'
 import type { Command } from '@/types/commands'
 import type { SeededRNG } from '../utils/rng'
 import { weaponSpecs } from '@/data/weapons/missiles'
@@ -7,12 +7,21 @@ import { processDroneSwarm, getDroneAmmo } from './drone-ai'
 
 type AIPhase = 'PEACETIME' | 'ALERT' | 'DEFENSIVE' | 'OFFENSIVE' | 'ATTRITION'
 
+/** Ticks spent in ALERT (setting units weapons_free) before DEFENSIVE operations begin */
+const ALERT_DURATION_TICKS = 60
+/** At war this long without escalating via retaliation → initiate OFFENSIVE anyway */
+const OFFENSIVE_AFTER_WAR_TICKS = 1800
+
 interface AIState {
   phase: AIPhase
   lastRetaliationTick: number
   salvosLaunched: number
   /** Track attacks received to trigger escalation */
   attacksReceived: number
+  /** Watermark into GameState.attackCounters — only deltas count as new attacks */
+  lastSeenAttackCounter: number
+  /** Tick when this nation entered its current war (-1 = at peace) */
+  warStartTick: number
 }
 
 const aiStates = new Map<NationId, AIState>()
@@ -22,10 +31,18 @@ export function resetAIState(): void {
   aiStates.clear()
 }
 
-function getAIState(nation: NationId): AIState {
+function getAIState(nation: NationId, state: GameState): AIState {
   let s = aiStates.get(nation)
   if (!s) {
-    s = { phase: 'PEACETIME', lastRetaliationTick: -999, salvosLaunched: 0, attacksReceived: 0 }
+    s = {
+      phase: 'PEACETIME',
+      lastRetaliationTick: -999,
+      salvosLaunched: 0,
+      attacksReceived: 0,
+      // Seed at the current counter so a loaded save doesn't replay its whole attack history
+      lastSeenAttackCounter: state.attackCounters?.[nation] ?? 0,
+      warStartTick: -1,
+    }
     aiStates.set(nation, s)
   }
   return s
@@ -70,17 +87,17 @@ export function processAI(state: GameState, rng: SeededRNG): Command[] {
   for (const nation of Object.values(state.nations)) {
     if (nation.id === state.playerNation) continue // player-controlled
 
-    const ai = getAIState(nation.id)
+    const ai = getAIState(nation.id, state)
     const enemyNation = state.playerNation
 
-    // Check for new attacks against this nation
-    const newAttacks = state.pendingEvents.filter(e =>
-      (e.type === 'MISSILE_IMPACT' && isOwnUnit(state, e.targetId, nation.id)) ||
-      (e.type === 'UNIT_DESTROYED' && isOwnUnit(state, e.unitId, nation.id)),
-    )
+    // New attacks since last tick — counter delta, NOT pendingEvents (that's the UI delivery
+    // buffer, drained on poll cadence, so reading it re-counts events and breaks determinism)
+    const counter = state.attackCounters?.[nation.id] ?? 0
+    const newAttacks = counter - ai.lastSeenAttackCounter
+    ai.lastSeenAttackCounter = counter
 
-    if (newAttacks.length > 0) {
-      ai.attacksReceived += newAttacks.length
+    if (newAttacks > 0) {
+      ai.attacksReceived += newAttacks
 
       // Auto-declare war when attacked — no nation absorbs strikes without responding
       if (!nation.atWar.includes(enemyNation)) {
@@ -131,6 +148,8 @@ export function processAI(state: GameState, rng: SeededRNG): Command[] {
           }
           ai.lastRetaliationTick = state.time.tick
           ai.attacksReceived = 0
+          // Retaliation counts toward escalation — without this OFFENSIVE is unreachable
+          if (salvoCommands.length > 0) ai.salvosLaunched++
         }
         break
 
@@ -172,19 +191,28 @@ function updatePhase(ai: AIState, state: GameState, nationId: NationId): void {
   const nation = state.nations[nationId]
   const atWar = nation.atWar.length > 0
 
+  if (!atWar) {
+    ai.warStartTick = -1
+    ai.salvosLaunched = 0
+    ai.phase = ai.attacksReceived > 0 ? 'ALERT' : 'PEACETIME'
+    return
+  }
+
+  if (ai.warStartTick < 0) ai.warStartTick = state.time.tick
+  const ticksAtWar = state.time.tick - ai.warStartTick
+
   const totalAmmo = getTotalOffensiveAmmo(state, nationId)
   const unitsLost = countDestroyedUnits(state, nationId)
 
-  if (!atWar && ai.attacksReceived === 0) {
-    ai.phase = 'PEACETIME'
-  } else if (!atWar && ai.attacksReceived > 0) {
-    ai.phase = 'ALERT'
-  } else if (atWar && ai.salvosLaunched < 2) {
-    ai.phase = 'DEFENSIVE'
-  } else if (atWar && totalAmmo > 20 && unitsLost < 10) {
-    ai.phase = 'OFFENSIVE'
-  } else {
+  if (totalAmmo <= 20 || unitsLost >= 10) {
     ai.phase = 'ATTRITION'
+  } else if (ai.salvosLaunched >= 2 || ticksAtWar > OFFENSIVE_AFTER_WAR_TICKS) {
+    ai.phase = 'OFFENSIVE'
+  } else if (ticksAtWar > ALERT_DURATION_TICKS) {
+    ai.phase = 'DEFENSIVE'
+  } else {
+    // War just started — go weapons_free across the force before operations
+    ai.phase = 'ALERT'
   }
 }
 
@@ -269,11 +297,6 @@ function targetPriority(unit: { category: string }): number {
     case 'submarine': return 3
     default: return 1
   }
-}
-
-function isOwnUnit(state: GameState, unitId: UnitId, nationId: NationId): boolean {
-  const unit = state.units.get(unitId)
-  return unit?.nation === nationId
 }
 
 function getTotalOffensiveAmmo(state: GameState, nationId: NationId): number {

@@ -74,7 +74,7 @@ export default function GameMap() {
   const showElevation = useUIStore((s) => s.showElevation)
   const mapMode = useUIStore((s) => s.mapMode)
 
-  const mapStyle = useMemo(() => getMapStyle(mapMode, false), [mapMode])
+  const mapStyle = useMemo(() => getMapStyle(mapMode), [mapMode])
 
   // Targeting state from strike-store (not ui-store compat shims)
   const targetUnitId = useStrikeStore((s) => s.targetUnitId)
@@ -342,7 +342,7 @@ export default function GameMap() {
     const pNation = useGameStore.getState().viewState.playerNation
     // Find launcher and target for the route
     const strikeState = useStrikeStore.getState()
-    const launcherUnit = units.find(u => u.id === (useUIStore.getState().selectedUnitId))
+    const launcherUnit = units.find(u => u.id === (strikeState.activeLauncherId ?? useUIStore.getState().selectedUnitId))
     const targetUnit = units.find(u => u.id === strikeState.targetUnitId)
     if (!launcherUnit || !targetUnit) return []
 

@@ -4,8 +4,15 @@ import { sendCommand } from '@/store/bridge'
 import { bearing } from '@/engine/utils/geo'
 import { getMainThreadGrid } from './layers/LOSLayer'
 import { destination } from '@turf/destination'
+import type { ViewUnit } from '@/types/view'
 
-const FIXED_CATEGORIES = new Set(['airbase', 'naval_base'])
+const MOBILE_CATEGORIES = new Set<ViewUnit['category']>(['aircraft', 'ship', 'submarine', 'carrier_group'])
+
+// Land units expose a readiness lifecycle only when they can pack up and move;
+// fixed installations (bases, minefields, coastal batteries, EW radar) never have one
+export function isUnitMovable(unit: Pick<ViewUnit, 'category' | 'readiness'>): boolean {
+  return MOBILE_CATEGORIES.has(unit.category) || unit.readiness != null
+}
 const OPTIMIZE_RADIUS_KM = 30
 const OPTIMIZE_SAMPLES = 36 // sample every 10 degrees at 3 radii
 
@@ -63,7 +70,7 @@ export default function ContextMenu({ x, y, lngLat, shiftKey, onClose }: Context
 
   if (!unit) return null
 
-  const canMove = !FIXED_CATEGORIES.has(unit.category)
+  const canMove = isUnitMovable(unit)
   const hasRadar = unit.sensors?.some(s => s.type === 'radar')
   const hasSectorRadar = unit.sensors?.some(
     (s) => s.type === 'radar' && s.sector_deg != null && s.sector_deg < 360,

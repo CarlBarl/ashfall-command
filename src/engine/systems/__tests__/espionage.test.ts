@@ -51,7 +51,6 @@ function makeState(units: Unit[], budgets: { usa?: IntelBudget; iran?: IntelBudg
     },
     units: unitMap,
     missiles: new Map(),
-    engagements: new Map(),
     supplyLines: new Map(),
     shippingLanes: new Map(),
     events: [],

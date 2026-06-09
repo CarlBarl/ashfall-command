@@ -2,6 +2,26 @@ import { describe, it, expect } from 'vitest'
 import { buildSensorNetwork, detectThreatsNetworked, isDetectedByELINT } from '../sensor-network'
 import type { GameState, Unit, Missile, NationId } from '@/types/game'
 
+function makeMissile(overrides: Partial<Missile> & { id: string }): Missile {
+  return {
+    weaponId: 'shahab3',
+    launcherId: 'ir_launcher',
+    targetId: 'us_target',
+    nation: 'iran',
+    path: [[51, 25.2], [51, 25.19]],
+    timestamps: [0, 60_000],
+    status: 'inflight',
+    launchTime: 0,
+    eta: 60_000,
+    altitude_m: 20_000,
+    phase: 'midcourse',
+    speed_current_mach: 5,
+    fuel_remaining_sec: 600,
+    is_interceptor: false,
+    ...overrides,
+  }
+}
+
 // ── Helpers ─────────────────────────────────────────────────────
 
 function makeUnit(overrides: Partial<Unit> & { id: string; nation: NationId }): Unit {
@@ -39,7 +59,6 @@ function makeState(units: Unit[], missiles: Missile[] = []): GameState {
     },
     units: unitMap,
     missiles: missileMap,
-    engagements: new Map(),
     supplyLines: new Map(),
     shippingLanes: new Map(),
     events: [],
@@ -151,6 +170,62 @@ describe('detectThreatsNetworked', () => {
     const threats = detectThreatsNetworked(state, sam, network)
     // No missiles in flight → no threats
     expect(threats).toHaveLength(0)
+  })
+
+  it('resolves quality per receiver: own radar, shared hub = tracked, nation picture = detected', () => {
+    // Detector sees the missile (~22km) and feeds hub_a
+    const detector = makeUnit({
+      id: 'detector',
+      nation: 'usa',
+      position: { lat: 25, lng: 51 },
+      sensors: [{ type: 'radar', range_km: 100, detection_prob: 0.95 }],
+    })
+    const hubA = makeUnit({
+      id: 'hub_a',
+      nation: 'usa',
+      position: { lat: 25, lng: 51.2 },
+      sensors: [{ type: 'radar', range_km: 1, detection_prob: 0.95 }],
+      datalink_range_km: 100,
+    })
+    // Shares hub_a with the detector, but can't see the missile itself (10km radar)
+    const samA = makeUnit({
+      id: 'sam_a',
+      nation: 'usa',
+      position: { lat: 25, lng: 51.5 },
+      sensors: [{ type: 'radar', range_km: 10, detection_prob: 0.95 }],
+    })
+    // Far east on its own hub — no shared hub with the detector
+    const hubB = makeUnit({
+      id: 'hub_b',
+      nation: 'usa',
+      position: { lat: 25, lng: 53.1 },
+      sensors: [{ type: 'radar', range_km: 1, detection_prob: 0.95 }],
+      datalink_range_km: 50,
+    })
+    const samB = makeUnit({
+      id: 'sam_b',
+      nation: 'usa',
+      position: { lat: 25, lng: 53 },
+      sensors: [{ type: 'radar', range_km: 10, detection_prob: 0.95 }],
+    })
+
+    const missile = makeMissile({ id: 'inbound' })
+    const state = makeState([detector, hubA, samA, hubB, samB], [missile])
+    state.time.timestamp = 30_000 // mid-flight on the missile's [0, 60000] timestamps
+
+    const network = buildSensorNetwork(state)
+
+    const detThreats = detectThreatsNetworked(state, detector, network)
+    expect(detThreats).toHaveLength(1)
+    expect(detThreats[0].networkQuality).toBe('own')
+
+    const aThreats = detectThreatsNetworked(state, samA, network)
+    expect(aThreats).toHaveLength(1)
+    expect(aThreats[0].networkQuality).toBe('tracked')
+
+    const bThreats = detectThreatsNetworked(state, samB, network)
+    expect(bThreats).toHaveLength(1)
+    expect(bThreats[0].networkQuality).toBe('detected')
   })
 })
 

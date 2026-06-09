@@ -2,7 +2,7 @@ import { useState, type MouseEvent } from 'react'
 import Panel from '@/components/common/Panel'
 import { useGameStore } from '@/store/game-store'
 import { useUIStore } from '@/store/ui-store'
-import type { NationId, UnitCategory } from '@/types/game'
+import type { NationId, UnitCategory, UnitStatus } from '@/types/game'
 import type { ViewUnit } from '@/types/view'
 
 const CATEGORY_LABELS: Record<UnitCategory, string> = {
@@ -17,17 +17,14 @@ const CATEGORY_LABELS: Record<UnitCategory, string> = {
   minefield: 'Minefields',
 }
 
-const STATUS_COLORS: Record<string, string> = {
+const STATUS_COLORS: Record<UnitStatus, string> = {
   ready: 'var(--status-ready)',
   engaged: 'var(--status-engaged)',
   moving: 'var(--status-moving)',
   damaged: 'var(--status-damaged)',
   destroyed: 'var(--status-destroyed)',
   reloading: 'var(--status-engaged)',
-  active: 'var(--status-ready)',
-  routing: 'var(--status-damaged)',
-  encircled: 'var(--status-engaged)',
-  reserve: 'var(--text-muted)',
+  repairing: 'var(--status-moving)',
 }
 
 const NATION_COLORS: Record<string, string> = {
@@ -44,7 +41,7 @@ function getNationColor(id: string): string {
   return NATION_COLORS[id] ?? 'var(--text-accent)'
 }
 
-function StatusDot({ status }: { status: string }) {
+function StatusDot({ status }: { status: UnitStatus }) {
   return (
     <span style={{
       display: 'inline-block',
@@ -199,7 +196,6 @@ function NationSection({
   isPlayerNation: boolean
 }) {
   const [collapsed, setCollapsed] = useState(false)
-  const hasModernUnits = units.length > 0
 
   const byCategory = new Map<UnitCategory, ViewUnit[]>()
   for (const unit of units) {
@@ -220,7 +216,7 @@ function NationSection({
         alignItems: 'center',
         gap: 6,
         padding: '4px 4px',
-        borderBottom: `1px solid ${nationColor}44`,
+        borderBottom: `1px solid color-mix(in srgb, ${nationColor} 27%, transparent)`,
         marginBottom: 4,
         userSelect: 'none',
       }}>
@@ -266,7 +262,7 @@ function NationSection({
           </button>
         )}
       </div>
-      {!collapsed && hasModernUnits && Array.from(byCategory.entries()).map(([cat, catUnits]) => (
+      {!collapsed && Array.from(byCategory.entries()).map(([cat, catUnits]) => (
         <CategorySection
           key={cat}
           label={CATEGORY_LABELS[cat] ?? cat}

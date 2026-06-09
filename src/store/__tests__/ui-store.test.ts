@@ -9,7 +9,7 @@ beforeEach(() => {
   store.clearSelection()
   store.hoverUnit(null)
   // Reset map toggles to false
-  if (store.showRangeRings) store.toggleRangeRings()
+  if (store.rngFilter !== 'off') useUIStore.setState({ rngFilter: 'off' })
   if (store.showElevation) store.toggleElevation()
   if (store.losFilter !== 'off') useUIStore.setState({ losFilter: 'off' })
   if (store.showIntel) store.toggleIntel()
@@ -138,31 +138,41 @@ describe('toggleElevation', () => {
   })
 })
 
-describe('cycleLOSFilter', () => {
-  it('cycles through off → both → friendly → enemy → off', () => {
+describe('losFilter', () => {
+  it('defaults to off and holds every filter value', () => {
     expect(useUIStore.getState().losFilter).toBe('off')
-    useUIStore.getState().cycleLOSFilter()
+    for (const f of ['both', 'friendly', 'enemy', 'off'] as const) {
+      useUIStore.setState({ losFilter: f })
+      expect(useUIStore.getState().losFilter).toBe(f)
+    }
+  })
+
+  it('toggles off ↔ both via the keyboard-shortcut update', () => {
+    const toggle = () =>
+      useUIStore.setState((s) => ({ losFilter: s.losFilter === 'off' ? 'both' : 'off' }))
+    toggle()
     expect(useUIStore.getState().losFilter).toBe('both')
-    useUIStore.getState().cycleLOSFilter()
-    expect(useUIStore.getState().losFilter).toBe('friendly')
-    useUIStore.getState().cycleLOSFilter()
-    expect(useUIStore.getState().losFilter).toBe('enemy')
-    useUIStore.getState().cycleLOSFilter()
+    toggle()
     expect(useUIStore.getState().losFilter).toBe('off')
   })
 })
 
-describe('toggleRangeRings', () => {
-  it('toggles range rings on', () => {
-    expect(useUIStore.getState().showRangeRings).toBe(false)
-    useUIStore.getState().toggleRangeRings()
-    expect(useUIStore.getState().showRangeRings).toBe(true)
+describe('rngFilter', () => {
+  it('defaults to off and holds every filter value', () => {
+    expect(useUIStore.getState().rngFilter).toBe('off')
+    for (const f of ['both', 'friendly', 'enemy', 'off'] as const) {
+      useUIStore.setState({ rngFilter: f })
+      expect(useUIStore.getState().rngFilter).toBe(f)
+    }
   })
 
-  it('toggles range rings off', () => {
-    useUIStore.getState().toggleRangeRings()
-    useUIStore.getState().toggleRangeRings()
-    expect(useUIStore.getState().showRangeRings).toBe(false)
+  it('toggles off ↔ both via the keyboard-shortcut update', () => {
+    const toggle = () =>
+      useUIStore.setState((s) => ({ rngFilter: s.rngFilter === 'off' ? 'both' : 'off' }))
+    toggle()
+    expect(useUIStore.getState().rngFilter).toBe('both')
+    toggle()
+    expect(useUIStore.getState().rngFilter).toBe('off')
   })
 })
 
@@ -235,23 +245,5 @@ describe('toggleLeftPanel', () => {
     expect(state.leftPanel).toBe('stats')
     expect(state.showOrbat).toBe(false)
     expect(state.showStats).toBe(true)
-  })
-})
-
-describe('togglePanel (legacy compat)', () => {
-  it('toggles left panel via string name', () => {
-    useUIStore.getState().togglePanel('orbat')
-    expect(useUIStore.getState().leftPanel).toBe('orbat')
-    expect(useUIStore.getState().showOrbat).toBe(true)
-
-    useUIStore.getState().togglePanel('orbat')
-    expect(useUIStore.getState().leftPanel).toBeNull()
-    expect(useUIStore.getState().showOrbat).toBe(false)
-  })
-
-  it('ignores unknown panel names', () => {
-    useUIStore.getState().togglePanel('unknown_panel')
-    const state = useUIStore.getState()
-    expect(state.leftPanel).toBeNull()
   })
 })

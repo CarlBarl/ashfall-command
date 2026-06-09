@@ -30,6 +30,11 @@ const CATEGORY_PRIORITY: Record<string, number> = {
   aircraft: 3,
 }
 
+// Excluded from autonomous fire: SAMs are combat.ts's job; strategic land-attack
+// (cruise/ballistic) is the player's verb via the strike panel; loitering munitions
+// belong to drone-ai's swarm logic (its cooldowns + never-empty rules).
+const EXCLUDED_WEAPON_TYPES = new Set(['sam', 'cruise_missile', 'ballistic_missile', 'loitering_munition'])
+
 /** Process autonomous offensive fire for all weapons_free units at war */
 export function processFriendlyAI(state: GameState, rng: SeededRNG): Command[] {
   const commands: Command[] = []
@@ -37,6 +42,8 @@ export function processFriendlyAI(state: GameState, rng: SeededRNG): Command[] {
   for (const unit of state.units.values()) {
     if (unit.status === 'destroyed') continue
     if (unit.roe !== 'weapons_free') continue
+    // launchMissile rejects non-deployed launchers — skip them so the cooldown isn't burned for nothing
+    if (unit.readiness && unit.readiness !== 'deployed') continue
 
     // Must be at war
     const nation = state.nations[unit.nation]
@@ -46,10 +53,10 @@ export function processFriendlyAI(state: GameState, rng: SeededRNG): Command[] {
     const lastFire = lastFireTick.get(unit.id) ?? -FIRE_COOLDOWN_TICKS
     if (state.time.tick - lastFire < FIRE_COOLDOWN_TICKS) continue
 
-    // Find offensive weapons with ammo
+    // Find tactical offensive weapons with ammo
     const offensiveWeapons = unit.weapons.filter(w => {
       const spec = weaponSpecs[w.weaponId]
-      return spec && spec.type !== 'sam' && w.count > 0
+      return spec && !EXCLUDED_WEAPON_TYPES.has(spec.type) && w.count > 0
     })
 
     if (offensiveWeapons.length === 0) continue

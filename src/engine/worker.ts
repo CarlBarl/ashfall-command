@@ -11,11 +11,6 @@ const loop = new GameLoop(engine)
 loop.start()
 
 const api = {
-  /** Initialize the default scenario (backward compatible) */
-  initDefaultScenario(playerNation: NationId = 'usa'): void {
-    engine.initDefaultScenario(playerNation)
-  },
-
   /** Initialize from custom data (scenario/free mode) */
   initFromData(
     playerNation: NationId,
@@ -43,18 +38,7 @@ const api = {
 
   /** For save/load */
   getFullState(): string {
-    const s = engine.state
-    return JSON.stringify({
-      playerNation: s.playerNation,
-      time: s.time,
-      nations: s.nations,
-      units: Array.from(s.units.entries()),
-      missiles: Array.from(s.missiles.entries()),
-      engagements: Array.from(s.engagements.entries()),
-      supplyLines: Array.from(s.supplyLines.entries()),
-      shippingLanes: Array.from(s.shippingLanes.entries()),
-      events: s.events,
-    })
+    return engine.getFullStateJson()
   },
 
   loadState(json: string): void {

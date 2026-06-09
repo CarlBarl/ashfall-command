@@ -43,7 +43,6 @@ function makeState(units: Unit[], tick = 60): GameState {
     },
     units: new Map(units.map(u => [u.id, u])),
     missiles: new Map(),
-    engagements: new Map(),
     supplyLines: new Map(),
     shippingLanes: new Map(),
     events: [],

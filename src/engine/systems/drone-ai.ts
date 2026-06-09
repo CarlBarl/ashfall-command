@@ -200,20 +200,27 @@ function allocateDrones(
 ): Command[] {
   const commands: Command[] = []
 
+  // Only consider targets at least one launcher weapon can reach — otherwise a
+  // single out-of-range high-priority target starves the whole swarm
+  const reachableTargets = targets.filter(t =>
+    launchers.some(l => l.weapons.some(w => haversine(l.position, t.position) <= w.range_km)),
+  )
+  if (reachableTargets.length === 0) return commands
+
   // Determine how many targets to engage
   let targetCount: number
   if (maxDrones <= 10) {
-    // Defensive: concentrate on nearest high-value target
+    // Defensive: concentrate on the highest-priority reachable target
     targetCount = 1
   } else if (maxDrones <= 30) {
     // Offensive: spread across 2-3 targets
-    targetCount = Math.min(rng.int(2, 3), targets.length)
+    targetCount = Math.min(rng.int(2, 3), reachableTargets.length)
   } else {
     // Saturation: hit all reachable targets
-    targetCount = targets.length
+    targetCount = reachableTargets.length
   }
 
-  const selectedTargets = targets.slice(0, targetCount)
+  const selectedTargets = reachableTargets.slice(0, targetCount)
 
   // Calculate drones per target (weighted by priority)
   const totalPriority = selectedTargets.reduce((sum, t) => sum + t.priority, 0)

@@ -21,11 +21,10 @@ const CATEGORY_LABELS: Record<UnitCategory, string> = {
   minefield: 'Minefields',
 }
 
-/** Return the enemy catalog for the player's nation (modern scenarios only) */
 function getEnemyCatalog(playerNation: string): UnitCatalogEntry[] {
   if (playerNation === 'usa') return iranCatalog
   if (playerNation === 'iran') return usaCatalog
-  return [] // WW2 / other scenarios: no modern enemy catalog
+  return []
 }
 
 function CatalogCategory({
@@ -240,7 +239,7 @@ function EstimateRow({
   )
 }
 
-export default function IntelPanel() {
+export default function IntelPanel({ onClose }: { onClose?: () => void }) {
   const estimatedUnits = useIntelStore((s) => s.estimatedUnits)
   const placingCatalogId = useIntelStore((s) => s.placingCatalogId)
   const setPlacing = useIntelStore((s) => s.setPlacing)
@@ -268,7 +267,7 @@ export default function IntelPanel() {
   return (
     <Panel
       title="INTELLIGENCE"
-      onClose={toggleIntel}
+      onClose={onClose ?? toggleIntel}
       style={{
         position: 'absolute',
         top: 44,
@@ -281,7 +280,7 @@ export default function IntelPanel() {
       {/* Section 0: Budget Allocation */}
       <IntelBudgetPanel />
 
-      {/* Section A: Enemy Catalog Browser (modern scenarios only) */}
+      {/* Section A: Enemy Catalog Browser */}
       {catalog.length > 0 && <div style={{ marginBottom: 8 }}>
         <div
           style={{
@@ -289,7 +288,7 @@ export default function IntelPanel() {
             alignItems: 'center',
             gap: 6,
             padding: '4px 4px',
-            borderBottom: '1px solid var(--status-damaged)44',
+            borderBottom: '1px solid color-mix(in srgb, var(--status-damaged) 27%, transparent)',
             marginBottom: 4,
             userSelect: 'none',
           }}

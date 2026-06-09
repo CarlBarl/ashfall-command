@@ -1,11 +1,9 @@
 import type { GameState, GameEvent, NationId, Unit, UnitId } from '@/types/game'
 import type { GameViewState, ViewUnit } from '@/types/view'
 import type { Command } from '@/types/commands'
-import { usaUnits } from '@/data/units/usa-orbat'
-import { iranUnits } from '@/data/units/iran-orbat'
 import { SeededRNG } from './utils/rng'
 import { processMovement } from './systems/movement'
-import { processCombat, launchMissile, launchSAM, resetCombatState } from './systems/combat'
+import { processCombat, launchMissile, launchSAM, resetCombatState, setCombatCounters } from './systems/combat'
 import { processAI, resetAIState, orientSAMRadars } from './systems/ai'
 import { processEconomy } from './systems/economy'
 import { processOrders, resetOrdersState } from './systems/orders'
@@ -14,8 +12,6 @@ import { processLogistics, resetLogisticsState } from './systems/logistics'
 import { processPointDefense, resetPointDefenseState } from './systems/point-defense'
 import { processRepair, resetRepairState } from './systems/repair'
 import { processReadiness } from './systems/readiness'
-import { usaBaseSupply, usaSupplyLines } from '@/data/supply/usa-supply'
-import { iranBaseSupply, iranSupplyLines } from '@/data/supply/iran-supply'
 // Register drone weapon specs + patch interceptor pK values
 import '@/data/weapons/drones'
 import { patchDronePK } from '@/data/weapons/drone-pk-patch'
@@ -32,6 +28,9 @@ import { shippingLanes as defaultShippingLanes } from '@/data/shipping/shipping-
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
 const SCENARIO_START = new Date('2026-06-15T06:00:00Z').getTime()
 
+/** Bump whenever the save format changes incompatibly — loadState rejects mismatches */
+export const SAVE_SCHEMA_VERSION = 1
+
 function createEmptyState(): GameState {
   return {
     playerNation: 'usa',
@@ -43,11 +42,11 @@ function createEmptyState(): GameState {
     },
     units: new Map(),
     missiles: new Map(),
-    engagements: new Map(),
     supplyLines: new Map(),
     shippingLanes: new Map(),
     events: [],
     pendingEvents: [],
+    attackCounters: {},
   }
 }
 
@@ -70,91 +69,6 @@ export class GameEngine {
     this.elevationGrid = grid
   }
 
-  /** Initialize game from the default scenario (backward-compatible) */
-  initDefaultScenario(playerNation: NationId = 'usa'): void {
-    const units = new Map<UnitId, Unit>()
-    for (const u of [...usaUnits, ...iranUnits]) {
-      units.set(u.id, { ...u })
-    }
-
-    this.state = {
-      playerNation,
-      initialized: true,
-      time: {
-        tick: 0,
-        timestamp: SCENARIO_START,
-        speed: 0,
-        tickIntervalMs: 100,
-      },
-      nations: {
-        usa: {
-          id: 'usa',
-          name: 'United States of America',
-          economy: {
-            gdp_billions: 28000,
-            military_budget_billions: 886,
-            military_budget_pct_gdp: 3.2,
-            oil_revenue_billions: 0,
-            sanctions_impact: 0,
-            war_cost_per_day_millions: 0,
-            reserves_billions: 800,
-          },
-          relations: { usa: 100, iran: -60 },
-          atWar: [],
-        },
-        iran: {
-          id: 'iran',
-          name: 'Islamic Republic of Iran',
-          economy: {
-            gdp_billions: 400,
-            military_budget_billions: 25,
-            military_budget_pct_gdp: 6.3,
-            oil_revenue_billions: 50,
-            sanctions_impact: 0.3,
-            war_cost_per_day_millions: 0,
-            reserves_billions: 120,
-          },
-          relations: { usa: -60, iran: 100 },
-          atWar: [],
-        },
-      },
-      units,
-      missiles: new Map(),
-      engagements: new Map(),
-      supplyLines: new Map<string, import('@/types/game').SupplyLine>(),
-      shippingLanes: new Map(),
-      events: [],
-      pendingEvents: [],
-    }
-
-    // Initialize supply
-    for (const [unitId, stocks] of Object.entries({ ...usaBaseSupply, ...iranBaseSupply })) {
-      const unit = this.state.units.get(unitId)
-      if (unit) {
-        unit.supplyStocks = stocks
-        unit.logistics = 100
-      }
-    }
-    for (const line of [...usaSupplyLines, ...iranSupplyLines]) {
-      this.state.supplyLines.set(line.id, { ...line })
-    }
-    for (const lane of defaultShippingLanes) {
-      this.state.shippingLanes.set(lane.id, { ...lane })
-    }
-
-    // Initialize intel budgets
-    // USA: 15% total, balanced allocation
-    this.state.nations.usa.intelBudget = { total_pct: 15, humint_pct: 33, sigint_pct: 34, satellite_pct: 33 }
-    // Iran: 10% total, more HUMINT focused
-    this.state.nations.iran.intelBudget = { total_pct: 10, humint_pct: 50, sigint_pct: 30, satellite_pct: 20 }
-
-    // Orient sector-limited SAMs toward enemy before first tick
-    orientSAMRadars(this.state)
-
-    // Initialize satellite constellations
-    this.initSatellites()
-  }
-
   /** Initialize from scenario data (used by the game mode menu) */
   initFromData(
     playerNation: NationId,
@@ -164,6 +78,10 @@ export class GameEngine {
     baseSupply: Record<string, import('@/types/game').WeaponStock[]>,
     startDate?: string,
   ): void {
+    // The worker holds one engine for the whole session — clear module-level
+    // system state so a new game doesn't inherit the previous game's
+    this.resetAllSystems()
+
     const units = new Map<UnitId, Unit>()
     for (const u of unitList) {
       units.set(u.id, { ...u })
@@ -178,11 +96,11 @@ export class GameEngine {
       nations,
       units,
       missiles: new Map(),
-      engagements: new Map(),
       supplyLines: new Map<string, import('@/types/game').SupplyLine>(),
       shippingLanes: new Map(),
       events: [],
       pendingEvents: [],
+      attackCounters: {},
     }
 
     for (const [unitId, stocks] of Object.entries(baseSupply)) {
@@ -228,11 +146,8 @@ export class GameEngine {
     // Build sensor network graph for this tick (used by combat for networked detection)
     this.sensorNetwork = buildSensorNetwork(state, this.elevationGrid)
 
-    // ROE enforcement + command queue before combat
-    const orderCmds = processOrders(state, this.elevationGrid)
-    for (const cmd of orderCmds) {
-      this.executeCommand(cmd)
-    }
+    // ROE enforcement before combat
+    processOrders(state, this.elevationGrid)
 
     processCombat(state, this.rng, this.elevationGrid, this.sensorNetwork)
     processPointDefense(state, this.rng)
@@ -393,13 +308,35 @@ export class GameEngine {
       shippingLanes: Array.from(state.shippingLanes.values()),
       events,
       pendingEventCount: state.events.length,
-      satelliteDetectedUnitIds: Array.from(getSatelliteDetections(state.time.tick)),
+      satelliteDetectedUnitIds: Array.from(getSatelliteDetections(state.playerNation, state.time.tick)),
     }
+  }
+
+  /** Serialize the full engine state for saving */
+  getFullStateJson(): string {
+    const s = this.state
+    return JSON.stringify({
+      version: SAVE_SCHEMA_VERSION,
+      playerNation: s.playerNation,
+      time: s.time,
+      nations: s.nations,
+      attackCounters: s.attackCounters ?? {},
+      units: Array.from(s.units.entries()),
+      missiles: Array.from(s.missiles.entries()),
+      supplyLines: Array.from(s.supplyLines.entries()),
+      shippingLanes: Array.from(s.shippingLanes.entries()),
+      events: s.events,
+    })
   }
 
   /** Load a previously saved state */
   loadState(json: string): void {
     const raw = JSON.parse(json)
+    if (raw.version !== SAVE_SCHEMA_VERSION) {
+      throw new Error(
+        `Incompatible save file: schema version ${raw.version ?? 'missing (pre-release save)'}, expected ${SAVE_SCHEMA_VERSION}`,
+      )
+    }
     const units = new Map(raw.units as [string, Unit][])
     // Backfill new fields for saves from older versions
     for (const unit of units.values()) {
@@ -418,11 +355,11 @@ export class GameEngine {
       nations: raw.nations,
       units,
       missiles: new Map(raw.missiles),
-      engagements: new Map(raw.engagements),
       supplyLines: new Map(raw.supplyLines ?? []),
       shippingLanes: new Map(raw.shippingLanes ?? []),
       events: raw.events ?? [],
       pendingEvents: [],
+      attackCounters: raw.attackCounters ?? {},
     }
     // Backfill shipping lanes for old saves that didn't have them
     if (!raw.shippingLanes || raw.shippingLanes.length === 0) {
@@ -430,7 +367,33 @@ export class GameEngine {
         this.state.shippingLanes.set(lane.id, { ...lane })
       }
     }
+    // Backfill intel state for saves created before satellites/intelBudget existed
+    for (const nation of Object.values(this.state.nations)) {
+      if (!nation.intelBudget) {
+        nation.intelBudget = { total_pct: 10, humint_pct: 40, sigint_pct: 30, satellite_pct: 30 }
+      }
+    }
+    if (this.state.nations.usa && this.state.nations.iran &&
+        (!this.state.nations.usa.satellites || !this.state.nations.iran.satellites)) {
+      this.initSatellites()
+    }
+
     // Reset all module-level state that would otherwise persist across loads
+    this.resetAllSystems()
+    // Restore id counters above the loaded missiles so new launches can't overwrite them
+    let maxMissile = 0
+    let maxInterceptor = 0
+    for (const id of this.state.missiles.keys()) {
+      const m = /^m_(\d+)$/.exec(id)
+      if (m) maxMissile = Math.max(maxMissile, Number(m[1]))
+      const i = /^int_(\d+)$/.exec(id)
+      if (i) maxInterceptor = Math.max(maxInterceptor, Number(i[1]))
+    }
+    setCombatCounters(maxMissile, maxInterceptor)
+  }
+
+  /** Clear all module-level system state (the worker reuses one engine across games/loads) */
+  private resetAllSystems(): void {
     resetCombatState()
     resetAIState()
     resetFriendlyAIState()

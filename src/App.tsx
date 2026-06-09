@@ -96,7 +96,7 @@ export default function App() {
       case '1': sendCommand({ type: 'SET_SPEED', speed: 0.1 }); break   // 1s/s
       case '2': sendCommand({ type: 'SET_SPEED', speed: 6 }); break     // 1m/s
       case '3': sendCommand({ type: 'SET_SPEED', speed: 60 }); break    // 10m/s
-      case '4': sendCommand({ type: 'SET_SPEED', speed: 600 }); break   // 1h/s
+      case '4': sendCommand({ type: 'SET_SPEED', speed: 360 }); break   // 1h/s
       case '5': sendCommand({ type: 'SET_SPEED', speed: 3600 }); break  // 10h/s
 
       // Panels
@@ -110,10 +110,24 @@ export default function App() {
       case 'v': useUIStore.getState().toggleElevation(); break
       case 'm': useUIStore.getState().cycleMapMode(); break
 
-      // Selection
-      case 'Escape':
-        useUIStore.getState().clearSelection()
+      // Escape: cancel targeting/routing first, then close panels, then deselect
+      case 'Escape': {
+        const strike = useStrikeStore.getState()
+        if (strike.targetingMode || strike.routingMode) {
+          if (strike.targetingMode) strike.setTargetingMode(false)
+          if (strike.routingMode) strike.setRoutingMode(false)
+          break
+        }
+        const ui = useUIStore.getState()
+        if (ui.leftPanel !== null || ui.showIntel || strike.open) {
+          ui.setLeftPanel(null)
+          useUIStore.setState({ showIntel: false })
+          strike.closeStrike()
+          break
+        }
+        ui.clearSelection()
         break
+      }
     }
   }, [])
 
@@ -139,7 +153,7 @@ export default function App() {
         {mobilePanel === 'stats' && <StatsPanel />}
         {mobilePanel === 'econ' && <EconomyPanel />}
         {mobilePanel === 'events' && <AlertFeed />}
-        {mobilePanel === 'intel' && <IntelPanel />}
+        {mobilePanel === 'intel' && <IntelPanel onClose={() => setMobilePanel(null)} />}
         <MobileNav active={mobilePanel} onSelect={setMobilePanel} hasSelection={!!selectedUnitId} />
       </div>
     )

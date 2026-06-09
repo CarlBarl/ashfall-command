@@ -39,7 +39,6 @@ function makeState(units: Unit[]): GameState {
     },
     units: map,
     missiles: new Map(),
-    engagements: new Map(),
     supplyLines: new Map(),
     shippingLanes: new Map(),
     events: [],

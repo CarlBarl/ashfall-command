@@ -262,15 +262,6 @@ export interface Missile {
   networkQuality?: 'own' | 'tracked' | 'detected'
 }
 
-export interface Engagement {
-  id: string
-  interceptorUnitId: UnitId
-  missileId: string
-  weaponId: WeaponId
-  startTick: number
-  resolved: boolean
-}
-
 export interface ShippingLane {
   id: string
   name: string
@@ -294,12 +285,13 @@ export interface GameState {
   nations: Record<string, Nation>
   units: Map<UnitId, Unit>
   missiles: Map<string, Missile>
-  engagements: Map<string, Engagement>
   supplyLines: Map<string, SupplyLine>
   events: GameEvent[]
   /** Events accumulated since last getViewState() call */
   pendingEvents: GameEvent[]
   shippingLanes: Map<string, ShippingLane>
+  /** Cumulative missile impacts + unit losses per nation — combat writes, enemy AI reads for escalation */
+  attackCounters?: Record<string, number>
 }
 
 export type GameEvent =

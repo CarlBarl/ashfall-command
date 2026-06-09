@@ -1,4 +1,4 @@
-import type { NationId, Unit, Nation, ShippingLane, SupplyLine, WeaponStock, Position, UnitCategory } from './game'
+import type { NationId, Unit, Nation, ShippingLane, SupplyLine, WeaponStock, UnitCategory } from './game'
 
 export interface ScenarioDefinition {
   id: string
@@ -20,20 +20,6 @@ export interface ScenarioData {
   shippingLanes?: ShippingLane[]
 }
 
-export interface FreeModeConfig {
-  playerNation: NationId
-  budget: number                 // millions USD
-  selectedUnits: FreeModeUnit[]
-  enemyUnits?: FreeModeUnit[]    // optional — if not provided, AI places
-  rngSeed: number
-}
-
-export interface FreeModeUnit {
-  catalogId: string
-  position: Position
-  customName?: string
-}
-
 export interface UnitCatalogEntry {
   id: string
   name: string
@@ -43,7 +29,3 @@ export interface UnitCatalogEntry {
   description: string
   template: Omit<Unit, 'id' | 'position' | 'status' | 'waypoints' | 'subordinateIds' | 'maxHealth' | 'pointDefense'> & { maxHealth?: number; pointDefense?: Unit['pointDefense'] }
 }
-
-export type GameModeConfig =
-  | { mode: 'scenario'; scenarioId: string; playerNation: NationId }
-  | { mode: 'free'; config: FreeModeConfig }
