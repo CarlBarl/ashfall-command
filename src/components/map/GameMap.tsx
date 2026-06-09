@@ -4,7 +4,8 @@ import MapGL, { Layer, Source } from 'react-map-gl/maplibre'
 import type { MapRef, MapLayerMouseEvent } from 'react-map-gl/maplibre'
 import DeckOverlay from './DeckOverlay'
 import ContextMenu from './ContextMenu'
-import { createUnitLayer, getLastClusterMap } from './layers/UnitLayer'
+import type { PickingInfo } from '@deck.gl/core'
+import { createUnitLayer, createSatelliteDetectionLayer, getLastClusterMap } from './layers/UnitLayer'
 import ClusterPopup from './ClusterPopup'
 import type { UnitCluster } from './layers/cluster'
 import { createMissileLayers } from './layers/MissileLayer'
@@ -13,7 +14,7 @@ import { createWaypointLayers } from './layers/WaypointLayer'
 import { createIntelUnitLayers } from './layers/IntelLayer'
 import { createRouteLayers } from './layers/RouteLayer'
 // circle import removed — range rings handled by RangeRingLayer
-import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
+import { createRangeRingGeoJSONCached, ringSignature } from './layers/RangeRingLayer'
 import { createSupplyLineGeoJSON } from './layers/SupplyLineLayer'
 import { createShippingLaneGeoJSON } from './layers/ShippingLaneLayer'
 import { createMinefieldGeoJSON } from './layers/MinefieldLayer'
@@ -38,10 +39,6 @@ const DEFAULT_VIEW = {
   pitch: 0,
   bearing: 0,
 }
-
-// Theater countries no longer used in fill expression — kept as reference
-// const THEATER_COUNTRIES_MODERN = ['IRQ', 'SAU', 'ARE', 'QAT', 'BHR', 'KWT', 'OMN', 'AFG', 'PAK', 'TUR']
-// const THEATER_COUNTRIES_1939 = ['HUN', 'ROU', 'SVK', 'LTU', 'LVA', 'EST', 'FRA', 'ITA', 'DNK', 'SWE', 'CHE', 'BEL', 'NLD', 'YUG', 'BGR', 'FIN', 'RUS', 'NOR', 'GBR', 'GRC', 'TUR', 'ALB', 'LUX']
 
 interface CtxMenu {
   x: number
@@ -101,6 +98,8 @@ export default function GameMap() {
   const currentTick = useGameStore((s) => s.viewState.time.tick)
   const supplyLines = useGameStore((s) => s.viewState.supplyLines)
   const shippingLanes = useGameStore((s) => s.viewState.shippingLanes)
+  const playerNation = useGameStore((s) => s.viewState.playerNation)
+  const satelliteDetectedUnitIds = useGameStore((s) => s.viewState.satelliteDetectedUnitIds)
 
   useEffect(() => {
     fetch('/geo/ne_50m_admin_0.geojson')
@@ -210,35 +209,51 @@ export default function GameMap() {
     }
   }, [selectedUnitId])
 
+  // Set by the deck.gl overlay when a click hit a pickable object — both deck and
+  // maplibre receive every map click, so onMapClick must not treat unit clicks as empty-map clicks
+  const deckClickConsumedRef = useRef(false)
+  const onDeckClick = useCallback((info: PickingInfo) => {
+    if (info.layer) deckClickConsumedRef.current = true
+  }, [])
+
   const onMapClick = useCallback((e: MapLayerMouseEvent) => {
     setCtxMenu(null)
     setClusterPopup(null)
 
-    // Route planning mode: add waypoint on map click
-    const strikeState = useStrikeStore.getState()
-    if (strikeState.routingMode && e.lngLat) {
-      addRouteWaypoint({ lat: e.lngLat.lat, lng: e.lngLat.lng })
-      return // Don't do normal click processing
-    }
+    const lngLat = e.lngLat
+    // deck's click handler runs after this one in the same event dispatch — defer
+    // so clicks consumed by deck objects skip the waypoint/estimate/deselect logic
+    queueMicrotask(() => {
+      const consumed = deckClickConsumedRef.current
+      deckClickConsumedRef.current = false
+      if (consumed) return
 
-    // Intel placement mode: if placingCatalogId is set, place an estimate
-    const intelState = useIntelStore.getState()
-    if (intelState.placingCatalogId) {
-      const pNation = useGameStore.getState().viewState.playerNation
-      const catalog = pNation === 'usa' ? iranCatalog : usaCatalog
-      const entry = catalog.find((c) => c.id === intelState.placingCatalogId)
-      if (entry && e.lngLat) {
-        intelState.addEstimate(entry, { lat: e.lngLat.lat, lng: e.lngLat.lng })
+      // Route planning mode: add waypoint on map click
+      const strikeState = useStrikeStore.getState()
+      if (strikeState.routingMode && lngLat) {
+        addRouteWaypoint({ lat: lngLat.lat, lng: lngLat.lng })
+        return // Don't do normal click processing
       }
-      return // Don't do normal click processing
-    }
 
-    // Clicking empty map: deselect units and close all panels
-    useUIStore.getState().clearSelection()
-    hoverUnit(null)
-    // Close desktop panels
-    useUIStore.setState({ leftPanel: null, showOrbat: false, showStats: false, showEconomy: false, showIntel: false })
-    useStrikeStore.getState().closeStrike()
+      // Intel placement mode: if placingCatalogId is set, place an estimate
+      const intelState = useIntelStore.getState()
+      if (intelState.placingCatalogId) {
+        const pNation = useGameStore.getState().viewState.playerNation
+        const catalog = pNation === 'usa' ? iranCatalog : usaCatalog
+        const entry = catalog.find((c) => c.id === intelState.placingCatalogId)
+        if (entry && lngLat) {
+          intelState.addEstimate(entry, { lat: lngLat.lat, lng: lngLat.lng })
+        }
+        return // Don't do normal click processing
+      }
+
+      // Clicking empty map: deselect units and close all panels
+      useUIStore.getState().clearSelection()
+      hoverUnit(null)
+      // Close desktop panels
+      useUIStore.setState({ leftPanel: null, showOrbat: false, showStats: false, showEconomy: false, showIntel: false })
+      useStrikeStore.getState().closeStrike()
+    })
   }, [addRouteWaypoint, hoverUnit])
 
   const onMove = useCallback((evt: { viewState: { zoom: number }; lngLat?: { lat: number; lng: number } }) => {
@@ -246,13 +261,14 @@ export default function GameMap() {
   }, [])
 
   const onMouseMove = useCallback((evt: MapLayerMouseEvent) => {
+    if (!showElevation) return
     const grid = getMainThreadGrid()
     if (grid && evt.lngLat) {
       const elev = grid.getElevation(evt.lngLat.lat, evt.lngLat.lng)
       setCursorElev(elev)
       setCursorCoords({ lat: evt.lngLat.lat, lng: evt.lngLat.lng })
     }
-  }, [])
+  }, [showElevation])
 
   const handleHover = useCallback((id: string | null, x?: number, y?: number) => {
     hoverUnit(id)
@@ -351,14 +367,67 @@ export default function GameMap() {
     return createRouteLayers(launcherUnit.position, routeWaypoints, targetUnit.position, enemyRadars)
   }, [routingMode, routeWaypoints, units, estimatedUnits])
 
+  // Split layer groups so the per-frame visualTimestamp only rebuilds the missile layers
+  const satelliteLayer = useMemo(
+    () => createSatelliteDetectionLayer(units, satelliteDetectedUnitIds),
+    [units, satelliteDetectedUnitIds])
+  const unitLayers = useMemo(
+    () => createUnitLayer(units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation, zoom),
+    [units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation, zoom])
+  const missileLayers = useMemo(
+    () => createMissileLayers(missiles, currentTime, units, handleHover, handleMissileClick),
+    [missiles, currentTime, units, handleHover, handleMissileClick])
+  const impactLayers = useMemo(
+    () => createImpactLayers(allEvents, units, currentTick),
+    [allEvents, units, currentTick])
+  const waypointLayers = useMemo(
+    () => createWaypointLayers(units, selectedUnitIds),
+    [units, selectedUnitIds])
+  const intelLayers = useMemo(
+    () => createIntelUnitLayers(estimatedUnits),
+    [estimatedUnits])
+
   const layers = useMemo(() => [
-    ...createUnitLayer(units, selectedUnitId, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, setTarget, selectedNation, zoom),
-    ...createMissileLayers(missiles, currentTime, units, handleHover, handleMissileClick),
-    ...createImpactLayers(allEvents, units, currentTick),
-    ...createWaypointLayers(units, selectedUnitIds),
-    ...createIntelUnitLayers(estimatedUnits),
+    satelliteLayer,
+    ...unitLayers,
+    ...missileLayers,
+    ...impactLayers,
+    ...waypointLayers,
+    ...intelLayers,
     ...routeLayers,
-  ], [units, selectedUnitId, selectedUnitIds, hoveredUnitId, targetUnitId, targetingMode, handleHover, handleUnitClick, handleMissileClick, setTarget, selectedNation, zoom, missiles, currentTime, allEvents, currentTick, estimatedUnits, routeLayers])
+  ], [satelliteLayer, unitLayers, missileLayers, impactLayers, waypointLayers, intelLayers, routeLayers])
+
+  // Memoize maplibre GeoJSON sources — these were rebuilt in the render body every
+  // animation frame (the range rings even run turf union chains)
+  const supplyLineData = useMemo(
+    () => createSupplyLineGeoJSON(supplyLines, units),
+    [supplyLines, units])
+  const shippingLaneData = useMemo(
+    () => createShippingLaneGeoJSON(shippingLanes),
+    [shippingLanes])
+  const minefieldData = useMemo(
+    () => createMinefieldGeoJSON(units),
+    [units])
+
+  const rangeRingUnits = useMemo(() => {
+    if (rngFilter === 'off') return []
+    if (rngFilter === 'both') return units
+    return rngFilter === 'friendly'
+      ? units.filter(u => u.nation === playerNation)
+      : units.filter(u => u.nation !== playerNation)
+  }, [units, rngFilter, playerNation])
+  const rangeRingSig = useMemo(() => ringSignature(rangeRingUnits), [rangeRingUnits])
+  const rangeRingData = rangeRingUnits.length > 0
+    ? createRangeRingGeoJSONCached('rng-overlay', rangeRingUnits, rangeRingSig)
+    : null
+
+  const selRingUnits = useMemo(
+    () => selectedUnitId ? units.filter(u => u.id === selectedUnitId) : [],
+    [units, selectedUnitId])
+  const selRingSig = useMemo(() => ringSignature(selRingUnits), [selRingUnits])
+  const selRingData = selRingUnits.length > 0
+    ? createRangeRingGeoJSONCached('selected', selRingUnits, selRingSig)
+    : null
 
   return (
     <>
@@ -377,7 +446,16 @@ export default function GameMap() {
         minZoom={2}
         cursor={routingMode ? 'crosshair' : placingCatalogId ? 'crosshair' : targetingMode ? 'crosshair' : hoveredUnitId ? 'pointer' : 'grab'}
       >
-        <DeckOverlay layers={layers} />
+        <DeckOverlay layers={layers} onClick={onDeckClick} />
+
+        {/* Invisible z-order anchor: country layers insert below it (beforeId), overlays
+            append above it — keeps fills under supply lines/minefields/LOS across
+            style toggles and async source mounts */}
+        <Layer
+          id="overlay-anchor"
+          type="background"
+          paint={{ 'background-color': 'rgba(0, 0, 0, 0)' }}
+        />
 
         {elevationOverlay && (
           <Source
@@ -403,7 +481,7 @@ export default function GameMap() {
         )}
 
         {supplyLines.length > 0 && (
-          <Source id="supply-lines" type="geojson" data={createSupplyLineGeoJSON(supplyLines, units)}>
+          <Source id="supply-lines" type="geojson" data={supplyLineData}>
             <Layer
               id="supply-line-healthy"
               type="line"
@@ -441,7 +519,7 @@ export default function GameMap() {
         )}
 
         {shippingLanes.length > 0 && (
-          <Source id="shipping-lanes" type="geojson" data={createShippingLaneGeoJSON(shippingLanes)}>
+          <Source id="shipping-lanes" type="geojson" data={shippingLaneData}>
             <Layer
               id="shipping-lane-open"
               type="line"
@@ -478,31 +556,27 @@ export default function GameMap() {
           </Source>
         )}
 
-        {(() => {
-          const minefieldData = createMinefieldGeoJSON(units)
-          if (minefieldData.features.length === 0) return null
-          return (
-            <Source id="minefields" type="geojson" data={minefieldData}>
-              <Layer
-                id="minefield-fill"
-                type="fill"
-                paint={{
-                  'fill-color': 'rgba(180, 30, 30, 0.12)',
-                  'fill-opacity': 0.8,
-                }}
-              />
-              <Layer
-                id="minefield-stroke"
-                type="line"
-                paint={{
-                  'line-color': 'rgba(200, 50, 50, 0.6)',
-                  'line-width': 1.5,
-                  'line-dasharray': [3, 3],
-                }}
-              />
-            </Source>
-          )
-        })()}
+        {minefieldData.features.length > 0 && (
+          <Source id="minefields" type="geojson" data={minefieldData}>
+            <Layer
+              id="minefield-fill"
+              type="fill"
+              paint={{
+                'fill-color': 'rgba(180, 30, 30, 0.12)',
+                'fill-opacity': 0.8,
+              }}
+            />
+            <Layer
+              id="minefield-stroke"
+              type="line"
+              paint={{
+                'line-color': 'rgba(200, 50, 50, 0.6)',
+                'line-width': 1.5,
+                'line-dasharray': [3, 3],
+              }}
+            />
+          </Source>
+        )}
 
         {losPolygons.map((poly, i) => (
           <Source key={`los-${i}`} id={`los-coverage-${i}`} type="geojson" data={poly}>
@@ -578,18 +652,20 @@ export default function GameMap() {
             <Layer
               id="country-fill"
               type="fill"
+              beforeId="overlay-anchor"
               paint={{
                 'fill-color': ['match', ['get', 'iso_a3'],
                   'IRN', '#1a1520',
                   'USA', '#151a28',
                   '#111620',
                 ] as unknown as string,
-                'fill-opacity': 1,
+                'fill-opacity': mapMode === 'satellite' ? 0 : 1,
               }}
             />
             <Layer
               id="country-borders"
               type="line"
+              beforeId="overlay-anchor"
               paint={{
                 'line-color': ['match', ['get', 'iso_a3'],
                   'IRN', '#553333',
@@ -607,6 +683,7 @@ export default function GameMap() {
               id="iran-glow"
               type="line"
               source="countries"
+              beforeId="overlay-anchor"
               filter={['==', ['get', 'iso_a3'], 'IRN']}
               paint={{
                 'line-color': '#cc4444',
@@ -638,14 +715,8 @@ export default function GameMap() {
           </Source>
         )}
 
-        {rngFilter !== 'off' && (() => {
-          const pNation = useGameStore.getState().viewState.playerNation
-          const filteredUnits = rngFilter === 'both' ? units
-            : rngFilter === 'friendly' ? units.filter(u => u.nation === pNation)
-            : units.filter(u => u.nation !== pNation)
-          const rangeData = createRangeRingGeoJSON(filteredUnits)
-          return (
-            <Source id="range-rings" type="geojson" data={rangeData}>
+        {rngFilter !== 'off' && rangeRingData && (
+            <Source id="range-rings" type="geojson" data={rangeRingData}>
               {/* Fill — very subtle for both types */}
               <Layer
                 id="range-ring-fill"
@@ -696,22 +767,16 @@ export default function GameMap() {
                 }}
               />
             </Source>
-          )
-        })()}
+        )}
         {/* Range rings for selected unit(s) — always visible, brighter */}
-        {selectedUnitId && (() => {
-          const selUnits = units.filter(u => u.id === selectedUnitId)
-          if (selUnits.length === 0) return null
-          const ringData = createRangeRingGeoJSON(selUnits)
-          if (ringData.features.length === 0) return null
-          return (
-            <Source id="selected-range-rings" type="geojson" data={ringData}>
+        {selRingData && selRingData.features.length > 0 && (
+            <Source id="selected-range-rings" type="geojson" data={selRingData}>
               <Layer
                 id="sel-ring-fill"
                 type="fill"
                 paint={{
                   'fill-color': ['get', 'fill'],
-                  'fill-opacity': 0.15,
+                  'fill-opacity': 1,
                 }}
               />
               <Layer
@@ -719,13 +784,12 @@ export default function GameMap() {
                 type="line"
                 paint={{
                   'line-color': ['get', 'stroke'],
-                  'line-width': 1.5,
-                  'line-opacity': 0.5,
+                  'line-width': 2,
+                  'line-opacity': 1,
                 }}
               />
             </Source>
-          )
-        })()}
+        )}
       </MapGL>
 
       <InfoTooltip x={hoverPos.x} y={hoverPos.y} />

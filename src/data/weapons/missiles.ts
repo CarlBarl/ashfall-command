@@ -274,3 +274,112 @@ export const TOR_M1_INT = reg({
   flight_altitude_ft: 20000,
   guidance: 'radar command',
 })
+
+// ═══════════════════════════════════════════════
+//  IRANIAN LOITERING MUNITIONS (DRONES)
+// ═══════════════════════════════════════════════
+
+/**
+ * Shahed-136 — Iran's primary mass-production loitering munition.
+ * Delta-wing design, piston engine (Mado MD-550), composite airframe.
+ * GPS/INS guidance, no terminal seeker. Launched from truck-mounted rails.
+ * Extensively used in Ukraine conflict by Russia (Geran-2 designation).
+ * Sources: CSIS Missile Threat, IISS Military Balance 2025
+ */
+export const SHAHED_136 = reg({
+  id: 'shahed_136',
+  name: 'Shahed-136',
+  type: 'loitering_munition',
+  range_km: 2500,
+  speed_mach: 0.15, // ~185 km/h piston engine
+  warhead_kg: 40,
+  cep_m: 12,
+  pk: {}, // no air-to-air capability
+  flight_altitude_ft: 500, // ~150m cruise altitude, below most radar coverage
+  guidance: 'INS/GPS/GLONASS',
+  rcs_m2: 0.1, // tiny composite airframe, very low RCS
+})
+
+/**
+ * Shahed-131 — lighter, shorter-range variant of the Shahed-136.
+ * Smaller warhead, same piston propulsion. Used for area saturation.
+ * Sources: CSIS Missile Threat, FAS
+ */
+export const SHAHED_131 = reg({
+  id: 'shahed_131',
+  name: 'Shahed-131',
+  type: 'loitering_munition',
+  range_km: 900,
+  speed_mach: 0.15, // same piston engine class
+  warhead_kg: 15,
+  cep_m: 15,
+  pk: {},
+  flight_altitude_ft: 500,
+  guidance: 'INS/GPS/GLONASS',
+  rcs_m2: 0.08, // even smaller than -136
+})
+
+/**
+ * Shahed-238 — jet-powered evolution. Toloue-10 turbojet engine.
+ * Significantly faster than piston variants. Multiple seeker options:
+ * INS/GPS for land attack, IIR for terminal precision.
+ * First revealed at IRGC Aerospace exhibition, 2023.
+ * Sources: CSIS Missile Threat, IISS
+ */
+export const SHAHED_238 = reg({
+  id: 'shahed_238',
+  name: 'Shahed-238',
+  type: 'loitering_munition',
+  range_km: 1000,
+  speed_mach: 0.43, // ~520 km/h turbojet
+  warhead_kg: 50,
+  cep_m: 8,
+  pk: {},
+  flight_altitude_ft: 1000, // ~300m, slightly higher than piston variants
+  guidance: 'INS/GPS/IIR terminal',
+  rcs_m2: 0.15, // slightly larger than piston variants
+})
+
+// ═══════════════════════════════════════════════
+//  INTERCEPTOR pK vs LOITERING MUNITIONS
+// ═══════════════════════════════════════════════
+
+/**
+ * Patch interceptor pK values for loitering_munition targets.
+ * Applied at module load so every weaponSpecs consumer (worker engine
+ * and main-thread UI) sees the same table. Idempotent — the worker
+ * calls it again from the GameEngine constructor.
+ *
+ * pK rationale:
+ * - PAC-3 MSE: massive overkill for a slow drone, but hit-to-kill works (0.95)
+ * - THAAD: exo/endo interceptor optimized for ballistic targets at high altitude,
+ *   poor engagement geometry vs low-slow drones (0.20)
+ * - SM-2 IIIA: blast-frag warhead effective at medium range, good vs slow targets (0.85)
+ * - SM-3 IIA: exoatmospheric hit-to-kill, essentially useless vs low drones (0.10)
+ * - SM-6: dual-mode seeker, long range, effective against diverse targets (0.90)
+ * - S-300 48N6E2: optimized for high-alt fast targets, struggles with low-slow clutter (0.60)
+ * - Bavar-373: Iranian S-300 derivative, similar limitations (0.55)
+ * - 3rd Khordad (Sayyad-3): medium-range, better low-alt tracking (0.70)
+ * - Tor-M1: short-range, low-altitude specialist — best Iranian counter to drones (0.80)
+ */
+export function patchDronePK(): void {
+  const patches: Record<string, number> = {
+    pac3_mse: 0.95,
+    thaad_int: 0.20,
+    sm2_iiia: 0.85,
+    sm3_iia: 0.10,
+    sm6: 0.90,
+    s300_48n6e2: 0.60,
+    bavar373_int: 0.55,
+    khordad15_int: 0.70,
+    tor_m1_int: 0.80,
+  }
+
+  for (const [id, pk] of Object.entries(patches)) {
+    if (weaponSpecs[id]) {
+      weaponSpecs[id].pk.loitering_munition = pk
+    }
+  }
+}
+
+patchDronePK()

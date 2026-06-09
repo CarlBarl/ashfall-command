@@ -1,4 +1,3 @@
-import { destination } from '@turf/destination'
 import { ElevationGrid } from '@/engine/systems/elevation'
 import type { Position } from '@/types/game'
 import type { Feature, Polygon } from 'geojson'
@@ -82,21 +81,31 @@ export function computeLOSPolygon(input: LOSInput): Feature<Polygon> {
 
   const numSteps = Math.max(1, Math.ceil(radarRange_km / STEP_KM))
 
+  // Equirectangular stepping instead of turf destination() — this runs
+  // ~rays x steps times per polygon and geodesic precision is irrelevant
+  // for a visualization overlay at theater scale
+  const latPerKm = 1 / 110.574
+  const lngPerKm = 1 / (111.32 * Math.cos((position.lat * Math.PI) / 180))
+
   /** Raycast a single bearing and return the farthest visible point.
    *  Shows terrain masking only — if a mountain peak between the radar
    *  and a distant point is higher than the radar antenna, the ray is blocked.
    *  Horizon/curvature is NOT applied here (it's target-altitude-dependent
    *  and handled by the detection engine). */
   const castRay = (bearing: number): [number, number] => {
+    const rad = (bearing * Math.PI) / 180
+    const northPerKm = Math.cos(rad)
+    const eastPerKm = Math.sin(rad)
+
     let maxVisibleDist_km = 0
     let maxObstacleAngle = -Infinity // highest "look angle" to any terrain seen so far
 
     for (let step = 1; step <= numSteps; step++) {
       const dist_km = (step / numSteps) * radarRange_km
 
-      const pt = destination(origin, dist_km, bearing, { units: 'kilometers' })
-      const coords = pt.geometry.coordinates
-      const terrainElev = elevationGrid.getElevation(coords[1], coords[0])
+      const lat = position.lat + dist_km * northPerKm * latPerKm
+      const lng = position.lng + dist_km * eastPerKm * lngPerKm
+      const terrainElev = elevationGrid.getElevation(lat, lng)
 
       // Compute the angle from the radar to this terrain point
       // angle = atan2(terrainElev - radarAlt, dist_km * 1000)
@@ -119,8 +128,10 @@ export function computeLOSPolygon(input: LOSInput): Feature<Polygon> {
     if (maxVisibleDist_km <= 0) {
       return origin
     }
-    const ep = destination(origin, maxVisibleDist_km, bearing, { units: 'kilometers' })
-    return ep.geometry.coordinates as [number, number]
+    return [
+      position.lng + maxVisibleDist_km * eastPerKm * lngPerKm,
+      position.lat + maxVisibleDist_km * northPerKm * latPerKm,
+    ]
   }
 
   const ring: [number, number][] = []
@@ -165,11 +176,12 @@ export function computeLOSPolygon(input: LOSInput): Feature<Polygon> {
 //  Cached computation (avoid recomputing every frame)
 // ────────────────────────────────────────────────
 
-let cachedKey: string | null = null
-let cachedPolygon: Feature<Polygon> | null = null
+const losCache = new Map<string, { key: string; polygon: Feature<Polygon> }>()
 
 /**
- * Get the LOS polygon for a unit, using a cache keyed on unit ID + position + heading + sector.
+ * Get the LOS polygon for a unit, using a per-unit cache so sibling units
+ * never evict each other. Position is quantized (~110m) and heading is
+ * ignored for omnidirectional radars to avoid float-churn recomputes.
  * Returns null if the grid isn't loaded yet.
  */
 export function getLOSPolygon(
@@ -183,15 +195,14 @@ export function getLOSPolygon(
   const grid = getMainThreadGrid()
   if (!grid) return null
 
-  // Check cache — reuse if unit, position, heading, and sector haven't changed
-  const cacheKey = `${unitId}_${position.lat}_${position.lng}_${heading}_${sectorDeg}`
-  if (cachedPolygon && cachedKey === cacheKey) {
-    return cachedPolygon
+  const headingKey = sectorDeg >= 360 ? 0 : Math.round(heading)
+  const cacheKey = `${position.lat.toFixed(3)}_${position.lng.toFixed(3)}_${radarRange_km}_${antennaHeight_m}_${headingKey}_${sectorDeg}`
+  const cached = losCache.get(unitId)
+  if (cached && cached.key === cacheKey) {
+    return cached.polygon
   }
 
-  cachedKey = cacheKey
-
-  cachedPolygon = computeLOSPolygon({
+  const polygon = computeLOSPolygon({
     position,
     radarRange_km,
     antennaHeight_m,
@@ -200,5 +211,6 @@ export function getLOSPolygon(
     sectorDeg,
   })
 
-  return cachedPolygon
+  losCache.set(unitId, { key: cacheKey, polygon })
+  return polygon
 }

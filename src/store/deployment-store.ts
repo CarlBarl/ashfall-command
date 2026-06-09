@@ -4,8 +4,7 @@ import type { UnitCatalogEntry } from '@/types/scenario'
 import { useMenuStore } from './menu-store'
 import { usaCatalog } from '@/data/catalog/usa-catalog'
 import { iranCatalog } from '@/data/catalog/iran-catalog'
-import { buildUnit } from '@/engine/systems/ai-placement'
-import { generateAIForce } from '@/engine/systems/ai-placement'
+import { buildUnit, generateAIForce, pickPlacementPosition } from '@/engine/systems/ai-placement'
 import { SeededRNG } from '@/engine/utils/rng'
 
 const CATALOGS: Record<string, UnitCatalogEntry[]> = {
@@ -73,14 +72,11 @@ export const useDeploymentStore = create<DeploymentState>((set, get) => ({
         if (entry) selectedEnemyCatalog.push(entry)
       }
 
-      // Use generateAIForce with a budget high enough to buy all selected units
-      // But we want exactly the user's picks, so build them directly
-      enemies = selectedEnemyCatalog.map((entry, i) => {
-        // Simple deterministic placement using AI zones
-        const latBase = enemyNation === 'iran' ? 32 + rng.next() * 6 : 25 + rng.next() * 4
-        const lngBase = enemyNation === 'iran' ? 48 + rng.next() * 8 : 47 + rng.next() * 8
-        return buildUnit(entry, { lat: latBase, lng: lngBase }, enemyNation, i)
-      })
+      // We want exactly the user's picks, so build them directly,
+      // placed via the same doctrine zones the AI uses
+      enemies = selectedEnemyCatalog.map((entry, i) =>
+        buildUnit(entry, pickPlacementPosition(entry, enemyNation, rng), enemyNation, i),
+      )
     } else {
       // AI generates enemy force
       enemies = generateAIForce(enemyNation, DEFAULT_ENEMY_BUDGET, enemyCatalog, rng)
@@ -91,6 +87,7 @@ export const useDeploymentStore = create<DeploymentState>((set, get) => ({
       placedUnits: [],
       activeIndex: 0,
       enemyUnits: enemies,
+      selectedPlacedIndex: null,
     })
   },
 
@@ -118,12 +115,16 @@ export const useDeploymentStore = create<DeploymentState>((set, get) => ({
   },
 
   undoLast() {
-    const { placedUnits, activeIndex } = get()
+    const { placedUnits, activeIndex, selectedPlacedIndex } = get()
     if (placedUnits.length === 0) return
 
     set({
       placedUnits: placedUnits.slice(0, -1),
       activeIndex: activeIndex - 1,
+      selectedPlacedIndex:
+        selectedPlacedIndex != null && selectedPlacedIndex >= placedUnits.length - 1
+          ? null
+          : selectedPlacedIndex,
     })
   },
 

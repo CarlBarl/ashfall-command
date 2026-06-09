@@ -4,6 +4,7 @@ const TICKS_PER_HOUR = 3_600
 const BASE_OIL_PRICE = 80   // $/barrel baseline
 const MAX_OIL_PRICE = 160   // $/barrel during full Hormuz blockade
 const HORMUZ_CAPACITY_MBD = 17.0 // million barrels/day through Hormuz normally
+const OIL_PRICE_EVENT_THRESHOLD = 5 // $/barrel move per hour that warrants an alert
 
 export function processEconomy(state: GameState): void {
   if (state.time.tick % TICKS_PER_HOUR !== 0) return
@@ -15,6 +16,18 @@ export function processEconomy(state: GameState): void {
   // Nonlinear price rise — small disruptions have outsized market impact
   const oilPrice = BASE_OIL_PRICE + (MAX_OIL_PRICE - BASE_OIL_PRICE) * (hormuzSuppression ** 0.7)
   const oilPricePremium = Math.max(0, (oilPrice - BASE_OIL_PRICE) / BASE_OIL_PRICE)
+
+  const oldPrice = Object.values(state.nations)[0]?.economy.oilPrice_per_barrel ?? BASE_OIL_PRICE
+  if (Math.abs(oilPrice - oldPrice) >= OIL_PRICE_EVENT_THRESHOLD) {
+    const event = {
+      type: 'OIL_PRICE_CHANGE' as const,
+      newPrice: oilPrice,
+      oldPrice,
+      tick: state.time.tick,
+    }
+    state.events.push(event)
+    state.pendingEvents.push(event)
+  }
 
   for (const nation of Object.values(state.nations)) {
     const eco = nation.economy

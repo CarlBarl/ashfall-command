@@ -46,7 +46,7 @@ export const adSystems: Record<string, ADSystemSpec> = {
     id: 'aegis_sm2',
     name: 'Aegis (SM-2)',
     radar_range_km: 370,
-    engagement_range_km: 167,
+    engagement_range_km: 170, // must match sm2_iiia range_km
     max_altitude_m: 24000,
     fire_channels: 12,
     reload_time_sec: 0,

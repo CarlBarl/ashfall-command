@@ -141,6 +141,7 @@ function DirectFireTab() {
   const setRoutingMode = useStrikeStore((s) => s.setRoutingMode)
   const removeRouteWaypoint = useStrikeStore((s) => s.removeRouteWaypoint)
   const clearRouteWaypoints = useStrikeStore((s) => s.clearRouteWaypoints)
+  const setStoreActiveLauncherId = useStrikeStore((s) => s.setActiveLauncherId)
   const estimatedUnits = useIntelStore((s) => s.estimatedUnits)
 
   const [selectedLauncherId, setSelectedLauncherId] = useState<string | null>(null)
@@ -179,6 +180,11 @@ function DirectFireTab() {
   }, [units, rangeRef, playerNation])
 
   const activeLauncherId = selectedLauncherId ?? unitsInRange[0]?.id ?? null
+  // Publish so the map route preview draws from the launcher that will actually fire
+  useEffect(() => {
+    setStoreActiveLauncherId(activeLauncherId)
+    return () => setStoreActiveLauncherId(null)
+  }, [activeLauncherId, setStoreActiveLauncherId])
   const launcher = unitsInRange.find(u => u.id === activeLauncherId)
   const launcherWeapons = useMemo(() => {
     if (!launcher || !target) return []
@@ -860,6 +866,8 @@ function PlanAttackTab() {
     (tc) => !planPriorities.some((p) => p.targetCategory === tc.value),
   )
 
+  const hasExecutableStrikes = !!computedPlan && computedPlan.strikes.some((s) => s.inRange)
+
   return (
     <>
       {/* Target Priorities */}
@@ -962,13 +970,13 @@ function PlanAttackTab() {
           </div>
         ) : (
           <button
-            disabled={!computedPlan || computedPlan.strikes.length === 0}
+            disabled={!hasExecutableStrikes}
             onClick={handleExecute}
             style={{
               ...btnStyle, flex: 2,
               background: 'var(--iran-secondary)',
               color: '#fff', fontWeight: 700,
-              opacity: computedPlan && computedPlan.strikes.length > 0 ? 1 : 0.4,
+              opacity: hasExecutableStrikes ? 1 : 0.4,
             }}
           >
             AUTHORIZE STRIKE

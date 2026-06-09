@@ -109,3 +109,26 @@ export function createRangeRingGeoJSON(units: ViewUnit[]): FeatureCollection {
 
   return { type: 'FeatureCollection', features } as FeatureCollection
 }
+
+/** Quantized signature of everything the ring geometry depends on (~1km position grid) */
+export function ringSignature(units: ViewUnit[]): string {
+  return units
+    .map(u => `${u.id}:${u.position.lat.toFixed(2)}:${u.position.lng.toFixed(2)}:${u.status}`)
+    .join('|')
+}
+
+const ringCache = new Map<string, { sig: string; data: FeatureCollection }>()
+
+/** Cached wrapper — the circle+union chains are too heavy to rebuild per snapshot */
+export function createRangeRingGeoJSONCached(
+  cacheKey: string,
+  units: ViewUnit[],
+  sig: string,
+): FeatureCollection {
+  const cached = ringCache.get(cacheKey)
+  if (cached && cached.sig === sig) return cached.data
+
+  const data = createRangeRingGeoJSON(units)
+  ringCache.set(cacheKey, { sig, data })
+  return data
+}

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { findAutoRoute, type RadarThreat } from '../route-planner'
+import { findAutoRoute, findNavalRoute, type RadarThreat } from '../route-planner'
 import { ElevationGrid } from '../elevation'
+import { haversine } from '../../utils/geo'
 import type { Position } from '@/types/game'
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -48,6 +49,45 @@ function makeMockGrid(landElevation = 100, waterCells?: Set<string>): ElevationG
   }
 
   return new ElevationGrid(buffer)
+}
+
+/** All-water theater grid with explicit "row,col" land cells. */
+function makeWaterGrid(landCells?: Set<string>): ElevationGrid {
+  const latMin = 12
+  const latMax = 43
+  const lngMin = 32
+  const lngMax = 70
+  const resolution = 0.05
+  const rows = Math.round((latMax - latMin) / resolution)
+  const cols = Math.round((lngMax - lngMin) / resolution)
+
+  const buffer = new ArrayBuffer(20 + rows * cols * 4)
+  const header = new Float32Array(buffer, 0, 5)
+  header[0] = latMin
+  header[1] = latMax
+  header[2] = lngMin
+  header[3] = lngMax
+  header[4] = resolution
+
+  const data = new Float32Array(buffer, 20, rows * cols)
+  if (landCells) {
+    for (const key of landCells) {
+      const [row, col] = key.split(',').map(Number)
+      data[row * cols + col] = 100
+    }
+  }
+  return new ElevationGrid(buffer)
+}
+
+function segmentOnWater(a: Position, b: Position, grid: ElevationGrid): boolean {
+  const steps = Math.max(1, Math.ceil(haversine(a, b) / 2))
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps
+    const lat = a.lat + (b.lat - a.lat) * t
+    const lng = a.lng + (b.lng - a.lng) * t
+    if (!grid.isWater(lat, lng)) return false
+  }
+  return true
 }
 
 
@@ -147,5 +187,44 @@ describe('findAutoRoute', () => {
     const result = findAutoRoute(start, goal, threats, grid, 1000)
     // With 1000km range limit across a ~4500km path, should be null
     expect(result).toBeNull()
+  })
+})
+
+describe('findNavalRoute', () => {
+  it('simplified route legs never cut across land (silent strand regression)', () => {
+    // North-south land wall at lng 51.75 (col 395), lat 25-29 (rows 260-340)
+    const wall = new Set<string>()
+    for (let row = 260; row <= 340; row++) wall.add(`${row},395`)
+    const grid = makeWaterGrid(wall)
+
+    const start: Position = { lat: 27, lng: 50 }
+    const goal: Position = { lat: 27, lng: 52.25 }
+
+    const route = findNavalRoute(start, goal, grid)
+    expect(route).not.toBeNull()
+    expect(route!.length).toBeGreaterThan(0)
+
+    const allPoints = [start, ...route!, goal]
+    for (let i = 0; i < allPoints.length - 1; i++) {
+      expect(segmentOnWater(allPoints[i], allPoints[i + 1], grid)).toBe(true)
+    }
+  })
+
+  it('clamps out-of-theater destinations to the grid edge instead of refusing to route', () => {
+    const grid = makeWaterGrid()
+    const start: Position = { lat: 15, lng: 68 }
+    const goal: Position = { lat: 5, lng: 75 } // outside lat 12-43 / lng 32-70
+
+    const route = findNavalRoute(start, goal, grid)
+    expect(route).not.toBeNull()
+  })
+
+  it('returns null when the clamped edge cell is land', () => {
+    const grid = makeWaterGrid(new Set(['0,759']))
+    const start: Position = { lat: 15, lng: 68 }
+    const goal: Position = { lat: 5, lng: 75 } // clamps onto the land corner cell
+
+    const route = findNavalRoute(start, goal, grid)
+    expect(route).toBeNull()
   })
 })

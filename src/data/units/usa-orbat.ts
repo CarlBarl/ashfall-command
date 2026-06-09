@@ -103,6 +103,23 @@ export const usaUnits: Unit[] = [
   }),
 
   // ═══════════════════════════════════════════════
+  //  NAVAL BASES
+  // ═══════════════════════════════════════════════
+
+  u({
+    id: 'nsa_bahrain', name: 'NSA Bahrain (5th Fleet HQ)', nation: 'usa', category: 'naval_base',
+    position: { lat: 26.21, lng: 50.61 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    health: 100, hardness: 200,
+    weapons: [],
+    pointDefense: [
+      { specId: 'cram_centurion', active: true, ammo: 2000, maxAmmo: 2000 },
+    ],
+    sensors: [{ type: 'radar', range_km: 250, detection_prob: 0.90, antenna_height_m: 20 }],
+    roe: 'weapons_tight',
+    datalink_range_km: 150,
+  }),
+
+  // ═══════════════════════════════════════════════
   //  NAVAL — Carrier Strike Group
   // ═══════════════════════════════════════════════
 

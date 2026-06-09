@@ -2,11 +2,16 @@ import * as Comlink from 'comlink'
 import type { WorkerAPI } from '@/engine/worker'
 import type { Command } from '@/types/commands'
 import { useGameStore } from './game-store'
+import { useIntelStore } from './intel-store'
+import { useStrikeStore } from './strike-store'
 
 let worker: Worker | null = null
 let api: Comlink.Remote<WorkerAPI> | null = null
 let rafId: number | null = null
 let pollCounter = 0
+let loopGeneration = 0
+// Set after any worker mutation so the next poll installs even if the tick didn't advance
+let stateDirty = false
 
 export function initBridge(): void {
   if (worker) return
@@ -17,14 +22,19 @@ export function initBridge(): void {
   // Load elevation grid (non-blocking — game can start before it finishes)
   api.loadElevation().catch(console.warn)
 
+  const generation = ++loopGeneration
   const frame = async () => {
+    if (generation !== loopGeneration) return
     pollCounter++
 
     // Poll worker every 3rd frame (~10fps for state) to save overhead
     if (pollCounter % 3 === 0 && api) {
       try {
         const vs = await api.getViewState()
-        useGameStore.getState().setViewState(vs)
+        if (generation !== loopGeneration) return
+        const force = stateDirty
+        stateDirty = false
+        useGameStore.getState().setViewState(vs, force)
       } catch {
         // Worker may not be ready yet
       }
@@ -39,6 +49,8 @@ export function initBridge(): void {
 }
 
 export function destroyBridge(): void {
+  // Generation bump stops an in-flight frame() from re-scheduling after its await
+  loopGeneration++
   if (rafId !== null) cancelAnimationFrame(rafId)
   worker?.terminate()
   worker = null
@@ -49,6 +61,7 @@ export function destroyBridge(): void {
 export async function sendCommand(cmd: Command): Promise<void> {
   if (!api) throw new Error('Bridge not initialized')
   await api.executeCommand(cmd)
+  stateDirty = true
 }
 
 export async function getFullState(): Promise<string> {
@@ -56,14 +69,17 @@ export async function getFullState(): Promise<string> {
   return api.getFullState()
 }
 
+function resetClientStores(): void {
+  useGameStore.setState({ eventLog: [] })
+  useIntelStore.getState().reset()
+  useStrikeStore.getState().reset()
+}
+
 export async function loadState(json: string): Promise<void> {
   if (!api) throw new Error('Bridge not initialized')
   await api.loadState(json)
-}
-
-export async function initDefaultScenario(playerNation: import('@/types/game').NationId = 'usa'): Promise<void> {
-  if (!api) throw new Error('Bridge not initialized')
-  await api.initDefaultScenario(playerNation)
+  resetClientStores()
+  stateDirty = true
 }
 
 export async function initFromData(
@@ -76,14 +92,6 @@ export async function initFromData(
 ): Promise<void> {
   if (!api) throw new Error('Bridge not initialized')
   await api.initFromData(playerNation, nations, unitList, supplyLines, baseSupply, startDate)
-}
-
-export async function isGameInitialized(): Promise<boolean> {
-  if (!api) return false
-  return api.isInitialized()
-}
-
-export async function loadElevation(): Promise<void> {
-  if (!api) throw new Error('Bridge not initialized')
-  await api.loadElevation()
+  resetClientStores()
+  stateDirty = true
 }

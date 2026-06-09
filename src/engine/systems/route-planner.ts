@@ -47,6 +47,56 @@ function gridToPos(row: number, col: number): Position {
   }
 }
 
+/** Clamp a position onto the nearest in-bounds grid cell. */
+function clampToGrid(pos: Position): Position {
+  return {
+    lat: Math.min(Math.max(pos.lat, GRID_LAT_MIN), GRID_LAT_MAX - RESOLUTION),
+    lng: Math.min(Math.max(pos.lng, GRID_LNG_MIN), GRID_LNG_MAX - RESOLUTION),
+  }
+}
+
+/**
+ * True if the straight segment between two positions stays on water.
+ * Walks every grid cell the segment crosses (Amanatides-Woo), so corner-clipped
+ * land cells cannot slip between samples. Endpoint cells are excluded (a goal
+ * cell may legitimately be a land port).
+ */
+function segmentIsWater(a: Position, b: Position, grid: ElevationGrid): boolean {
+  const x0 = (a.lng - GRID_LNG_MIN) / RESOLUTION
+  const y0 = (a.lat - GRID_LAT_MIN) / RESOLUTION
+  const x1 = (b.lng - GRID_LNG_MIN) / RESOLUTION
+  const y1 = (b.lat - GRID_LAT_MIN) / RESOLUTION
+  const dx = x1 - x0
+  const dy = y1 - y0
+
+  let col = Math.round(x0)
+  let row = Math.round(y0)
+  const endCol = Math.round(x1)
+  const endRow = Math.round(y1)
+  const stepCol = dx > 0 ? 1 : -1
+  const stepRow = dy > 0 ? 1 : -1
+
+  // Cell (row, col) spans half-integer boundaries (getElevation rounds to nearest)
+  let tMaxX = dx !== 0 ? (col + stepCol * 0.5 - x0) / dx : Infinity
+  let tMaxY = dy !== 0 ? (row + stepRow * 0.5 - y0) / dy : Infinity
+  const tDeltaX = dx !== 0 ? Math.abs(1 / dx) : Infinity
+  const tDeltaY = dy !== 0 ? Math.abs(1 / dy) : Infinity
+
+  let guard = Math.abs(endCol - col) + Math.abs(endRow - row) + 2
+  while ((col !== endCol || row !== endRow) && guard-- > 0) {
+    if (tMaxX < tMaxY) {
+      col += stepCol
+      tMaxX += tDeltaX
+    } else {
+      row += stepRow
+      tMaxY += tDeltaY
+    }
+    if (col === endCol && row === endRow) break
+    if (!grid.isWater(GRID_LAT_MIN + row * RESOLUTION, GRID_LNG_MIN + col * RESOLUTION)) return false
+  }
+  return true
+}
+
 /** Encode row,col into a single integer key for Map lookups. */
 function encodeKey(row: number, col: number): number {
   // Max cols is 760, so shift row by 10 bits (1024) is sufficient.
@@ -137,8 +187,17 @@ export function findNavalRoute(
   grid: ElevationGrid,
 ): Position[] | null {
   const startGrid = posToGrid(start)
-  const goalGrid = posToGrid(goal)
-  if (!startGrid || !goalGrid) return null
+  if (!startGrid) return null
+
+  let effectiveGoal = goal
+  let goalGrid = posToGrid(goal)
+  if (!goalGrid) {
+    // Out-of-theater destination — route to the nearest grid-edge water cell,
+    // the caller appends the real destination as the final open-ocean leg
+    effectiveGoal = clampToGrid(goal)
+    goalGrid = posToGrid(effectiveGoal)
+    if (!goalGrid || !grid.isWater(effectiveGoal.lat, effectiveGoal.lng)) return null
+  }
 
   const rows = Math.round((GRID_LAT_MAX - GRID_LAT_MIN) / RESOLUTION)
   const cols = Math.round((GRID_LNG_MAX - GRID_LNG_MIN) / RESOLUTION)
@@ -148,17 +207,8 @@ export function findNavalRoute(
 
   if (startKey === goalKey) return []
 
-  // Check if straight line is all water — skip A* if so
-  const directDist = haversine(start, goal)
-  const steps = Math.ceil(directDist / (RESOLUTION * 111))
-  let allWater = true
-  for (let i = 1; i < steps; i++) {
-    const t = i / steps
-    const lat = start.lat + (goal.lat - start.lat) * t
-    const lng = start.lng + (goal.lng - start.lng) * t
-    if (!grid.isWater(lat, lng)) { allWater = false; break }
-  }
-  if (allWater) return []
+  // Straight line all water — skip A*
+  if (segmentIsWater(start, effectiveGoal, grid)) return []
 
   const goalPos = gridToPos(goalGrid.row, goalGrid.col)
   const gScore = new Map<number, number>()
@@ -175,7 +225,7 @@ export function findNavalRoute(
     iterations++
     const currentKey = openHeap.pop()
     if (currentKey === goalKey) {
-      return reconstructNavalPath(cameFrom, currentKey)
+      return reconstructNavalPath(cameFrom, currentKey, grid)
     }
     if (closedSet.has(currentKey)) continue
     closedSet.add(currentKey)
@@ -199,6 +249,12 @@ export function findNavalRoute(
       if (nKey !== goalKey && !grid.isWater(neighborLat, neighborLng)) continue
 
       const isDiagonal = dr !== 0 && dc !== 0
+      // No corner-cutting: a diagonal move needs both lateral cells on water,
+      // otherwise the path (and any straightened leg over it) clips the land corner
+      if (isDiagonal) {
+        if (!grid.isWater(GRID_LAT_MIN + currentRow * RESOLUTION, neighborLng)) continue
+        if (!grid.isWater(neighborLat, GRID_LNG_MIN + currentCol * RESOLUTION)) continue
+      }
       const cellDist = isDiagonal ? RESOLUTION * 111 * Math.SQRT2 : RESOLUTION * 111
       const tentativeG = currentG + cellDist
 
@@ -216,7 +272,7 @@ export function findNavalRoute(
 }
 
 /** Reconstruct and simplify a naval A* path into waypoints */
-function reconstructNavalPath(cameFrom: Map<number, number>, goalKey: number): Position[] {
+function reconstructNavalPath(cameFrom: Map<number, number>, goalKey: number, grid: ElevationGrid): Position[] {
   const pathKeys: number[] = []
   let current = goalKey
   while (cameFrom.has(current)) {
@@ -226,12 +282,21 @@ function reconstructNavalPath(cameFrom: Map<number, number>, goalKey: number): P
   pathKeys.push(current)
   pathKeys.reverse()
 
-  // Simplify: keep every Nth point, skip first/last (start/goal)
+  const fullPath = pathKeys.map(key => gridToPos((key / 1024) | 0, key % 1024))
+
+  // Greedy simplify, keeping only points whose straightened legs stay on water —
+  // blind every-Nth sampling cuts across headlands the A* path went around
   const intermediates: Position[] = []
-  for (let i = SIMPLIFY_EVERY_N; i < pathKeys.length - SIMPLIFY_EVERY_N; i += SIMPLIFY_EVERY_N) {
-    const row = (pathKeys[i] / 1024) | 0
-    const col = pathKeys[i] % 1024
-    intermediates.push(gridToPos(row, col))
+  let anchor = 0
+  while (anchor < fullPath.length - 1) {
+    let next = Math.min(anchor + SIMPLIFY_EVERY_N, fullPath.length - 1)
+    while (next > anchor + 1 && !segmentIsWater(fullPath[anchor], fullPath[next], grid)) {
+      next--
+    }
+    if (next < fullPath.length - 1) {
+      intermediates.push(fullPath[next])
+    }
+    anchor = next
   }
   return intermediates
 }

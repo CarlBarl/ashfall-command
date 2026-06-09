@@ -27,6 +27,13 @@ const ROE_OPTIONS: { value: ROE; label: string; color: string }[] = [
   { value: 'hold_fire', label: 'HOLD FIRE', color: 'var(--status-damaged)' },
 ]
 
+type DroneMission = 'military' | 'shipping_interdiction'
+
+const MISSION_OPTIONS: { value: DroneMission; label: string }[] = [
+  { value: 'military', label: 'MILITARY' },
+  { value: 'shipping_interdiction', label: 'SHIPPING INTERDICTION' },
+]
+
 export default function UnitInfoPanel({ units }: UnitInfoPanelProps) {
   const selectedId = useUIStore((s) => s.selectedUnitId)
   const selectUnit = useUIStore((s) => s.selectUnit)
@@ -37,6 +44,9 @@ export default function UnitInfoPanel({ units }: UnitInfoPanelProps) {
   if (!unit) return null
 
   const isFriendly = unit.nation === playerNation
+  // Same gate shipping.ts uses for drone interdiction
+  const isDroneCapable = unit.weapons.some((w) => w.weaponId.includes('shahed'))
+  const droneMission: DroneMission = unit.droneMission ?? 'military'
 
   return (
     <Panel
@@ -66,6 +76,8 @@ export default function UnitInfoPanel({ units }: UnitInfoPanelProps) {
       <Row label="POSITION" value={`${unit.position.lat.toFixed(2)}N, ${unit.position.lng.toFixed(2)}E`} />
       {unit.speed_kts > 0 && <Row label="SPEED" value={`${unit.speed_kts} kts`} />}
       <Row label="ROE" value={unit.roe.replace(/_/g, ' ').toUpperCase()} />
+      {unit.mine_count != null && <Row label="MINES" value={`${unit.mine_count}`} />}
+      {unit.radius_km != null && <Row label="RADIUS" value={`${unit.radius_km} km`} />}
 
       {/* Weapons */}
       {unit.weapons.length > 0 && (
@@ -176,6 +188,53 @@ export default function UnitInfoPanel({ units }: UnitInfoPanelProps) {
                   </button>
                 ))}
               </div>
+
+              {isDroneCapable && (
+                <>
+                  <div style={{
+                    color: 'var(--text-muted)',
+                    fontSize: 'var(--font-size-xs)',
+                    margin: '8px 0 4px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                  }}>
+                    Drone Mission
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {MISSION_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => sendCommand({
+                          type: 'SET_DRONE_MISSION',
+                          unitId: unit.id,
+                          mission: opt.value,
+                        })}
+                        style={{
+                          flex: 1,
+                          padding: '5px 4px',
+                          background: droneMission === opt.value
+                            ? 'var(--text-accent)'
+                            : 'var(--bg-hover)',
+                          border: droneMission === opt.value
+                            ? '1px solid var(--text-accent)'
+                            : '1px solid var(--border-default)',
+                          borderRadius: 4,
+                          color: droneMission === opt.value
+                            ? 'var(--bg-primary)'
+                            : 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 'var(--font-size-xs)',
+                          fontWeight: droneMission === opt.value ? 700 : 400,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

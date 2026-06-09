@@ -77,8 +77,10 @@ function findConnectedBases(startId: UnitId, graph: Map<UnitId, UnitId[]>): Set<
 //  RESUPPLY
 // ===============================================
 
-function isBase(unit: Unit): boolean {
-  return unit.category === 'airbase' || unit.category === 'naval_base'
+/** Bases plus any stocked depot (e.g. SAM-site reserves wired into the supply graph) */
+function isSupplySource(unit: Unit): boolean {
+  return unit.category === 'airbase' || unit.category === 'naval_base' ||
+    (unit.logistics > 0 && unit.supplyStocks.length > 0)
 }
 
 function processResupply(state: GameState): void {
@@ -88,7 +90,7 @@ function processResupply(state: GameState): void {
   // Collect all bases per nation
   const basesByNation = new Map<NationId, Unit[]>()
   for (const unit of state.units.values()) {
-    if (!isBase(unit)) continue
+    if (!isSupplySource(unit)) continue
     if (unit.status === 'destroyed') continue
     if (!basesByNation.has(unit.nation)) basesByNation.set(unit.nation, [])
     basesByNation.get(unit.nation)!.push(unit)
@@ -155,7 +157,7 @@ function findNearestSupplyBase(
   graph: Map<UnitId, UnitId[]>,
 ): Unit | null {
   // If the unit IS a base, check supply graph connectivity directly from itself
-  const unitIsBase = isBase(unit)
+  const unitIsBase = isSupplySource(unit)
 
   // Find the base closest to this unit (or itself if it's a base)
   let nearestOwnBase: Unit | null = null
@@ -210,7 +212,7 @@ function findNearestSupplyBase(
 
 function processBaseProduction(state: GameState): void {
   for (const unit of state.units.values()) {
-    if (!isBase(unit)) continue
+    if (!isSupplySource(unit)) continue
     if (unit.status === 'destroyed') continue
 
     for (const stock of unit.supplyStocks) {

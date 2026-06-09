@@ -78,6 +78,7 @@ const mockIranEntry: UnitCatalogEntry = {
 
 // Mock buildUnit to return a simple Unit object
 vi.mock('@/engine/systems/ai-placement', () => ({
+  pickPlacementPosition: () => ({ lat: 11, lng: 22 }),
   buildUnit: (entry: UnitCatalogEntry, position: { lat: number; lng: number }, nation: string, index: number): Unit => ({
     id: `${nation}_${index}`,
     name: entry.name,
@@ -111,15 +112,17 @@ vi.mock('@/data/catalog/iran-catalog', () => ({
   iranCatalog: [mockIranEntry],
 }))
 
+const menuState = {
+  freeUnits: [
+    { catalogId: 'usa_patriot', name: 'Patriot', category: 'sam_site', cost_millions: 500 },
+    { catalogId: 'usa_thaad', name: 'THAAD', category: 'sam_site', cost_millions: 1000 },
+  ],
+  freeEnemyUnits: [] as { catalogId: string }[],
+}
+
 vi.mock('@/store/menu-store', () => ({
   useMenuStore: {
-    getState: () => ({
-      freeUnits: [
-        { catalogId: 'usa_patriot', name: 'Patriot', category: 'sam_site', cost_millions: 500 },
-        { catalogId: 'usa_thaad', name: 'THAAD', category: 'sam_site', cost_millions: 1000 },
-      ],
-      freeEnemyUnits: [],
-    }),
+    getState: () => menuState,
   },
 }))
 
@@ -135,6 +138,7 @@ const { useDeploymentStore } = await import('../deployment-store')
 // ── Reset store before each test ─────────────────────────────────
 
 beforeEach(() => {
+  menuState.freeEnemyUnits = []
   useDeploymentStore.getState().reset()
 })
 
@@ -159,6 +163,23 @@ describe('init', () => {
     const state = useDeploymentStore.getState()
     expect(state.placedUnits).toHaveLength(0)
     expect(state.activeIndex).toBe(0)
+  })
+
+  it('resets selectedPlacedIndex so a stale selection cannot swallow the first click', () => {
+    const store = useDeploymentStore.getState()
+    store.init('usa', 'iran')
+    store.placeUnit({ lat: 25, lng: 51 })
+    store.selectPlaced(0)
+    store.init('usa', 'iran')
+    expect(useDeploymentStore.getState().selectedPlacedIndex).toBeNull()
+  })
+
+  it('places user-picked enemy units via the AI placement zones', () => {
+    menuState.freeEnemyUnits = [{ catalogId: 'iran_s300' }]
+    useDeploymentStore.getState().init('usa', 'iran')
+    const { enemyUnits } = useDeploymentStore.getState()
+    expect(enemyUnits).toHaveLength(1)
+    expect(enemyUnits[0].position).toEqual({ lat: 11, lng: 22 })
   })
 })
 
@@ -216,6 +237,26 @@ describe('undoLast', () => {
     const state = useDeploymentStore.getState()
     expect(state.placedUnits).toHaveLength(0)
     expect(state.activeIndex).toBe(0)
+  })
+
+  it('clears selectedPlacedIndex when it points at the removed unit', () => {
+    const store = useDeploymentStore.getState()
+    store.init('usa', 'iran')
+    store.placeUnit({ lat: 25, lng: 51 })
+    store.placeUnit({ lat: 26, lng: 52 })
+    store.selectPlaced(1)
+    store.undoLast()
+    expect(useDeploymentStore.getState().selectedPlacedIndex).toBeNull()
+  })
+
+  it('keeps selectedPlacedIndex when it still points at a valid unit', () => {
+    const store = useDeploymentStore.getState()
+    store.init('usa', 'iran')
+    store.placeUnit({ lat: 25, lng: 51 })
+    store.placeUnit({ lat: 26, lng: 52 })
+    store.selectPlaced(0)
+    store.undoLast()
+    expect(useDeploymentStore.getState().selectedPlacedIndex).toBe(0)
   })
 })
 

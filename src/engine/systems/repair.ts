@@ -48,8 +48,8 @@ export function processRepair(state: GameState): void {
     if (unit.status === 'destroyed') continue
     // Skip units at full health
     if (unit.health >= unit.maxHealth) continue
-    // Only process units that are damaged or already repairing
-    if (unit.status !== 'damaged' && unit.status !== 'repairing') continue
+    // Health-based eligibility — status 'damaged' is only set below 50 HP and movement overwrites it
+    if (isBusy(unit)) continue
 
     // Find nearest friendly base for supply connection
     const nearestBase = findNearestFriendlyBase(unit, state)
@@ -147,19 +147,13 @@ function computeRepairRate(unit: Unit, nearestBase: Unit | null): number {
 //  STATUS TRANSITIONS
 // ===============================================
 
-/**
- * Update unit status based on repair progress.
- * Never overrides 'moving' or 'engaged' status with 'repairing'.
- */
-function updateRepairStatus(unit: Unit): void {
-  const isBusy = unit.status === 'moving' || unit.status === 'engaged' ||
+function isBusy(unit: Unit): boolean {
+  return unit.status === 'moving' ||
     unit.readiness === 'packing' || unit.readiness === 'deploying'
-  if (unit.health >= unit.maxHealth) {
-    if (!isBusy) unit.status = 'ready'
-  } else if (!isBusy) {
-    // Still needs repair and not otherwise occupied
-    unit.status = 'repairing'
-  }
+}
+
+function updateRepairStatus(unit: Unit): void {
+  unit.status = unit.health >= unit.maxHealth ? 'ready' : 'repairing'
 }
 
 // ===============================================

@@ -21,7 +21,7 @@ export function createImpactLayers(
   // Show impacts for the last 30 ticks
   const impacts: ImpactMarker[] = events
     .filter((e): e is Extract<GameEvent, { type: 'MISSILE_IMPACT' }> =>
-      e.type === 'MISSILE_IMPACT' && currentTick - e.tick < 30,
+      e.type === 'MISSILE_IMPACT' && currentTick - e.tick < 30 && currentTick >= e.tick,
     )
     .map(e => {
       const unit = units.find(u => u.id === e.targetId)
@@ -32,7 +32,7 @@ export function createImpactLayers(
   // Show intercepts for the last 30 ticks
   const intercepts: InterceptMarker[] = events
     .filter((e): e is Extract<GameEvent, { type: 'MISSILE_INTERCEPTED' }> =>
-      e.type === 'MISSILE_INTERCEPTED' && currentTick - e.tick < 30,
+      e.type === 'MISSILE_INTERCEPTED' && currentTick - e.tick < 30 && currentTick >= e.tick,
     )
     .map(e => ({ position: e.position, tick: e.tick }))
 
@@ -51,6 +51,8 @@ export function createImpactLayers(
     },
     radiusUnits: 'meters',
     radiusScale: 1,
+    // Damage radii are a few km — sub-pixel at theater zoom without a floor
+    radiusMinPixels: 6,
     filled: true,
     stroked: false,
     opacity: 0.4,

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { processMovement } from '../movement'
 import { ElevationGrid } from '../elevation'
 import { weaponSpecs } from '@/data/weapons/missiles'
+import { haversine, ktsToKmh } from '../../utils/geo'
 import type { GameState, Unit, Missile, NationId } from '@/types/game'
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -100,6 +101,37 @@ function makeGrid(
     }
   }
 
+  return new ElevationGrid(buffer)
+}
+
+/**
+ * Theater-sized grid (lat 12-43, lng 32-70, 0.05 deg) matching the route-planner
+ * constants. All water (elevation 0) except the given "row,col" land cells.
+ */
+function makeTheaterGrid(landCells?: Set<string>): ElevationGrid {
+  const latMin = 12
+  const latMax = 43
+  const lngMin = 32
+  const lngMax = 70
+  const resolution = 0.05
+  const rows = Math.round((latMax - latMin) / resolution)
+  const cols = Math.round((lngMax - lngMin) / resolution)
+
+  const buffer = new ArrayBuffer(20 + rows * cols * 4)
+  const header = new Float32Array(buffer, 0, 5)
+  header[0] = latMin
+  header[1] = latMax
+  header[2] = lngMin
+  header[3] = lngMax
+  header[4] = resolution
+
+  const data = new Float32Array(buffer, 20, rows * cols)
+  if (landCells) {
+    for (const key of landCells) {
+      const [row, col] = key.split(',').map(Number)
+      data[row * cols + col] = 100
+    }
+  }
   return new ElevationGrid(buffer)
 }
 
@@ -316,5 +348,121 @@ describe('unit movement', () => {
     const u = state.units.get('sam_site')!
     expect(u.position.lat).toBe(25)
     expect(u.position.lng).toBe(51)
+  })
+
+  it('moves at max speed from the first order (stale patrol speed regression)', () => {
+    const unit = makeUnit({
+      id: 'ship_slow',
+      nation: 'usa',
+      category: 'ship',
+      position: { lat: 25, lng: 51 },
+      speed_kts: 3,
+      maxSpeed_kts: 30,
+      waypoints: [{ lat: 26, lng: 52 }],
+      status: 'moving',
+    })
+
+    const state = makeState([unit])
+    processMovement(state)
+
+    const u = state.units.get('ship_slow')!
+    expect(u.speed_kts).toBe(30)
+    const moved = haversine({ lat: 25, lng: 51 }, u.position)
+    expect(moved).toBeCloseTo(ktsToKmh(30) / 3600, 3)
+  })
+})
+
+describe('terrain-skip readiness lifecycle', () => {
+  it('starts deploying when a terrain skip exhausts the last waypoint (stuck readiness regression)', () => {
+    // Unit's next step lands on water — old code left readiness 'moving' forever
+    const elevations = Array.from({ length: 10 }, () => Array(10).fill(100))
+    elevations[1][1] = 0
+    const grid = makeGrid(24, 34, 50, 60, 1.0, elevations)
+
+    const unit = makeUnit({
+      id: 'mobile_sam',
+      nation: 'usa',
+      category: 'sam_site',
+      position: { lat: 25, lng: 51 },
+      maxSpeed_kts: 30,
+      waypoints: [{ lat: 26, lng: 52 }],
+      status: 'moving',
+      readiness: 'moving',
+      deploy_time_sec: 300,
+    })
+
+    const state = makeState([unit])
+    processMovement(state, grid)
+
+    const u = state.units.get('mobile_sam')!
+    expect(u.waypoints).toHaveLength(0)
+    expect(u.readiness).toBe('deploying')
+    expect(u.readinessTimer).toBe(300)
+    expect(u.status).toBe('ready')
+    expect(u.speed_kts).toBe(0)
+  })
+})
+
+describe('naval re-route on land blockage', () => {
+  // Land wall at lng 51 (col 380), lat 26-28 (rows 280-320). Ship just west of it,
+  // next 1-second step crosses into the wall cell.
+  const wall = new Set<string>()
+  for (let row = 280; row <= 320; row++) wall.add(`${row},380`)
+
+  it('re-routes around land instead of shedding waypoints (silent strand regression)', () => {
+    const grid = makeTheaterGrid(wall)
+    const dest = { lat: 27, lng: 51.5 }
+    const ship = makeUnit({
+      id: 'ddg_1',
+      nation: 'usa',
+      category: 'ship',
+      position: { lat: 27, lng: 50.973 },
+      maxSpeed_kts: 1000,
+      waypoints: [{ ...dest }],
+      status: 'moving',
+    })
+
+    const state = makeState([ship])
+    processMovement(state, grid)
+
+    const u = state.units.get('ddg_1')!
+    // Old behavior: waypoint shifted away -> stranded with no orders
+    expect(u.waypoints.length).toBeGreaterThan(1)
+    const last = u.waypoints[u.waypoints.length - 1]
+    expect(last.lat).toBeCloseTo(dest.lat, 6)
+    expect(last.lng).toBeCloseTo(dest.lng, 6)
+
+    // Ship makes progress along the new route and stays on water
+    for (let i = 0; i < 20; i++) processMovement(state, grid)
+    expect(haversine({ lat: 27, lng: 50.973 }, u.position)).toBeGreaterThan(0)
+    expect(grid.isWater(u.position.lat, u.position.lng)).toBe(true)
+  })
+
+  it('falls back to skipping the waypoint and completes the lifecycle when no water route exists', () => {
+    const enclosure = new Set<string>()
+    for (let row = 299; row <= 301; row++) {
+      for (let col = 378; col <= 380; col++) {
+        if (row === 300 && col === 379) continue
+        enclosure.add(`${row},${col}`)
+      }
+    }
+    const grid = makeTheaterGrid(enclosure)
+    const ship = makeUnit({
+      id: 'ddg_2',
+      nation: 'usa',
+      category: 'ship',
+      position: { lat: 27, lng: 50.973 },
+      maxSpeed_kts: 1000,
+      waypoints: [{ lat: 27, lng: 51.5 }],
+      status: 'moving',
+    })
+
+    const state = makeState([ship])
+    processMovement(state, grid)
+
+    const u = state.units.get('ddg_2')!
+    expect(u.waypoints).toHaveLength(0)
+    expect(u.status).toBe('ready')
+    expect(u.speed_kts).toBe(0)
   })
 })

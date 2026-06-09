@@ -8,17 +8,18 @@ import { haversine } from '@/engine/utils/geo'
 const basePositions = {
   // SAM sites (major ones with supply depots)
   s300_isfahan:    { lat: 32.66, lng: 51.68 },
-  s300_bushehr:    { lat: 28.97, lng: 50.83 },
+  s300_bushehr:    { lat: 29.1,  lng: 50.6 },
   s300_natanz:     { lat: 33.73, lng: 51.73 },
   bavar_tehran:    { lat: 35.69, lng: 51.39 },
-  khordad_bandar:  { lat: 27.18, lng: 56.27 },
+  khordad_bandar:  { lat: 27.3,  lng: 56.1 },
 
-  // Airbases
+  // Airbases & naval base
   mehrabad:        { lat: 35.69, lng: 51.31 },  // Tehran
   isfahan_ab:      { lat: 32.75, lng: 51.86 },  // 8th TFB
   bushehr_ab:      { lat: 28.95, lng: 50.83 },
   bandar_abbas_ab: { lat: 27.22, lng: 56.38 },
   tabriz_ab:       { lat: 38.13, lng: 46.24 },  // 2nd TFB
+  bandar_abbas_naval: { lat: 27.10, lng: 56.06 },  // IRIN 1st Naval District
 
   // Missile batteries (key depots)
   shahab_tabriz:      { lat: 38.08, lng: 46.29 },
@@ -94,6 +95,12 @@ export const iranBaseSupply: Record<string, WeaponStock[]> = {
     { weaponId: 'fateh110',   count: 6,  maxCount: 12, productionRate: 0 },
   ],
 
+  bandar_abbas_naval: [
+    // IRIN main fleet base — naval munitions for FACs and coastal forces
+    { weaponId: 'noor',        count: 16, maxCount: 32, productionRate: 0 },
+    { weaponId: 'khalij_fars', count: 4,  maxCount: 8,  productionRate: 0 },
+  ],
+
   // ─── SAM SITE DEPOTS (smaller stocks) ───
 
   s300_isfahan: [
@@ -164,6 +171,7 @@ export const iranSupplyLines: SupplyLine[] = [
   makeLine('bushehr_ab', 's300_bushehr', 100),     // Bushehr airbase ↔ Bushehr SAM
   makeLine('bushehr_ab', 'bandar_abbas_ab', 100),  // Bushehr → Bandar Abbas (~580 km)
   makeLine('bandar_abbas_ab', 'khordad_bandar', 100), // Bandar Abbas AB ↔ Khordad SAM
+  makeLine('bandar_abbas_ab', 'bandar_abbas_naval', 100), // Bandar Abbas AB ↔ naval base
 
   // ─── North-south trunk ───
   makeLine('mehrabad', 'isfahan_ab', 100),         // Tehran → Isfahan (~400 km)

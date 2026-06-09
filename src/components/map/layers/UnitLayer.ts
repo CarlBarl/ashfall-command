@@ -23,7 +23,6 @@ const STATUS_ALPHA: Record<string, number> = {
   engaged: 255,
   moving: 230,
   damaged: 180,
-  destroyed: 80,
   reloading: 200,
 }
 
@@ -83,8 +82,14 @@ export function createUnitLayer(
   selectedNation: string | null,
   zoom: number,
 ) {
-  const clustered = clusterUnits(units, zoom)
+  // Minefields have no icon glyph — MinefieldLayer draws them as area circles.
+  // Keep them out of icons/labels/clustering but still hoverable/clickable via the pick layer.
+  const clustered = clusterUnits(units.filter(u => u.category !== 'minefield'), zoom)
   const renderItems = clustered.map(toRenderUnit)
+  const minefieldItems = units
+    .filter(u => u.category === 'minefield' && u.status !== 'destroyed')
+    .map(toRenderUnit)
+  const pickItems = minefieldItems.length > 0 ? [...renderItems, ...minefieldItems] : renderItems
 
   // Build a lookup: clusterId → UnitCluster (for click handling)
   const clusterMap = new Map<string, UnitCluster>()
@@ -162,6 +167,7 @@ export function createUnitLayer(
     getPixelOffset: [0, 24],
     fontFamily: 'JetBrains Mono, Fira Code, monospace',
     fontWeight: 600,
+    fontSettings: { sdf: true },
     outlineWidth: 2,
     outlineColor: [13, 17, 23, 220],
     sizeUnits: 'pixels',
@@ -183,6 +189,7 @@ export function createUnitLayer(
     getPixelOffset: [16, -16],
     fontFamily: 'JetBrains Mono, Fira Code, monospace',
     fontWeight: 700,
+    fontSettings: { sdf: true },
     outlineWidth: 3,
     outlineColor: [13, 17, 23, 255],
     sizeUnits: 'pixels',
@@ -199,7 +206,7 @@ export function createUnitLayer(
   // Invisible pick layer — much larger hit area (24px radius) for easy clicking
   const pickLayer = new ScatterplotLayer<RenderUnit>({
     id: 'unit-pick-layer',
-    data: renderItems,
+    data: pickItems,
     pickable: true,
     getPosition: (d) => [d.position.lng, d.position.lat],
     getRadius: 24,
@@ -226,6 +233,27 @@ export function createUnitLayer(
   }
 
   return [pickLayer, iconLayer, labelLayer, badgeLayer]
+}
+
+/** Highlight ring around units recently spotted by satellite passes */
+export function createSatelliteDetectionLayer(units: ViewUnit[], detectedIds: string[]) {
+  let detected: ViewUnit[] = []
+  if (detectedIds.length > 0) {
+    const ids = new Set(detectedIds)
+    detected = units.filter(u => ids.has(u.id) && u.status !== 'destroyed')
+  }
+  return new ScatterplotLayer<ViewUnit>({
+    id: 'satellite-detections',
+    data: detected,
+    getPosition: (d) => [d.position.lng, d.position.lat],
+    getRadius: 16,
+    radiusUnits: 'pixels',
+    filled: false,
+    stroked: true,
+    getLineColor: [255, 220, 80, 180],
+    lineWidthMinPixels: 1.5,
+    pickable: false,
+  })
 }
 
 let _lastClusterMap = new Map<string, UnitCluster>()

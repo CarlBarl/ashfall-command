@@ -1,10 +1,21 @@
-import type { GameState, GameEvent } from '@/types/game'
+import type { GameState, Unit } from '@/types/game'
 import type { ElevationGrid } from './elevation'
 import { haversine, bearing, destination, ktsToKmh } from '../utils/geo'
 import { weaponSpecs } from '@/data/weapons/missiles'
+import { findNavalRoute } from './route-planner'
 
 const ARRIVAL_THRESHOLD_KM = 0.5
 const NAVAL_CATEGORIES = new Set(['ship', 'submarine', 'carrier_group', 'naval_base'])
+
+/** Complete the movement lifecycle once all waypoints are exhausted (any path: arrival or terrain skip). */
+function finishMovement(unit: Unit): void {
+  if (unit.deploy_time_sec != null) {
+    unit.readiness = 'deploying'
+    unit.readinessTimer = unit.deploy_time_sec
+  }
+  unit.status = 'ready'
+  unit.speed_kts = 0
+}
 
 /** Process movement for all units with waypoints. Called each tick (= 1 game second). */
 export function processMovement(state: GameState, elevationGrid?: ElevationGrid | null): void {
@@ -21,25 +32,14 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
     const dist = haversine(unit.position, target)
 
     // Distance this unit can travel in 1 second
-    const speedKmPerSec = ktsToKmh(unit.speed_kts > 0 ? unit.speed_kts : unit.maxSpeed_kts) / 3600
+    const speedKmPerSec = ktsToKmh(unit.maxSpeed_kts) / 3600
 
     if (dist <= ARRIVAL_THRESHOLD_KM || dist <= speedKmPerSec) {
       // Arrived at waypoint
       unit.position = { ...target }
       unit.waypoints.shift()
 
-      if (unit.waypoints.length === 0) {
-        if (unit.deploy_time_sec != null) {
-          // Unit has readiness lifecycle — begin deploying
-          unit.readiness = 'deploying'
-          unit.readinessTimer = unit.deploy_time_sec
-          unit.status = 'ready'
-          unit.speed_kts = 0
-        } else {
-          unit.status = 'ready'
-          unit.speed_kts = 0
-        }
-      }
+      if (unit.waypoints.length === 0) finishMovement(unit)
     } else {
       // Move toward waypoint
       const brng = bearing(unit.position, target)
@@ -49,21 +49,27 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
       if (elevationGrid && !isAircraft) {
         const nextIsWater = elevationGrid.isWater(nextPos.lat, nextPos.lng)
         if (isNaval && !nextIsWater) {
-          // Ship hitting land — skip this waypoint
-          unit.waypoints.shift()
-          if (unit.waypoints.length === 0) {
-            unit.status = 'ready'
-            unit.speed_kts = 0
+          // Ship hitting land — re-route on water toward the final destination
+          const dest = unit.waypoints[unit.waypoints.length - 1]
+          const route = findNavalRoute(unit.position, dest, elevationGrid)
+          if (route && route.length > 0) {
+            const probeBrng = bearing(unit.position, route[0])
+            const probe = destination(unit.position, probeBrng, speedKmPerSec)
+            // Only accept a re-route whose first step is clear, else we'd re-route every tick
+            if (elevationGrid.isWater(probe.lat, probe.lng)) {
+              unit.waypoints = [...route, dest]
+              continue
+            }
           }
+          // No water route — skip this waypoint
+          unit.waypoints.shift()
+          if (unit.waypoints.length === 0) finishMovement(unit)
           continue
         }
         if (!isNaval && nextIsWater) {
           // Land unit hitting water — skip this waypoint
           unit.waypoints.shift()
-          if (unit.waypoints.length === 0) {
-            unit.status = 'ready'
-            unit.speed_kts = 0
-          }
+          if (unit.waypoints.length === 0) finishMovement(unit)
           continue
         }
       }
@@ -71,16 +77,12 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
       unit.position = nextPos
       unit.heading = brng
       unit.status = 'moving'
-      if (unit.speed_kts === 0) {
-        unit.speed_kts = unit.maxSpeed_kts
-      }
+      unit.speed_kts = unit.maxSpeed_kts
     }
   }
 
   // Terrain following for cruise-phase missiles
   if (elevationGrid) {
-    const missilesToDelete: string[] = []
-    const events: GameEvent[] = []
     for (const missile of state.missiles.values()) {
       if (missile.status !== 'inflight') continue
       if (missile.is_interceptor) continue // SAM interceptors have their own altitude model (combat.ts)
@@ -131,17 +133,6 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
       if (missile.altitude_m < terrainElev) {
         missile.altitude_m = terrainElev + clearance
       }
-    }
-    for (const id of missilesToDelete) {
-      state.missiles.delete(id)
-    }
-    // Emit events
-    if (events.length > 0) {
-      state.events.push(...events)
-      if (state.events.length > 2000) {
-        state.events.splice(0, state.events.length - 2000)
-      }
-      state.pendingEvents.push(...events)
     }
   }
 }

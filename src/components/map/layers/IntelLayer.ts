@@ -41,6 +41,7 @@ export function createIntelUnitLayers(estimatedUnits: EstimatedUnit[]) {
     getPixelOffset: [0, 20],
     fontFamily: 'JetBrains Mono, Fira Code, monospace',
     fontWeight: 600,
+    fontSettings: { sdf: true },
     outlineWidth: 2,
     outlineColor: [13, 17, 23, 220],
     sizeUnits: 'pixels',

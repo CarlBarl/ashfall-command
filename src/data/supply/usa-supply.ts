@@ -12,6 +12,7 @@ const basePositions = {
   ali_al_salem:  { lat: 29.347, lng: 47.521 },  // Kuwait
   incirlik:      { lat: 37.002, lng: 35.426 },  // Turkey
   diego_garcia:  { lat: -7.313, lng: 72.411 },  // Rear logistics depot (BIOT)
+  nsa_bahrain:   { lat: 26.21,  lng: 50.61 },   // Bahrain — 5th Fleet naval base
 } as const
 
 // ═══════════════════════════════════════════════
@@ -47,6 +48,14 @@ export const usaBaseSupply: Record<string, WeaponStock[]> = {
   incirlik: [
     { weaponId: 'pac3_mse',  count: 16, maxCount: 16, productionRate: 0 },
     { weaponId: 'tomahawk',  count: 24, maxCount: 24, productionRate: 0 },
+  ],
+
+  // Naval munitions hub — 5th Fleet HQ, primary ship rearm/repair point
+  nsa_bahrain: [
+    { weaponId: 'tomahawk',  count: 48, maxCount: 48, productionRate: 0 },
+    { weaponId: 'sm6',       count: 32, maxCount: 32, productionRate: 0 },
+    { weaponId: 'sm2_iiia',  count: 32, maxCount: 32, productionRate: 0 },
+    { weaponId: 'harpoon',   count: 16, maxCount: 16, productionRate: 0 },
   ],
 
   // Rear depot — Diego Garcia simulates CONUS resupply pipeline
@@ -88,6 +97,7 @@ export const usaSupplyLines: SupplyLine[] = [
   // Gulf theater links
   makeLine('al_udeid', 'al_dhafra', 100),        // Qatar ↔ UAE (~350 km)
   makeLine('al_udeid', 'ali_al_salem', 100),      // Qatar ↔ Kuwait (~500 km)
+  makeLine('al_udeid', 'nsa_bahrain', 100),       // Qatar ↔ Bahrain (~140 km)
   makeLine('al_dhafra', 'prince_sultan', 100),     // UAE ↔ Saudi (~600 km)
   makeLine('ali_al_salem', 'prince_sultan', 100),  // Kuwait ↔ Saudi (~300 km)
 

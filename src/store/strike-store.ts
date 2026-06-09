@@ -19,6 +19,8 @@ interface StrikeStore {
   targetingMode: boolean
   // Cluster targeting (multi-target direct fire)
   strikeClusterUnits: ClusterTarget[]
+  /** Launcher the direct-fire panel will actually fire from (map route preview reads this) */
+  activeLauncherId: UnitId | null
 
   // Plan mode (presidential planner)
   planPriorities: AttackPriority[]
@@ -43,6 +45,7 @@ interface StrikeStore {
   setTargetUnitId: (id: UnitId | null) => void
   setTargetingMode: (on: boolean) => void
   setStrikeCluster: (units: ClusterTarget[]) => void
+  setActiveLauncherId: (id: UnitId | null) => void
 
   // Actions — plan mode
   addPlanPriority: (p: AttackPriority) => void
@@ -73,6 +76,7 @@ const INITIAL_STATE = {
   targetUnitId: null,
   targetingMode: false,
   strikeClusterUnits: [] as ClusterTarget[],
+  activeLauncherId: null,
   routingMode: false,
   routeWaypoints: [] as Position[],
   planPriorities: [],
@@ -88,15 +92,17 @@ export const useStrikeStore = create<StrikeStore>((set) => ({
 
   // Panel
   openStrike: (mode = 'direct') => set({ open: true, mode }),
-  closeStrike: () => set({ open: false }),
+  // Also clear the direct-fire target — otherwise autoShowDirect reopens the panel instantly
+  closeStrike: () => set({ open: false, targetUnitId: null, targetingMode: false, routingMode: false }),
   setMode: (mode) => set({ mode, open: true }),
 
   // Targeting
   setTargetUnitId: (id) => set(id
     ? { targetUnitId: id, targetingMode: false, open: true, mode: 'direct' as StrikeMode, strikeClusterUnits: [] }
-    : { targetUnitId: null, targetingMode: false, open: false, strikeClusterUnits: [] }
+    : { targetUnitId: null, targetingMode: false, strikeClusterUnits: [] }
   ),
   setTargetingMode: (on) => set({ targetingMode: on }),
+  setActiveLauncherId: (activeLauncherId) => set({ activeLauncherId }),
   setStrikeCluster: (units) => set({
     strikeClusterUnits: units,
     targetUnitId: null,

@@ -14,6 +14,10 @@ interface PlacementZone {
   center: Position
   label: string
   roles: string[] // catalog id prefixes that fit this zone
+  /** Zone center is in open water — only ships/subs/carriers placed here */
+  naval?: boolean
+  /** Max random offset in degrees (default 0.4) — tighter for confined waters */
+  jitter_deg?: number
 }
 
 const IRAN_ZONES: PlacementZone[] = [
@@ -21,7 +25,7 @@ const IRAN_ZONES: PlacementZone[] = [
   { center: { lat: 35.69, lng: 51.39 }, label: 'Tehran', roles: ['iran_s300', 'iran_bavar373', 'iran_khordad', 'iran_tor', 'iran_airbase'] },
   { center: { lat: 32.66, lng: 51.68 }, label: 'Isfahan', roles: ['iran_s300', 'iran_bavar373', 'iran_khordad', 'iran_tor', 'iran_airbase'] },
   { center: { lat: 28.97, lng: 50.83 }, label: 'Bushehr', roles: ['iran_s300', 'iran_tor', 'iran_airbase', 'iran_coastal'] },
-  { center: { lat: 27.18, lng: 56.27 }, label: 'Bandar Abbas', roles: ['iran_khordad', 'iran_tor', 'iran_coastal', 'iran_ghadir', 'iran_airbase'] },
+  { center: { lat: 27.18, lng: 56.27 }, label: 'Bandar Abbas', roles: ['iran_khordad', 'iran_tor', 'iran_coastal', 'iran_airbase'] },
   { center: { lat: 29.59, lng: 52.59 }, label: 'Shiraz', roles: ['iran_khordad', 'iran_fateh110', 'iran_airbase'] },
 
   // Missile launch zones — western Iran (within range of Gulf)
@@ -37,6 +41,9 @@ const IRAN_ZONES: PlacementZone[] = [
 
   // Northwest — long range missiles
   { center: { lat: 38.08, lng: 46.29 }, label: 'Tabriz', roles: ['iran_shahab3', 'iran_airbase'] },
+
+  // Naval — Strait of Hormuz eastern approach (open water)
+  { center: { lat: 26.5, lng: 56.75 }, label: 'Strait of Hormuz', roles: ['iran_ghadir'], naval: true, jitter_deg: 0.15 },
 ]
 
 const USA_ZONES: PlacementZone[] = [
@@ -47,12 +54,12 @@ const USA_ZONES: PlacementZone[] = [
   { center: { lat: 29.3, lng: 47.5 }, label: 'Kuwait', roles: ['usa_f35_squadron', 'usa_forward_base', 'usa_patriot'] },
 
   // Naval — Persian Gulf
-  { center: { lat: 26.2, lng: 52.5 }, label: 'Persian Gulf', roles: ['usa_ddg', 'usa_ssn'] },
-  { center: { lat: 25.5, lng: 55.0 }, label: 'Gulf of Oman', roles: ['usa_ddg', 'usa_ssn'] },
+  { center: { lat: 26.2, lng: 52.5 }, label: 'Persian Gulf', roles: ['usa_ddg', 'usa_ssn'], naval: true },
+  { center: { lat: 24.8, lng: 57.5 }, label: 'Gulf of Oman', roles: ['usa_ddg', 'usa_ssn'], naval: true },
 
   // Naval — Arabian Sea (carriers, subs)
-  { center: { lat: 23.5, lng: 60.0 }, label: 'Arabian Sea', roles: ['usa_csg', 'usa_ddg', 'usa_ssn'] },
-  { center: { lat: 22.0, lng: 63.0 }, label: 'Arabian Sea South', roles: ['usa_csg', 'usa_ddg'] },
+  { center: { lat: 23.5, lng: 60.0 }, label: 'Arabian Sea', roles: ['usa_csg', 'usa_ddg', 'usa_ssn'], naval: true },
+  { center: { lat: 22.0, lng: 63.0 }, label: 'Arabian Sea South', roles: ['usa_csg', 'usa_ddg'], naval: true },
 ]
 
 // ═══════════════════════════════════════════════
@@ -67,7 +74,8 @@ interface BudgetAllocation {
 }
 
 const IRAN_BUDGET: BudgetAllocation = { ad: 0.30, offensive: 0.30, flex: 0.20, base: 0.20 }
-const USA_BUDGET: BudgetAllocation = { ad: 0.30, offensive: 0.05, flex: 0.45, base: 0.20 }
+// USA offensive missiles come built into ships and airbases, so that share lives in flex
+const USA_BUDGET: BudgetAllocation = { ad: 0.30, offensive: 0, flex: 0.50, base: 0.20 }
 
 // Catalog IDs grouped by role for budget allocation
 const ROLE_MAP: Record<string, Record<keyof BudgetAllocation, string[]>> = {
@@ -102,7 +110,6 @@ export function generateAIForce(
 ): Unit[] {
   const allocation = nation === 'iran' ? IRAN_BUDGET : USA_BUDGET
   const roles = ROLE_MAP[nation]
-  const zones = nation === 'iran' ? IRAN_ZONES : USA_ZONES
 
   // Build catalog lookup
   const catalogById = new Map<string, UnitCatalogEntry>()
@@ -116,24 +123,11 @@ export function generateAIForce(
   let counter = 0
   let remaining = budget
 
-  // For USA, combine offensive + flex into one naval/flex pool
-  // since offensive missiles come built into ships and airbases
   const budgetPools: { role: keyof BudgetAllocation; amount: number }[] = []
   for (const role of ['ad', 'offensive', 'flex', 'base'] as const) {
     const poolBudget = Math.floor(budget * allocation[role])
     if (poolBudget > 0 && roles[role].length > 0) {
       budgetPools.push({ role, amount: poolBudget })
-    }
-  }
-
-  // If USA has no offensive pool entries, redistribute to flex
-  if (nation === 'usa') {
-    const offIdx = budgetPools.findIndex(p => p.role === 'offensive')
-    if (offIdx >= 0) {
-      const offBudget = budgetPools[offIdx].amount
-      budgetPools.splice(offIdx, 1)
-      const flexIdx = budgetPools.findIndex(p => p.role === 'flex')
-      if (flexIdx >= 0) budgetPools[flexIdx].amount += offBudget
     }
   }
 
@@ -164,14 +158,7 @@ export function generateAIForce(
       poolRemaining -= entry.cost_millions
       remaining -= entry.cost_millions
 
-      // Pick a suitable zone
-      const suitableZones = zones.filter(z => z.roles.includes(entry.id))
-      const zone = suitableZones.length > 0
-        ? suitableZones[rng.int(0, suitableZones.length - 1)]
-        : zones[rng.int(0, zones.length - 1)]
-
-      // Generate position with random offset
-      const position = jitterPosition(zone.center, rng)
+      const position = pickPlacementPosition(entry, nation, rng)
 
       const unit = buildUnit(entry, position, nation, counter)
       units.push(unit)
@@ -193,12 +180,7 @@ export function generateAIForce(
       const entry = affordable[rng.int(0, affordable.length - 1)]
       remaining -= entry.cost_millions
 
-      const suitableZones = zones.filter(z => z.roles.includes(entry.id))
-      const zone = suitableZones.length > 0
-        ? suitableZones[rng.int(0, suitableZones.length - 1)]
-        : zones[rng.int(0, zones.length - 1)]
-
-      const position = jitterPosition(zone.center, rng)
+      const position = pickPlacementPosition(entry, nation, rng)
       units.push(buildUnit(entry, position, nation, counter))
       counter++
     }
@@ -211,10 +193,31 @@ export function generateAIForce(
 //  HELPERS
 // ═══════════════════════════════════════════════
 
-/** Apply +-0.3 to 0.5 degree random offset to a position */
-function jitterPosition(center: Position, rng: SeededRNG): Position {
-  const latOffset = (rng.next() - 0.5) * 0.8 // +-0.4 degrees
-  const lngOffset = (rng.next() - 0.5) * 0.8
+const NAVAL_CATEGORIES = new Set<string>(['ship', 'submarine', 'carrier_group'])
+
+/**
+ * Pick a doctrine zone matching the entry's role (and water/land compatibility)
+ * and return a jittered position inside it.
+ */
+export function pickPlacementPosition(
+  entry: UnitCatalogEntry,
+  nation: NationId,
+  rng: SeededRNG,
+): Position {
+  const zones = nation === 'iran' ? IRAN_ZONES : USA_ZONES
+  const isNaval = NAVAL_CATEGORIES.has(entry.category)
+  const compatible = zones.filter(z => (z.naval ?? false) === isNaval)
+  const pool = compatible.length > 0 ? compatible : zones
+  const suitable = pool.filter(z => z.roles.includes(entry.id))
+  const candidates = suitable.length > 0 ? suitable : pool
+  const zone = candidates[rng.int(0, candidates.length - 1)]
+  return jitterPosition(zone.center, rng, zone.jitter_deg ?? 0.4)
+}
+
+/** Apply a random offset of up to +-maxOffsetDeg degrees to a position */
+function jitterPosition(center: Position, rng: SeededRNG, maxOffsetDeg = 0.4): Position {
+  const latOffset = (rng.next() - 0.5) * 2 * maxOffsetDeg
+  const lngOffset = (rng.next() - 0.5) * 2 * maxOffsetDeg
   return {
     lat: center.lat + latOffset,
     lng: center.lng + lngOffset,
@@ -231,7 +234,10 @@ export function buildUnit(
   return {
     ...entry.template,
     maxHealth: entry.template.maxHealth ?? 100,
-    pointDefense: entry.template.pointDefense ?? [],
+    weapons: entry.template.weapons.map(w => ({ ...w })),
+    sensors: entry.template.sensors.map(s => ({ ...s })),
+    supplyStocks: entry.template.supplyStocks.map(s => ({ ...s })),
+    pointDefense: (entry.template.pointDefense ?? []).map(p => ({ ...p })),
     id: `ai_${nation}_${index}`,
     position,
     status: 'ready',

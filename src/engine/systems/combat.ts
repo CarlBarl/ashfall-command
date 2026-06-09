@@ -1,4 +1,4 @@
-import type { GameState, GameEvent, Missile, Unit, WeaponSpec, ADSystemSpec } from '@/types/game'
+import type { GameState, GameEvent, Missile, Unit, WeaponSpec, ADSystemSpec, Position } from '@/types/game'
 import type { ElevationGrid } from './elevation'
 import type { SeededRNG } from '../utils/rng'
 import { weaponSpecs } from '@/data/weapons/missiles'
@@ -14,6 +14,9 @@ let interceptorCounter = 0
 
 // Track active fire channels per AD system per unit: `${unitId}:${adSystemId}` -> Set<missileId>
 const activeEngagements = new Map<string, Set<string>>()
+
+// Remaining planned waypoints per missile id — steered through before homing on the target
+const missileWaypoints = new Map<string, Position[]>()
 
 /**
  * Quadratic intercept solver: find the point where interceptor and target
@@ -112,6 +115,13 @@ export function resetCombatState(): void {
   missileCounter = 0
   interceptorCounter = 0
   activeEngagements.clear()
+  missileWaypoints.clear()
+}
+
+/** Restore id counters after loading a save so new ids don't collide with loaded missiles */
+export function setCombatCounters(maxMissileId: number, maxInterceptorId: number): void {
+  missileCounter = maxMissileId
+  interceptorCounter = maxInterceptorId
 }
 
 export function processCombat(state: GameState, rng: SeededRNG, elevationGrid?: ElevationGrid | null, sensorNetwork?: SensorNetwork | null): void {
@@ -145,6 +155,9 @@ function updateMissileFuel(state: GameState): void {
     if (missile.fuel_remaining_sec <= 0) {
       if (missile.is_interceptor) {
         // Interceptors with no fuel have missed their target
+        if (missile.interceptTargetMissileId) {
+          cleanEngagement(missile.launcherId, missile.interceptTargetMissileId)
+        }
         toRemove.push(missile.id)
       } else if (spec.type === 'cruise_missile' || spec.type === 'ashm' || spec.type === 'loitering_munition') {
         // Cruise missiles: speed decays and altitude drops (handled in speed/altitude updates)
@@ -311,6 +324,10 @@ function updateMissileAltitudes(state: GameState, elevationGrid?: ElevationGrid 
 // ===============================================
 
 function updateMissilePositions(state: GameState): void {
+  for (const id of missileWaypoints.keys()) {
+    if (!state.missiles.has(id)) missileWaypoints.delete(id)
+  }
+
   for (const missile of state.missiles.values()) {
     if (missile.status !== 'inflight') continue
     if (missile.is_interceptor) continue // interceptors are moved in updateInterceptors
@@ -345,24 +362,38 @@ function updateMissilePositions(state: GameState): void {
       continue
     }
 
+    // Follow planned waypoints; only the final leg homes on the target
+    const here = { lng: currentPos[0], lat: currentPos[1] }
+    const route = missileWaypoints.get(missile.id)
+    if (route) {
+      const passRadiusKm = Math.max(kmPerSec * 1.5, 1)
+      while (route.length > 0 && haversine(here, route[0]) <= passRadiusKm) {
+        route.shift()
+      }
+      if (route.length === 0) missileWaypoints.delete(missile.id)
+    }
+    const steerPoint = route && route.length > 0 ? route[0] : target.position
+
     // Update ETA based on current speed — skip for ballistic missiles
     // (their trajectory is predetermined; recalculating creates a feedback loop with progress-based speed)
     const spec2 = weaponSpecs[missile.weaponId]
     if (spec2?.type !== 'ballistic_missile' && missile.speed_current_mach > 0) {
-      const timeToTargetMs = (distToTarget / kmPerSec) * 1000
-      missile.eta = state.time.timestamp + timeToTargetMs
+      let remainingKm = distToTarget
+      if (route && route.length > 0) {
+        remainingKm = 0
+        let prev: Position = here
+        for (const wp of route) {
+          remainingKm += haversine(prev, wp)
+          prev = wp
+        }
+        remainingKm += haversine(prev, target.position)
+      }
+      missile.eta = state.time.timestamp + (remainingKm / kmPerSec) * 1000
     }
 
-    // Advance position along great circle toward target
-    const brng = bearing(
-      { lng: currentPos[0], lat: currentPos[1] },
-      target.position,
-    )
-    const newPos = destination(
-      { lng: currentPos[0], lat: currentPos[1] },
-      brng,
-      kmPerSec,
-    )
+    // Advance position along great circle toward the steer point
+    const brng = bearing(here, steerPoint)
+    const newPos = destination(here, brng, kmPerSec)
 
     // Truncate initial great-circle path points that are in the future
     // (they have non-monotonic timestamps that break interpolation)
@@ -469,6 +500,9 @@ function runADEngagement(state: GameState, _rng: SeededRNG, elevationGrid?: Elev
         const interceptorSpec = weaponSpecs[loadout.weaponId]
         if (!interceptorSpec) continue
 
+        const threatPos = getCurrentMissilePosition(threat.missile, state.time.timestamp)
+        if (!threatPos) continue
+
         // Fire! Decrement ammo and create an interceptor missile
         loadout.count--
         engaged.add(threat.missile.id)
@@ -481,15 +515,15 @@ function runADEngagement(state: GameState, _rng: SeededRNG, elevationGrid?: Elev
             weaponId: loadout.weaponId,
             tick: state.time.tick,
           })
-          loadout.reloadingUntil = state.time.timestamp + adSpec.reload_time_sec * 1000
+          // reload_time_sec 0 means no reload in combat (e.g. VLS cells) — stay empty
+          if (adSpec.reload_time_sec > 0) {
+            loadout.reloadingUntil = state.time.timestamp + adSpec.reload_time_sec * 1000
+          }
         }
 
         // Compute interceptor flight parameters
         const intSpeedKmh = machToKmh(interceptorSpec.speed_mach)
         const fuelSec = adSpec.engagement_range_km / (intSpeedKmh / 3600)
-
-        const threatPos = getCurrentMissilePosition(threat.missile, state.time.timestamp)
-        if (!threatPos) continue
 
         // Heading from last two path points (NOT from path to interpolated pos — see getMissileHeading)
         const threatHeading = getMissileHeading(threat.missile)
@@ -573,6 +607,7 @@ function updateInterceptors(state: GameState, rng: SeededRNG): void {
 
     // If fuel exhausted, remove (missed)
     if (interceptor.fuel_remaining_sec <= 0) {
+      cleanEngagement(interceptor.launcherId, targetMissileId)
       toRemove.push(interceptor.id)
       continue
     }
@@ -582,6 +617,7 @@ function updateInterceptors(state: GameState, rng: SeededRNG): void {
     const targetPos = getCurrentMissilePosition(targetMissile, state.time.timestamp)
 
     if (!intPos || !targetPos) {
+      cleanEngagement(interceptor.launcherId, targetMissileId)
       toRemove.push(interceptor.id)
       continue
     }
@@ -591,26 +627,31 @@ function updateInterceptors(state: GameState, rng: SeededRNG): void {
       { lng: targetPos[0], lat: targetPos[1] },
     )
 
-    // Close enough for engagement: within 2km
-    if (dist < 2) {
+    // Kill window scales with closing speed so 1s sampling can't tunnel past the 2km radius
+    const closingKmPerSec = machToKmh(interceptor.speed_current_mach + targetMissile.speed_current_mach) / 3600
+    if (dist < Math.max(2, closingKmPerSec / 2)) {
       const interceptorSpec = weaponSpecs[interceptor.weaponId]
       const targetSpec = weaponSpecs[targetMissile.weaponId]
 
       // Find the launching unit for pKill calculation
       const adUnit = state.units.get(interceptor.launcherId)
       if (!adUnit || !interceptorSpec) {
+        cleanEngagement(interceptor.launcherId, targetMissileId)
         toRemove.push(interceptor.id)
         continue
       }
 
       const adSpec = findADSpecForWeapon(interceptor.weaponId)
+      const activeChannels = adSpec
+        ? (activeEngagements.get(`${interceptor.launcherId}:${adSpec.id}`)?.size ?? 0)
+        : 0
       let pKill = computePKill(
         interceptorSpec,
         targetSpec,
         adUnit,
         targetMissile,
         adSpec?.fire_channels ?? 6,
-        0,
+        activeChannels,
       )
 
       // Network detection quality modifier:
@@ -798,7 +839,7 @@ export function launchMissile(
   launcherId: string,
   weaponId: string,
   targetId: string,
-  waypoints?: import('@/types/game').Position[],
+  waypoints?: Position[],
 ): GameEvent | null {
   const launcher = state.units.get(launcherId)
   const target = state.units.get(targetId)
@@ -832,6 +873,7 @@ export function launchMissile(
   let path: [number, number][]
   let timestamps: number[]
   let flightTimeMs: number
+  let routeWaypoints: Position[] | null = null
 
   if (waypoints && waypoints.length > 0) {
     // Build list of all route points: launcher → wp1 → wp2 → ... → target
@@ -848,6 +890,8 @@ export function launchMissile(
       timestamps = generateTimestamps(state.time.timestamp, flightTimeMs, numSegments)
     } else {
       // Build path through waypoints
+      // Copy per missile — salvo launches share one waypoints array and steering consumes it
+      routeWaypoints = waypoints.map(w => ({ lat: w.lat, lng: w.lng }))
       flightTimeMs = computeFlightTime(totalDist, spec)
       path = []
       timestamps = []
@@ -899,6 +943,7 @@ export function launchMissile(
   }
 
   state.missiles.set(id, missile)
+  if (routeWaypoints) missileWaypoints.set(id, routeWaypoints)
 
   return {
     type: 'MISSILE_LAUNCHED',
@@ -1002,6 +1047,17 @@ export function launchSAM(
   }
 
   state.missiles.set(intId, interceptor)
+
+  // Register in engagement tracking so auto-AD doesn't double-fire at the same threat
+  if (adSpec) {
+    const engKey = `${launcherId}:${adSpec.id}`
+    let engaged = activeEngagements.get(engKey)
+    if (!engaged) {
+      engaged = new Set()
+      activeEngagements.set(engKey, engaged)
+    }
+    engaged.add(missileId)
+  }
 
   return null // no immediate event; events fire when intercept resolves
 }

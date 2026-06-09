@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { launchMissile, resetCombatState } from '../combat'
-import { haversine } from '../../utils/geo'
+import { launchMissile, processCombat, resetCombatState } from '../combat'
+import { haversine, greatCirclePath } from '../../utils/geo'
+import { SeededRNG } from '../../utils/rng'
 import type { GameState, Unit, NationId } from '@/types/game'
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -245,6 +246,112 @@ describe('launchMissile with waypoints', () => {
     // Timestamps monotonically increasing
     for (let i = 1; i < missile.timestamps.length; i++) {
       expect(missile.timestamps[i]).toBeGreaterThan(missile.timestamps[i - 1])
+    }
+  })
+})
+
+describe('missile follows waypoints in flight', () => {
+  beforeEach(() => {
+    resetCombatState()
+  })
+
+  it('waypointed missile deviates from the great-circle line, passes the waypoint, then hits the target (regression: beeline)', () => {
+    const launcher = makeUnit({
+      id: 'launcher1',
+      nation: 'usa',
+      position: { lat: 25, lng: 51 },
+      weapons: [{ weaponId: 'tomahawk', count: 10, maxCount: 10, reloadTimeSec: 0 }],
+    })
+    const target = makeUnit({
+      id: 'target1',
+      nation: 'iran',
+      position: { lat: 27, lng: 53 },
+    })
+
+    // ~130km off the direct launcher→target line
+    const waypoint = { lat: 25.4, lng: 53.2 }
+    const state = makeState([launcher, target])
+    const event = launchMissile(state, 'launcher1', 'tomahawk', 'target1', [waypoint])
+    expect(event).not.toBeNull()
+
+    const missileId = [...state.missiles.keys()][0]
+    const directLine = greatCirclePath(launcher.position, target.position, 100)
+    const rng = new SeededRNG(42)
+
+    let minDistToWaypoint = Infinity
+    let maxCrossTrackKm = 0
+
+    for (let t = 1; t <= 2500; t++) {
+      state.time.timestamp = 1000000 + t * 1000
+      state.time.tick = 10 + t
+      processCombat(state, rng)
+
+      const m = state.missiles.get(missileId)
+      if (!m || m.status !== 'inflight') break
+
+      const [lng, lat] = m.path[m.path.length - 1]
+      const pos = { lat, lng }
+      minDistToWaypoint = Math.min(minDistToWaypoint, haversine(pos, waypoint))
+      let distToLine = Infinity
+      for (const [dlng, dlat] of directLine) {
+        distToLine = Math.min(distToLine, haversine(pos, { lat: dlat, lng: dlng }))
+      }
+      maxCrossTrackKm = Math.max(maxCrossTrackKm, distToLine)
+    }
+
+    // Flew the dogleg: passed close to the waypoint, far off the direct great-circle line
+    expect(minDistToWaypoint).toBeLessThan(15)
+    expect(maxCrossTrackKm).toBeGreaterThan(50)
+
+    // ...and still completed the strike on the target
+    expect(state.missiles.has(missileId)).toBe(false)
+    expect(state.units.get('target1')!.health).toBeLessThan(100)
+  })
+
+  it('salvo missiles sharing one waypoints array each follow the full route', () => {
+    const launcher = makeUnit({
+      id: 'launcher1',
+      nation: 'usa',
+      position: { lat: 25, lng: 51 },
+      weapons: [{ weaponId: 'tomahawk', count: 10, maxCount: 10, reloadTimeSec: 0 }],
+    })
+    const target = makeUnit({
+      id: 'target1',
+      nation: 'iran',
+      position: { lat: 27, lng: 53 },
+    })
+
+    const sharedWaypoints = [{ lat: 25.4, lng: 53.2 }]
+    const state = makeState([launcher, target])
+    launchMissile(state, 'launcher1', 'tomahawk', 'target1', sharedWaypoints)
+    launchMissile(state, 'launcher1', 'tomahawk', 'target1', sharedWaypoints)
+
+    const ids = [...state.missiles.keys()]
+    expect(ids).toHaveLength(2)
+
+    const rng = new SeededRNG(7)
+    const minDistToWaypoint = new Map(ids.map(id => [id, Infinity]))
+
+    for (let t = 1; t <= 2500; t++) {
+      state.time.timestamp = 1000000 + t * 1000
+      state.time.tick = 10 + t
+      processCombat(state, rng)
+
+      let anyInflight = false
+      for (const id of ids) {
+        const m = state.missiles.get(id)
+        if (!m || m.status !== 'inflight') continue
+        anyInflight = true
+        const [lng, lat] = m.path[m.path.length - 1]
+        const d = haversine({ lat, lng }, sharedWaypoints[0])
+        minDistToWaypoint.set(id, Math.min(minDistToWaypoint.get(id)!, d))
+      }
+      if (!anyInflight) break
+    }
+
+    // The first missile consuming the queue must not strip the route from the second
+    for (const id of ids) {
+      expect(minDistToWaypoint.get(id)!).toBeLessThan(15)
     }
   })
 })

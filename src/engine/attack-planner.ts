@@ -160,6 +160,8 @@ function findCandidates(
 
   for (const fu of friendlyUnits) {
     if (fu.status === 'destroyed') continue
+    // launchMissile rejects non-deployed launchers — don't plan strikes they can't fire
+    if (fu.readiness && fu.readiness !== 'deployed') continue
     if (!matchesLauncherPref(fu, launcherPref)) continue
 
     for (const wl of fu.weapons) {
@@ -242,9 +244,13 @@ export function computeAttackPlan(
           const candidates = findCandidates(sam, friendlyUnits, ammo, p.weaponPreference, p.launcherPreference)
 
           let allocated = 0
+          let anyOutOfRange = false
           for (const c of candidates) {
             if (allocated >= needed) break
-            if (!c.inRange) continue
+            if (!c.inRange) {
+              anyOutOfRange = true
+              continue
+            }
             const avail = getAmmo(ammo, c.unit.id, c.wl.weaponId)
             const take = Math.min(needed - allocated, avail)
             if (take <= 0) continue
@@ -274,7 +280,9 @@ export function computeAttackPlan(
 
           if (allocated < needed) {
             warnings.push(
-              `SEAD: insufficient ammo for ${sam.name} (need ${needed}, allocated ${allocated})`,
+              anyOutOfRange
+                ? `SEAD: ${sam.name}: launchers exist but out of range`
+                : `SEAD: insufficient ammo for ${sam.name} (need ${needed}, allocated ${allocated})`,
             )
           }
         }

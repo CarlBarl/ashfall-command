@@ -220,6 +220,16 @@ export const iranUnits: Unit[] = [
   // ═══════════════════════════════════════════════
 
   u({
+    id: 'bandar_abbas_naval', name: 'Bandar Abbas Naval Base (IRIN 1st District)', nation: 'iran', category: 'naval_base',
+    position: { lat: 27.10, lng: 56.06 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    health: 100, hardness: 200,
+    weapons: [],
+    sensors: [{ type: 'radar', range_km: 200, detection_prob: 0.80, antenna_height_m: 15 }],
+    roe: 'weapons_tight',
+    datalink_range_km: 150,
+  }),
+
+  u({
     id: 'ghadir_sub1', name: 'Ghadir-class Sub (Bandar Abbas)', nation: 'iran', category: 'submarine',
     position: { lat: 26.8, lng: 56.3 }, heading: 200, speed_kts: 3, maxSpeed_kts: 11,
     health: 100, hardness: 80,

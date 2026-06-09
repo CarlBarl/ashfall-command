@@ -3,6 +3,7 @@ import type { SeededRNG } from '../utils/rng'
 import { haversine } from '../utils/geo'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import { pointDefenseSpecs } from '@/data/weapons/point-defense'
+import { isSuppressedForTight } from './orders'
 
 /**
  * Point defense system — last-ditch layer that runs AFTER SAM engagement.
@@ -14,6 +15,9 @@ export function processPointDefense(state: GameState, rng: SeededRNG): void {
 
   for (const unit of state.units.values()) {
     if (unit.status === 'destroyed') continue
+    if (unit.roe === 'hold_fire') continue
+    // Skip units that are not deployed (packing, moving, deploying)
+    if (unit.readiness && unit.readiness !== 'deployed') continue
     if (!unit.pointDefense || unit.pointDefense.length === 0) continue
 
     for (const pd of unit.pointDefense) {
@@ -79,6 +83,9 @@ function findClosestThreat(
     if (missile.status !== 'inflight') continue
     if (missile.is_interceptor) continue
     if (missile.nation === unit.nation) continue
+    // Engagement ceiling: PD can't reach targets higher than its slant range
+    if (missile.altitude_m > maxRange * 1000) continue
+    if (isSuppressedForTight(missile.id, unit)) continue
 
     // Check if missile is targeting this unit or nearby
     const missilePos = getMissileApproxPos(missile, state.time.timestamp)

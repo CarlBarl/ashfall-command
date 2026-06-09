@@ -1,4 +1,4 @@
-import type { GameState, Unit } from '@/types/game'
+import type { GameState, NationId, Position, Unit } from '@/types/game'
 import type { SeededRNG } from '../utils/rng'
 import { haversine } from '../utils/geo'
 
@@ -18,12 +18,26 @@ export function resetShippingState(): void {
 //  Helpers
 // ═══════════════════════════════════════════════
 
-/** Returns minimum haversine distance (km) from a point to any segment endpoint on a polyline path */
+// Equirectangular projection per segment — accurate enough at lane scales (<300 km)
+function distToSegment(point: Position, a: [number, number], b: [number, number]): number {
+  const kx = Math.cos((((a[1] + b[1]) / 2) * Math.PI) / 180)
+  const ax = a[0] * kx
+  const ay = a[1]
+  const dx = b[0] * kx - ax
+  const dy = b[1] - ay
+  const lenSq = dx * dx + dy * dy
+  let t = lenSq === 0 ? 0 : ((point.lng * kx - ax) * dx + (point.lat - ay) * dy) / lenSq
+  t = Math.max(0, Math.min(1, t))
+  return haversine(point, { lat: ay + t * dy, lng: (ax + t * dx) / kx })
+}
+
+/** Returns minimum distance (km) from a point to a polyline path, point-to-segment */
 function minDistToPath(lat: number, lng: number, path: [number, number][]): number {
   const point = { lat, lng }
+  if (path.length === 1) return haversine(point, { lat: path[0][1], lng: path[0][0] })
   let min = Infinity
-  for (const p of path) {
-    const d = haversine(point, { lat: p[1], lng: p[0] })
+  for (let i = 0; i < path.length - 1; i++) {
+    const d = distToSegment(point, path[i], path[i + 1])
     if (d < min) min = d
   }
   return min
@@ -36,26 +50,26 @@ function minDistToPath(lat: number, lng: number, path: [number, number][]): numb
 export function processShipping(state: GameState, rng: SeededRNG): void {
   if (state.time.tick % TICKS_PER_MINUTE !== 0) return
 
-  const playerNation = state.playerNation
-  const enemyNation = playerNation === 'usa' ? 'iran' : 'usa'
+  // Suppression and mine contacts are gated on the owning nation being at war —
+  // pre-placed minefields stay dormant at peacetime
+  const isBelligerent = (nation: NationId): boolean =>
+    (state.nations[nation]?.atWar.length ?? 0) > 0
 
   // Pre-partition units once to avoid repeated full scans
   const minefields: Unit[] = []
-  const enemyNaval: Unit[] = []
+  const belligerentNaval: Unit[] = []
   const droneInterdictors: Unit[] = []
 
   for (const unit of state.units.values()) {
     if (unit.status === 'destroyed') continue
+    if (!isBelligerent(unit.nation)) continue
 
     if (unit.category === 'minefield' && unit.health > 0 && (unit.mine_count ?? 0) > 0) {
       minefields.push(unit)
     }
 
-    if (
-      unit.nation === enemyNation &&
-      (unit.category === 'ship' || unit.category === 'submarine' || unit.category === 'carrier_group')
-    ) {
-      enemyNaval.push(unit)
+    if (unit.category === 'ship' || unit.category === 'submarine' || unit.category === 'carrier_group') {
+      belligerentNaval.push(unit)
     }
 
     if (
@@ -80,9 +94,9 @@ export function processShipping(state: GameState, rng: SeededRNG): void {
     }
     mineSuppression = Math.min(1.0, mineSuppression)
 
-    // 2. Enemy naval suppression
+    // 2. Belligerent naval suppression
     let navalSuppression = 0
-    for (const unit of enemyNaval) {
+    for (const unit of belligerentNaval) {
       const dist = minDistToPath(unit.position.lat, unit.position.lng, lane.path)
       if (dist <= 100) {
         navalSuppression += 0.1
@@ -112,12 +126,13 @@ export function processShipping(state: GameState, rng: SeededRNG): void {
       suppressionFactor < 0.2 ? 'open' :
       suppressionFactor < 0.7 ? 'reduced' :
       'blocked'
-    lane.status = newStatus
 
-    // Status change event
-    const prev = lastStatus.get(lane.id)
+    // Seed prev from lane.status so first tick / load never emits a no-change event
+    const prev = lastStatus.get(lane.id) ?? lane.status
+    lane.status = newStatus
+    lastStatus.set(lane.id, newStatus)
+
     if (prev !== newStatus) {
-      lastStatus.set(lane.id, newStatus)
       const event = {
         type: 'SHIPPING_LANE_STATUS_CHANGE' as const,
         laneId: lane.id,
@@ -133,9 +148,10 @@ export function processShipping(state: GameState, rng: SeededRNG): void {
   // ── Mine contacts ────────────────────────────
   for (const minefield of minefields) {
     const radius = minefield.radius_km ?? 0
+    const ownerAtWarWith = state.nations[minefield.nation]?.atWar ?? []
 
     for (const unit of state.units.values()) {
-      if (unit.nation === minefield.nation) continue
+      if (!ownerAtWarWith.includes(unit.nation)) continue
       if (unit.category !== 'ship' && unit.category !== 'submarine' && unit.category !== 'carrier_group') continue
       if (unit.status === 'destroyed') continue
 
@@ -158,6 +174,19 @@ export function processShipping(state: GameState, rng: SeededRNG): void {
       }
       state.events.push(event)
       state.pendingEvents.push(event)
+
+      if (unit.health <= 0) {
+        unit.status = 'destroyed'
+        const destroyedEvent = {
+          type: 'UNIT_DESTROYED' as const,
+          unitId: unit.id,
+          tick: state.time.tick,
+        }
+        state.events.push(destroyedEvent)
+        state.pendingEvents.push(destroyedEvent)
+      } else if (unit.health < 50) {
+        unit.status = 'damaged'
+      }
 
       if ((minefield.mine_count ?? 0) <= 0) {
         minefield.status = 'destroyed'
