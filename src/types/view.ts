@@ -8,6 +8,7 @@ import type {
   Position,
   ROE,
   Sensor,
+  ShippingLane,
   SupplyLine,
   UnitCategory,
   UnitId,
@@ -15,30 +16,6 @@ import type {
   WeaponLoadout,
   WeaponStock,
 } from './game'
-import type {
-  ArmyGroupId,
-  BattleIndicator,
-  DivisionStance,
-  DivisionType,
-  EncirclementPocket,
-  FrontlineSegment,
-  GeneralId,
-  GeneralOrder,
-  GeneralReport,
-  GeneralTraits,
-  GroundUnitId,
-  GroundUnitStatus,
-} from './ground'
-
-export interface ViewTerritory {
-  /** Current controller */
-  nation: string
-  /** Original sovereign owner */
-  owner?: string | null
-  occupied?: boolean
-  /** Polygon rings [lng, lat][][] */
-  polygon: [number, number][][]
-}
 
 /** Flat, serializable snapshot sent from Worker → Main at 30fps */
 export interface GameViewState {
@@ -49,22 +26,12 @@ export interface GameViewState {
   units: ViewUnit[]
   missiles: Missile[]
   supplyLines: SupplyLine[]
+  shippingLanes: ShippingLane[]
   /** New events since last poll (one-shot delivery) */
   events: GameEvent[]
   pendingEventCount: number
   /** Unit IDs recently detected by satellite passes (fades after ~60 ticks) */
   satelliteDetectedUnitIds: string[]
-
-  // ─── Ground warfare (present only when ground units exist) ───
-  frontlines?: FrontlineSegment[]
-  territories?: ViewTerritory[]
-  battles?: BattleIndicator[]
-  encirclements?: EncirclementPocket[]
-  generalReports?: GeneralReport[]
-  researchSummary?: Record<string, { current: string | null; progress: number; completed: string[] }>
-  groundUnits?: ViewGroundUnit[]
-  generals?: ViewGeneral[]
-  armyGroups?: ViewArmyGroup[]
 }
 
 export interface ViewUnit {
@@ -89,42 +56,7 @@ export interface ViewUnit {
   subordinateIds: UnitId[]
   readiness?: 'deployed' | 'packing' | 'deploying' | 'moving'
   readinessTimer?: number
-}
-
-// ─── Ground warfare view types ─────────────────────────────────────
-
-export interface ViewGroundUnit {
-  id: GroundUnitId
-  name: string
-  nation: NationId
-  type: DivisionType
-  armyGroupId: ArmyGroupId
-  /** Map position (converted from grid coords) */
-  lat: number
-  lng: number
-  strength: number
-  morale: number
-  organization: number
-  stance: DivisionStance
-  status: GroundUnitStatus
-  supplyState: number
-  entrenched: number
-}
-
-export interface ViewGeneral {
-  id: GeneralId
-  name: string
-  nation: NationId
-  armyGroupId: ArmyGroupId
-  traits: GeneralTraits
-  currentOrder: GeneralOrder | null
-  pendingReports: GeneralReport[]
-}
-
-export interface ViewArmyGroup {
-  id: ArmyGroupId
-  name: string
-  nation: NationId
-  generalId: GeneralId
-  divisionIds: GroundUnitId[]
+  radius_km?: number
+  mine_count?: number
+  droneMission?: 'military' | 'shipping_interdiction'
 }

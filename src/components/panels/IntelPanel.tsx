@@ -18,6 +18,7 @@ const CATEGORY_LABELS: Record<UnitCategory, string> = {
   ship: 'Ships',
   submarine: 'Submarines',
   carrier_group: 'Carrier Groups',
+  minefield: 'Minefields',
 }
 
 /** Return the enemy catalog for the player's nation (modern scenarios only) */

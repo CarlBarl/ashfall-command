@@ -1,13 +1,11 @@
 import Panel from '@/components/common/Panel'
 import StatBar from '@/components/common/StatBar'
 import { useGameStore } from '@/store/game-store'
-import type { Nation } from '@/types/game'
+import type { Nation, ShippingLane } from '@/types/game'
 
 const NATION_COLORS: Record<string, string> = {
   usa: 'var(--usa-primary)',
   iran: 'var(--iran-primary)',
-  germany: '#6a85a8',
-  poland: '#a88060',
 }
 
 function reserveColor(reserves: number): string {
@@ -21,7 +19,7 @@ function fmt(value: number, decimals = 0): string {
   return `${value.toFixed(decimals)}B`
 }
 
-function NationColumn({ nation }: { nation: Nation }) {
+function NationColumn({ nation, hormuzLane }: { nation: Nation; hormuzLane?: ShippingLane }) {
   const eco = nation.economy
   const atWar = nation.atWar.length > 0
   const nationColor = NATION_COLORS[nation.id] ?? 'var(--text-accent)'
@@ -89,6 +87,19 @@ function NationColumn({ nation }: { nation: Nation }) {
               />
             </>
           )}
+          {hormuzLane && (
+            <Row
+              label="Hormuz Export"
+              value={`${hormuzLane.currentThroughput_mbd.toFixed(1)} Mbd`}
+              highlight={
+                hormuzLane.status === 'blocked'
+                  ? 'var(--status-damaged)'
+                  : hormuzLane.status === 'reduced'
+                    ? 'var(--status-engaged)'
+                    : undefined
+              }
+            />
+          )}
         </div>
       )}
     </div>
@@ -111,10 +122,21 @@ function Row({ label, value, highlight }: { label: string; value: string; highli
   )
 }
 
+function oilPriceColor(price: number): string {
+  if (price > 130) return 'var(--status-damaged)'
+  if (price > 100) return 'var(--status-engaged)'
+  return 'var(--text-primary)'
+}
+
 export default function EconomyPanel() {
   const nations = useGameStore(s => s.viewState.nations)
+  const shippingLanes = useGameStore(s => s.viewState.shippingLanes)
 
   if (nations.length === 0) return null
+
+  // Oil price comes from any nation's economy (it's a global market price)
+  const oilPrice = nations.find(n => n.economy.oilPrice_per_barrel != null)?.economy.oilPrice_per_barrel ?? null
+  const hormuzLane = shippingLanes.find(l => l.id === 'hormuz')
 
   return (
     <Panel
@@ -126,11 +148,48 @@ export default function EconomyPanel() {
         minWidth: 340,
       }}
     >
+      {/* Global indicators row */}
+      {(oilPrice != null || hormuzLane) && (
+        <div style={{
+          display: 'flex',
+          gap: 12,
+          marginBottom: 10,
+          paddingBottom: 8,
+          borderBottom: '1px solid var(--border-default)',
+          fontSize: 'var(--font-size-xs)',
+          flexWrap: 'wrap',
+        }}>
+          {oilPrice != null && (
+            <span>
+              <span style={{ color: 'var(--text-secondary)' }}>Oil Price: </span>
+              <span style={{ color: oilPriceColor(oilPrice), fontWeight: 600 }}>
+                ${oilPrice.toFixed(0)}/bbl
+              </span>
+            </span>
+          )}
+          {hormuzLane && (
+            <span>
+              <span style={{ color: 'var(--text-secondary)' }}>Hormuz: </span>
+              <span style={{
+                color: hormuzLane.status === 'blocked'
+                  ? 'var(--status-damaged)'
+                  : hormuzLane.status === 'reduced'
+                    ? 'var(--status-engaged)'
+                    : 'var(--text-primary)',
+                fontWeight: 600,
+              }}>
+                {hormuzLane.currentThroughput_mbd.toFixed(1)} Mbd
+              </span>
+            </span>
+          )}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 16 }}>
         {nations.map((nation, i) => (
           <div key={nation.id} style={{ display: 'contents' }}>
             {i > 0 && <div style={{ width: 1, background: 'var(--border-default)' }} />}
-            <NationColumn nation={nation} />
+            <NationColumn nation={nation} hormuzLane={nation.id === 'iran' ? hormuzLane : undefined} />
           </div>
         ))}
       </div>

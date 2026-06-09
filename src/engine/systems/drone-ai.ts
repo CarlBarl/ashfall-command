@@ -131,6 +131,7 @@ function findDroneLaunchers(state: GameState, nationId: NationId): DroneLauncher
 
   for (const unit of state.units.values()) {
     if (unit.nation !== nationId || unit.status === 'destroyed') continue
+    if (unit.droneMission === 'shipping_interdiction') continue
 
     const droneWeapons: DroneLauncher['weapons'] = []
     for (const w of unit.weapons) {

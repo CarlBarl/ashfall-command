@@ -4,10 +4,11 @@ import { haversine } from '@/engine/utils/geo'
 const RESUPPLY_INTERVAL = 60 // Process every 60 ticks (1 game minute)
 const PRODUCTION_INTERVAL = 3600 // Production every 3600 ticks (1 game hour)
 
-// No module-level mutable state needed — everything lives in GameState.
-// Export reset for consistency with other systems.
+/** Tracks which supply lines have already emitted the SUPPLY_LINE_INTERDICTED event */
+const interdictedLines = new Set<string>()
+
 export function resetLogisticsState(): void {
-  // No module-level state to reset.
+  interdictedLines.clear()
 }
 
 // ===============================================
@@ -22,9 +23,10 @@ export function processLogistics(state: GameState): void {
     processBaseProduction(state)
   }
 
-  // Resupply runs every minute
+  // Resupply and supply line interdiction run every minute
   if (tick > 0 && tick % RESUPPLY_INTERVAL === 0) {
     processResupply(state)
+    processSupplyLineInterdiction(state)
   }
 }
 
@@ -220,6 +222,124 @@ function processBaseProduction(state: GameState): void {
       stock.count += produced
     }
   }
+}
+
+// ===============================================
+//  SUPPLY LINE INTERDICTION
+// ===============================================
+
+/** Threat profile per unit category for supply line interdiction */
+const INTERDICTION_THREATS: Partial<Record<string, { range_km: number; weight: number }>> = {
+  ship:            { range_km: 150, weight: 0.15 },
+  carrier_group:   { range_km: 150, weight: 0.15 },
+  submarine:       { range_km: 200, weight: 0.15 },
+  missile_battery: { range_km: 300, weight: 0.15 },
+  minefield:       { range_km: 0,   weight: 0.20 }, // range_km is dynamic (unit.radius_km)
+}
+
+/** Linear interpolation of a Position along a line at fraction t ∈ [0, 1] */
+function lerpPosition(a: { lat: number; lng: number }, b: { lat: number; lng: number }, t: number): { lat: number; lng: number } {
+  return {
+    lat: a.lat + (b.lat - a.lat) * t,
+    lng: a.lng + (b.lng - a.lng) * t,
+  }
+}
+
+export function processSupplyLineInterdiction(state: GameState): void {
+  const events: GameEvent[] = []
+
+  for (const line of state.supplyLines.values()) {
+    const fromBase = state.units.get(line.fromBaseId)
+    const toBase   = state.units.get(line.toBaseId)
+
+    // Skip if either base is missing or destroyed
+    if (!fromBase || fromBase.status === 'destroyed') continue
+    if (!toBase   || toBase.status === 'destroyed')   continue
+
+    // Determine the supply line's owning nation from the fromBase
+    const baseNation = state.nations[fromBase.nation]
+    if (!baseNation) continue
+
+    // Sample 5 points along the line (t = 0.1, 0.3, 0.5, 0.7, 0.9)
+    const sampleFractions = [0.1, 0.3, 0.5, 0.7, 0.9]
+    const samplePoints = sampleFractions.map(t =>
+      lerpPosition(fromBase.position, toBase.position, t),
+    )
+
+    let totalThreatWeight = 0
+    let firstThreatUnitId: string | null = null
+
+    for (const unit of state.units.values()) {
+      if (unit.status === 'destroyed') continue
+
+      // Only consider enemy units (units whose nation is at war with the base nation)
+      if (!baseNation.atWar.includes(unit.nation)) continue
+
+      const threatProfile = INTERDICTION_THREATS[unit.category]
+      if (!threatProfile) continue
+
+      // Resolve range — minefields use unit.radius_km
+      const range_km = unit.category === 'minefield'
+        ? (unit.radius_km ?? 0)
+        : threatProfile.range_km
+
+      if (range_km <= 0) continue
+
+      // Check each sample point against this unit
+      for (const point of samplePoints) {
+        const dist = haversine(
+          { lat: point.lat, lng: point.lng },
+          unit.position,
+        )
+        if (dist <= range_km) {
+          totalThreatWeight += threatProfile.weight
+          if (firstThreatUnitId === null) firstThreatUnitId = unit.id
+          break // One hit per unit is enough — don't double-count the same enemy
+        }
+      }
+    }
+
+    const prevHealth = line.health
+
+    if (totalThreatWeight > 0) {
+      // Degrade health proportional to threat weight
+      line.health -= totalThreatWeight * 5
+    } else {
+      // Recover when no threats are present
+      line.health += 2
+    }
+
+    // Clamp to [0, 100]
+    line.health = Math.max(0, Math.min(100, line.health))
+
+    // ---- Event: first crossing below 50 ----
+    if (line.health < 50 && prevHealth >= 50 && !interdictedLines.has(line.id)) {
+      interdictedLines.add(line.id)
+      events.push({
+        type: 'SUPPLY_LINE_INTERDICTED',
+        lineId: line.id,
+        threatUnitId: firstThreatUnitId ?? line.fromBaseId,
+        healthAfter: line.health,
+        tick: state.time.tick,
+      })
+    }
+
+    // ---- Event: health hits 0 ----
+    if (line.health <= 0 && prevHealth > 0) {
+      events.push({
+        type: 'SUPPLY_LINE_CUT',
+        lineId: line.id,
+        tick: state.time.tick,
+      })
+    }
+
+    // ---- Clear interdiction record when health recovers above 50 ----
+    if (line.health > 50 && interdictedLines.has(line.id)) {
+      interdictedLines.delete(line.id)
+    }
+  }
+
+  emitEvents(state, events)
 }
 
 // ===============================================

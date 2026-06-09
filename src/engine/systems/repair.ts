@@ -23,6 +23,7 @@ const REPAIR_MULT: Record<UnitCategory, number> = {
   carrier_group: 0.2,   // extremely complex
   submarine: 0.1,       // must return to port
   aircraft: 1.0,
+  minefield: 0,         // minefields do not self-repair
 }
 
 const BASE_REPAIR_RATE = 1.0 // HP per game minute

@@ -30,6 +30,7 @@ const CATEGORY_LABELS: Record<UnitCategory, string> = {
   ship: 'Naval',
   submarine: 'Submarines',
   carrier_group: 'Carrier Groups',
+  minefield: 'Minefields',
 }
 
 // ── Styles ──────────────────────────────────────────────────────────

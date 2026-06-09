@@ -409,4 +409,32 @@ export const iranUnits: Unit[] = [
     datalink_range_km: 300,
     readiness: 'deployed', deploy_time_sec: 600, pack_time_sec: 300,
   }),
+
+  // ═══════════════════════════════════════════════
+  //  MINEFIELDS — Strait of Hormuz
+  // ═══════════════════════════════════════════════
+
+  u({
+    id: 'irgc_minefield_hormuz_north', name: 'IRGC Minefield — North Hormuz', nation: 'iran', category: 'minefield',
+    position: { lat: 26.6, lng: 56.0 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    health: 100, hardness: 50,
+    weapons: [], sensors: [], roe: 'hold_fire',
+    radius_km: 15, mine_count: 500, damage_per_contact: 25,
+  }),
+
+  u({
+    id: 'irgc_minefield_hormuz_south', name: 'IRGC Minefield — South Hormuz', nation: 'iran', category: 'minefield',
+    position: { lat: 26.3, lng: 56.4 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    health: 100, hardness: 50,
+    weapons: [], sensors: [], roe: 'hold_fire',
+    radius_km: 12, mine_count: 300, damage_per_contact: 30,
+  }),
+
+  u({
+    id: 'irgc_minefield_hormuz_east', name: 'IRGC Minefield — East Approach', nation: 'iran', category: 'minefield',
+    position: { lat: 26.1, lng: 56.8 }, heading: 0, speed_kts: 0, maxSpeed_kts: 0,
+    health: 100, hardness: 50,
+    weapons: [], sensors: [], roe: 'hold_fire',
+    radius_km: 10, mine_count: 200, damage_per_contact: 25,
+  }),
 ]

@@ -1,5 +1,4 @@
-import type { NationId, Unit, Nation, SupplyLine, WeaponStock, Position, UnitCategory } from './game'
-import type { ArmyGroup, ControlGrid, General, GroundUnit, ResearchState } from './ground'
+import type { NationId, Unit, Nation, ShippingLane, SupplyLine, WeaponStock, Position, UnitCategory } from './game'
 
 export interface ScenarioDefinition {
   id: string
@@ -10,7 +9,6 @@ export interface ScenarioDefinition {
   nations: NationId[]            // available nations in this scenario
   defaultPlayerNation: NationId
   mapCenter?: { longitude: number; latitude: number; zoom: number }
-  borderGeojsonPath?: string     // scenario-specific border GeoJSON (e.g. historical borders)
   getData: () => ScenarioData    // lazy-loaded to avoid import overhead
 }
 
@@ -19,14 +17,7 @@ export interface ScenarioData {
   units: Unit[]
   supplyLines: SupplyLine[]
   baseSupply: Record<string, WeaponStock[]>
-  // ─── Ground warfare (optional) ───
-  groundUnits?: GroundUnit[]
-  generals?: General[]
-  armyGroups?: ArmyGroup[]
-  controlGrid?: ControlGrid
-  initialResearch?: Record<string, ResearchState>
-  /** Game-seconds per tick. Default 1 (modern). WW2 = 3600 (1 tick = 1 hour). */
-  tickScale?: number
+  shippingLanes?: ShippingLane[]
 }
 
 export interface FreeModeConfig {

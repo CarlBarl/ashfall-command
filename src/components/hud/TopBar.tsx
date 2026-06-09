@@ -3,7 +3,6 @@ import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
 import { useIntelStore } from '@/store/intel-store'
-import { useGroundStore } from '@/store/ground-store'
 import { sendCommand, getFullState, loadState } from '@/store/bridge'
 import { saveToSlot, loadFromSlot } from '@/store/save-load'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -57,10 +56,11 @@ export default function TopBar() {
   const placingCatalogId = useIntelStore((s) => s.placingCatalogId)
 
   const units = useGameStore((s) => s.viewState.units)
-  const generals = useGameStore((s) => s.viewState.generals)
   const nations = useGameStore((s) => s.viewState.nations)
   const time = useGameStore((s) => s.viewState.time)
   const playerNation = useGameStore((s) => s.viewState.playerNation)
+  const shippingLanes = useGameStore((s) => s.viewState.shippingLanes)
+  const hormuzLane = shippingLanes.find((l) => l.id === 'hormuz')
 
   const playerState = nations.find((n) => n.id === playerNation)
   const primaryEnemyNation = nations.find((n) => n.id !== playerNation) ?? null
@@ -68,9 +68,7 @@ export default function TopBar() {
     ? (playerState?.atWar.includes(primaryEnemyNation.id) ?? false)
     : false
   const primaryEnemyLabel = primaryEnemyNation?.id.toUpperCase() ?? 'ENEMY'
-  const hasAirNavalUnits = units.length > 0 // false in ground-only scenarios
-  const hasGenerals = (generals ?? []).length > 0
-  const selectedGeneralId = useGroundStore((s) => s.selectedGeneralId)
+  const hasAirNavalUnits = units.length > 0
 
   const [showHelp, setShowHelp] = useState(false)
   const [warClickPending, setWarClickPending] = useState(false)
@@ -471,23 +469,6 @@ export default function TopBar() {
           />
         ))}
 
-        {/* General panel toggle — only for ground scenarios with generals */}
-        {hasGenerals && (
-          <ToggleBtn
-            active={!!selectedGeneralId}
-            onClick={() => {
-              if (selectedGeneralId) {
-                useGroundStore.getState().selectGeneral(null)
-              } else {
-                const playerGenerals = (generals ?? []).filter((g) => g.nation === playerNation)
-                const first = playerGenerals[0]
-                if (first) useGroundStore.getState().selectGeneral(first.id)
-              }
-            }}
-            label="GEN"
-          />
-        )}
-
         {hasAirNavalUnits && (
           <>
             <Sep />
@@ -500,6 +481,24 @@ export default function TopBar() {
 
         {/* Intel panel toggle */}
         <IntelBtn active={showIntel || !!placingCatalogId} onClick={toggleIntel} compact={false} />
+
+        <Sep />
+
+        {/* Hormuz status badge */}
+        {hormuzLane && hormuzLane.status !== 'open' && (
+          <span style={{
+            color: hormuzLane.status === 'blocked' ? 'var(--status-damaged)' : 'var(--status-engaged)',
+            border: `1px solid ${hormuzLane.status === 'blocked' ? 'var(--status-damaged)' : 'var(--status-engaged)'}`,
+            borderRadius: 3,
+            padding: '2px 4px',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 'var(--font-size-xs)',
+            fontWeight: 700,
+            whiteSpace: 'nowrap',
+          }}>
+            HORMUZ {hormuzLane.status === 'blocked' ? 'BLOCKED' : 'REDUCED'}
+          </span>
+        )}
 
         <Sep />
 

@@ -9,9 +9,6 @@ interface UIState {
   selectedUnitIds: Set<UnitId>
   selectedUnitId: UnitId | null
   hoveredUnitId: UnitId | null
-  selectedFrontlineId: string | null
-  hoveredFrontlineId: string | null
-
   // Map overlays
   showRangeRings: boolean
   rngFilter: 'off' | 'friendly' | 'enemy' | 'both'
@@ -38,10 +35,6 @@ interface UIState {
   selectMultipleUnits: (ids: UnitId[]) => void
   clearSelection: () => void
   hoverUnit: (id: UnitId | null) => void
-  setSelectedFrontline: (id: string | null) => void
-  clearSelectedFrontline: () => void
-  setHoveredFrontline: (id: string | null) => void
-
   // Map overlays
   showIntelCoverage: boolean
   losFilter: 'off' | 'friendly' | 'enemy' | 'both'
@@ -68,8 +61,6 @@ export const useUIStore = create<UIState>((set) => ({
   selectedUnitIds: new Set(),
   selectedUnitId: null,
   hoveredUnitId: null,
-  selectedFrontlineId: null,
-  hoveredFrontlineId: null,
   showRangeRings: false,
   mapMode: 'dark' as MapMode,
   showElevation: false,
@@ -108,9 +99,6 @@ export const useUIStore = create<UIState>((set) => ({
   }),
 
   hoverUnit: (id) => set({ hoveredUnitId: id }),
-  setSelectedFrontline: (id) => set({ selectedFrontlineId: id }),
-  clearSelectedFrontline: () => set({ selectedFrontlineId: null }),
-  setHoveredFrontline: (id) => set({ hoveredFrontlineId: id }),
 
   // Map
   toggleRangeRings: () => set((s) => ({ showRangeRings: !s.showRangeRings })),

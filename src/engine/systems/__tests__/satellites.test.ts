@@ -66,6 +66,7 @@ function makeState(units: Unit[], satellites: { usa?: SatellitePass[]; iran?: Sa
     missiles: new Map(),
     engagements: new Map(),
     supplyLines: new Map(),
+    shippingLanes: new Map(),
     events: [],
     pendingEvents: [],
   }

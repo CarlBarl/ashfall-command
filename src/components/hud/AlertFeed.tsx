@@ -250,6 +250,15 @@ function eventColor(e: GameEvent): string {
     case 'AMMO_DEPLETED': return 'var(--text-muted)'
     case 'POINT_DEFENSE_KILL': return 'var(--status-ready)'
     case 'UNIT_REPAIRED': return 'var(--status-moving)'
+    case 'OIL_PRICE_CHANGE': return 'var(--status-engaged)'
+    case 'SHIPPING_LANE_STATUS_CHANGE':
+      return e.newStatus === 'blocked'
+        ? 'var(--status-damaged)'
+        : e.newStatus === 'reduced'
+          ? 'var(--status-engaged)'
+          : 'var(--status-ready)'
+    case 'MINE_CONTACT': return 'var(--status-damaged)'
+    case 'SUPPLY_LINE_INTERDICTED': return 'var(--status-engaged)'
     default: return 'var(--text-secondary)'
   }
 }
@@ -272,6 +281,14 @@ function formatEvent(e: GameEvent): string {
       return `T+${e.tick} CIWS KILL ${e.missileId} by ${e.unitId}`
     case 'UNIT_REPAIRED':
       return `T+${e.tick} REPAIRED ${e.unitId} (+${e.healthRestored} HP)`
+    case 'OIL_PRICE_CHANGE':
+      return `T+${e.tick} OIL $${e.newPrice.toFixed(0)}/bbl (was $${e.oldPrice.toFixed(0)})`
+    case 'SHIPPING_LANE_STATUS_CHANGE':
+      return `T+${e.tick} ${e.laneId.toUpperCase().replace('_', ' ')}: ${e.newStatus.toUpperCase()}`
+    case 'MINE_CONTACT':
+      return `T+${e.tick} MINE HIT: ${e.targetId} (-${e.damage} HP)`
+    case 'SUPPLY_LINE_INTERDICTED':
+      return `T+${e.tick} SUPPLY THREATENED: ${e.lineId} (${e.healthAfter.toFixed(0)}% HP)`
     default:
       return `T+${(e as GameEvent & { tick: number }).tick} ${(e as GameEvent & { type: string }).type}`
   }

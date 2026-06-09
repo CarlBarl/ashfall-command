@@ -12,17 +12,11 @@ import { createImpactLayers } from './layers/ImpactLayer'
 import { createWaypointLayers } from './layers/WaypointLayer'
 import { createIntelUnitLayers } from './layers/IntelLayer'
 import { createRouteLayers } from './layers/RouteLayer'
-import {
-  createFrontlineGeoJSON,
-  createTerritoryGeoJSON,
-  FRONTLINE_LAYER_STYLES,
-  OCCUPATION_PATTERN_COLORS,
-  OCCUPATION_PATTERN_IDS,
-  TERRITORY_LAYER_STYLES,
-} from './layers/FrontlineLayer'
 // circle import removed — range rings handled by RangeRingLayer
 import { createRangeRingGeoJSON } from './layers/RangeRingLayer'
 import { createSupplyLineGeoJSON } from './layers/SupplyLineLayer'
+import { createShippingLaneGeoJSON } from './layers/ShippingLaneLayer'
+import { createMinefieldGeoJSON } from './layers/MinefieldLayer'
 import { ensureMainThreadGrid, getMainThreadGrid, getLOSPolygon } from './layers/LOSLayer'
 import { generateElevationOverlay } from './layers/ElevationOverlay'
 import InfoTooltip from './InfoTooltip'
@@ -31,14 +25,11 @@ import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
 import { useIntelStore } from '@/store/intel-store'
-import { useGroundStore } from '@/store/ground-store'
 import { useMenuStore } from '@/store/menu-store'
-import { sendCommand } from '@/store/bridge'
 import { getMapStyle } from '@/styles/map-providers'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import { iranCatalog } from '@/data/catalog/iran-catalog'
 import { usaCatalog } from '@/data/catalog/usa-catalog'
-import type { Map as MapLibreMap } from 'maplibre-gl'
 
 const DEFAULT_VIEW = {
   longitude: 51.4,
@@ -59,57 +50,9 @@ interface CtxMenu {
   shiftKey: boolean
 }
 
-function getFrontlineFeatureId(features: MapLayerMouseEvent['features'] | undefined): string | null {
-  const feature = features?.find((candidate) => {
-    const properties = candidate.properties as Record<string, unknown> | undefined
-    return typeof properties?.segmentId === 'string'
-  })
-  const properties = feature?.properties as Record<string, unknown> | undefined
-  return typeof properties?.segmentId === 'string' ? properties.segmentId : null
-}
-
-function createOccupationPatternImage(color: string): ImageData | null {
-  const canvas = document.createElement('canvas')
-  canvas.width = 14
-  canvas.height = 14
-
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return null
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
-  ctx.fillStyle = color
-  ctx.globalAlpha = 1
-  ctx.beginPath()
-  ctx.arc(3.5, 3.5, 1.7, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.beginPath()
-  ctx.arc(10.5, 5.5, 1.7, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.beginPath()
-  ctx.arc(6, 11, 1.5, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.beginPath()
-  ctx.arc(12, 12, 1.2, 0, Math.PI * 2)
-  ctx.fill()
-
-  return ctx.getImageData(0, 0, canvas.width, canvas.height)
-}
-
-function ensureOccupationPatterns(map: MapLibreMap): void {
-  for (const [nation, patternId] of Object.entries(OCCUPATION_PATTERN_IDS)) {
-    if (map.hasImage(patternId)) continue
-    const color = OCCUPATION_PATTERN_COLORS[nation]
-    if (!color) continue
-    const image = createOccupationPatternImage(color)
-    if (!image) continue
-    map.addImage(patternId, image, { pixelRatio: 2 })
-  }
-}
-
 export default function GameMap() {
   const mapRef = useRef<MapRef>(null)
   const scenarioMapCenter = useMenuStore((s) => s.mapCenter)
-  const borderGeojsonPath = useMenuStore((s) => s.borderGeojsonPath)
   const initialView = useMemo(() => {
     if (!scenarioMapCenter) return DEFAULT_VIEW
     return { ...DEFAULT_VIEW, ...scenarioMapCenter }
@@ -128,19 +71,13 @@ export default function GameMap() {
   const selectedUnitId = useUIStore((s) => s.selectedUnitId)
   const selectedUnitIds = useUIStore((s) => s.selectedUnitIds)
   const hoveredUnitId = useUIStore((s) => s.hoveredUnitId)
-  const selectedFrontlineId = useUIStore((s) => s.selectedFrontlineId)
-  const hoveredFrontlineId = useUIStore((s) => s.hoveredFrontlineId)
   const selectUnit = useUIStore((s) => s.selectUnit)
   const hoverUnit = useUIStore((s) => s.hoverUnit)
-  const setLeftPanel = useUIStore((s) => s.setLeftPanel)
-  const setSelectedFrontline = useUIStore((s) => s.setSelectedFrontline)
-  const clearSelectedFrontline = useUIStore((s) => s.clearSelectedFrontline)
-  const setHoveredFrontline = useUIStore((s) => s.setHoveredFrontline)
   const rngFilter = useUIStore((s) => s.rngFilter)
   const showElevation = useUIStore((s) => s.showElevation)
   const mapMode = useUIStore((s) => s.mapMode)
 
-  const mapStyle = useMemo(() => getMapStyle(mapMode, !!borderGeojsonPath), [mapMode, borderGeojsonPath])
+  const mapStyle = useMemo(() => getMapStyle(mapMode, false), [mapMode])
 
   // Targeting state from strike-store (not ui-store compat shims)
   const targetUnitId = useStrikeStore((s) => s.targetUnitId)
@@ -156,7 +93,6 @@ export default function GameMap() {
 
   // Get selected unit's nation for targeting
   const units = useGameStore((s) => s.viewState.units)
-  const nations = useGameStore((s) => s.viewState.nations)
   const selectedUnit = units.find(u => u.id === selectedUnitId)
   const selectedNation = selectedUnit?.nation ?? null
   const missiles = useGameStore((s) => s.viewState.missiles)
@@ -164,34 +100,13 @@ export default function GameMap() {
   const currentTime = useGameStore((s) => s.visualTimestamp)
   const currentTick = useGameStore((s) => s.viewState.time.tick)
   const supplyLines = useGameStore((s) => s.viewState.supplyLines)
-  const frontlines = useGameStore((s) => s.viewState.frontlines)
-  const territories = useGameStore((s) => s.viewState.territories)
-  const frontlineGeoJSON = useMemo(() => (
-    createFrontlineGeoJSON(frontlines ?? [], {
-      nations,
-      hoveredId: hoveredFrontlineId,
-      selectedId: selectedFrontlineId,
-    })
-  ), [frontlines, nations, hoveredFrontlineId, selectedFrontlineId])
-  const territoryGeoJSON = useMemo(
-    () => createTerritoryGeoJSON(territories ?? []),
-    [territories],
-  )
-  const interactiveLayerIds = useMemo(
-    () => frontlines && frontlines.length > 0
-      ? FRONTLINE_LAYER_STYLES
-        .map((style) => style.id)
-        .filter((id): id is string => typeof id === 'string')
-      : undefined,
-    [frontlines],
-  )
+  const shippingLanes = useGameStore((s) => s.viewState.shippingLanes)
 
   useEffect(() => {
-    const geoPath = borderGeojsonPath || '/geo/ne_50m_admin_0.geojson'
-    fetch(geoPath)
+    fetch('/geo/ne_50m_admin_0.geojson')
       .then(r => r.json())
       .then(setGeoData)
-  }, [borderGeojsonPath])
+  }, [])
 
   // Load elevation grid on main thread for LOS visualization
   const [gridReady, setGridReady] = useState(false)
@@ -286,17 +201,7 @@ export default function GameMap() {
   const onLoad = useCallback(() => {
     const map = mapRef.current?.getMap()
     map?.resize()
-    if (borderGeojsonPath && map) {
-      ensureOccupationPatterns(map)
-    }
-  }, [borderGeojsonPath])
-
-  useEffect(() => {
-    const map = mapRef.current?.getMap()
-    if (borderGeojsonPath && map) {
-      ensureOccupationPatterns(map)
-    }
-  }, [borderGeojsonPath, mapStyle])
+  }, [])
 
   const onContextMenu = useCallback((e: MapLayerMouseEvent) => {
     e.preventDefault()
@@ -308,27 +213,6 @@ export default function GameMap() {
   const onMapClick = useCallback((e: MapLayerMouseEvent) => {
     setCtxMenu(null)
     setClusterPopup(null)
-
-    // Ground ordering mode: general orders targeting a map position
-    const groundState = useGroundStore.getState()
-    if (groundState.orderingMode && groundState.selectedGeneralId && e.lngLat) {
-      // Convert lat/lng to grid col/row
-      // The control grid: originLat=49.0, originLng=14.0, cellSizeKm=10
-      const kmPerDegLat = 111.32
-      const kmPerDegLng = kmPerDegLat * Math.cos((49.0 * Math.PI) / 180)
-      const row = Math.round((e.lngLat.lat - 49.0) / (10 / kmPerDegLat))
-      const col = Math.round((e.lngLat.lng - 14.0) / (10 / kmPerDegLng))
-
-      const orderType = groundState.pendingOrderType ?? 'ADVANCE'
-      const order = orderType === 'ENCIRCLE'
-        ? { type: 'ENCIRCLE' as const, targetCol: col, targetRow: row }
-        : { type: 'ADVANCE' as const, objectiveCol: col, objectiveRow: row }
-
-      sendCommand({ type: 'GENERAL_ORDER', generalId: groundState.selectedGeneralId, order })
-      groundState.setOrderingMode(false)
-      groundState.setPendingOrderType(null)
-      return
-    }
 
     // Route planning mode: add waypoint on map click
     const strikeState = useStrikeStore.getState()
@@ -349,24 +233,13 @@ export default function GameMap() {
       return // Don't do normal click processing
     }
 
-    const clickedFrontlineId = getFrontlineFeatureId(e.features)
-    if (clickedFrontlineId) {
-      useUIStore.getState().clearSelection()
-      hoverUnit(null)
-      setSelectedFrontline(clickedFrontlineId)
-      setLeftPanel('stats')
-      return
-    }
-
     // Clicking empty map: deselect units and close all panels
     useUIStore.getState().clearSelection()
-    clearSelectedFrontline()
     hoverUnit(null)
-    setHoveredFrontline(null)
     // Close desktop panels
     useUIStore.setState({ leftPanel: null, showOrbat: false, showStats: false, showEconomy: false, showIntel: false })
     useStrikeStore.getState().closeStrike()
-  }, [addRouteWaypoint, clearSelectedFrontline, hoverUnit, setHoveredFrontline, setLeftPanel, setSelectedFrontline])
+  }, [addRouteWaypoint, hoverUnit])
 
   const onMove = useCallback((evt: { viewState: { zoom: number }; lngLat?: { lat: number; lng: number } }) => {
     setZoom(evt.viewState.zoom)
@@ -379,22 +252,15 @@ export default function GameMap() {
       setCursorElev(elev)
       setCursorCoords({ lat: evt.lngLat.lat, lng: evt.lngLat.lng })
     }
-    const frontlineId = getFrontlineFeatureId(evt.features)
-    setHoveredFrontline(frontlineId)
-    if (frontlineId) {
-      setHoverPos({ x: evt.point.x, y: evt.point.y })
-      hoverPosRef.current = { x: evt.point.x, y: evt.point.y }
-    }
-  }, [setHoveredFrontline])
+  }, [])
 
   const handleHover = useCallback((id: string | null, x?: number, y?: number) => {
     hoverUnit(id)
-    if (id) setHoveredFrontline(null)
     if (x !== undefined && y !== undefined) {
       setHoverPos({ x, y })
       hoverPosRef.current = { x, y }
     }
-  }, [hoverUnit, setHoveredFrontline])
+  }, [hoverUnit])
 
   const handleUnitClick = useCallback((id: string | null) => {
     if (!id) return
@@ -405,7 +271,6 @@ export default function GameMap() {
       return
     }
     setClusterPopup(null)
-    clearSelectedFrontline()
 
     // Check if clicked unit is an enemy — set as target and auto-select nearest armed friendly
     const clickedUnit = units.find(u => u.id === id)
@@ -436,7 +301,7 @@ export default function GameMap() {
       return
     }
     selectUnit(id)
-  }, [clearSelectedFrontline, selectUnit, setTarget, units])
+  }, [selectUnit, setTarget, units])
 
   const handleMissileClick = useCallback((id: string) => {
     setFollowedMissileId(prev => prev === id ? null : id)
@@ -505,14 +370,12 @@ export default function GameMap() {
         onLoad={onLoad}
         onMove={onMove}
         onMouseMove={onMouseMove}
-        onMouseLeave={() => setHoveredFrontline(null)}
         onContextMenu={onContextMenu}
         onClick={onMapClick}
-        interactiveLayerIds={interactiveLayerIds}
         attributionControl={false}
         maxZoom={12}
         minZoom={2}
-        cursor={routingMode ? 'crosshair' : placingCatalogId ? 'crosshair' : targetingMode ? 'crosshair' : hoveredUnitId || hoveredFrontlineId ? 'pointer' : 'grab'}
+        cursor={routingMode ? 'crosshair' : placingCatalogId ? 'crosshair' : targetingMode ? 'crosshair' : hoveredUnitId ? 'pointer' : 'grab'}
       >
         <DeckOverlay layers={layers} />
 
@@ -577,7 +440,69 @@ export default function GameMap() {
           </Source>
         )}
 
-        {/* Historical territory control overlays render after sovereign country fills. */}
+        {shippingLanes.length > 0 && (
+          <Source id="shipping-lanes" type="geojson" data={createShippingLaneGeoJSON(shippingLanes)}>
+            <Layer
+              id="shipping-lane-open"
+              type="line"
+              filter={['==', ['get', 'status'], 'open']}
+              paint={{
+                'line-color': '#00bbcc',
+                'line-width': 2,
+                'line-opacity': 0.5,
+                'line-dasharray': [8, 4],
+              }}
+            />
+            <Layer
+              id="shipping-lane-reduced"
+              type="line"
+              filter={['==', ['get', 'status'], 'reduced']}
+              paint={{
+                'line-color': '#e08800',
+                'line-width': 2.5,
+                'line-opacity': 0.7,
+                'line-dasharray': [4, 4],
+              }}
+            />
+            <Layer
+              id="shipping-lane-blocked"
+              type="line"
+              filter={['==', ['get', 'status'], 'blocked']}
+              paint={{
+                'line-color': '#cc2222',
+                'line-width': 3,
+                'line-opacity': 0.8,
+                'line-dasharray': [2, 3],
+              }}
+            />
+          </Source>
+        )}
+
+        {(() => {
+          const minefieldData = createMinefieldGeoJSON(units)
+          if (minefieldData.features.length === 0) return null
+          return (
+            <Source id="minefields" type="geojson" data={minefieldData}>
+              <Layer
+                id="minefield-fill"
+                type="fill"
+                paint={{
+                  'fill-color': 'rgba(180, 30, 30, 0.12)',
+                  'fill-opacity': 0.8,
+                }}
+              />
+              <Layer
+                id="minefield-stroke"
+                type="line"
+                paint={{
+                  'line-color': 'rgba(200, 50, 50, 0.6)',
+                  'line-width': 1.5,
+                  'line-dasharray': [3, 3],
+                }}
+              />
+            </Source>
+          )
+        })()}
 
         {losPolygons.map((poly, i) => (
           <Source key={`los-${i}`} id={`los-coverage-${i}`} type="geojson" data={poly}>
@@ -648,95 +573,48 @@ export default function GameMap() {
           </Source>
         ))}
 
-        {geoData && (() => {
-          const is1939 = !!borderGeojsonPath
-          const fillColorExpr = (is1939
-            ? [
-                'match', ['get', 'iso_a3'],
-                'DEU', '#40566f',
-                'POL', '#755536',
-                'FRA', '#32465c',
-                'GBR', '#32465c',
-                'ITA', '#5a4a37',
-                'HUN', '#5a4a37',
-                'ROU', '#5a4a37',
-                'RUS', '#4a3138',
-                '#24303d',
-              ]
-            : [
-                'match', ['get', 'iso_a3'],
-                'IRN', '#1a1520',
-                'USA', '#151a28',
-                '#111620',
-              ]
-          ) as unknown as string
-          return (
+        {geoData && (
           <Source id="countries" type="geojson" data={geoData}>
             <Layer
               id="country-fill"
               type="fill"
               paint={{
-                'fill-color': fillColorExpr,
-                'fill-opacity': is1939 ? 0.96 : 1,
+                'fill-color': ['match', ['get', 'iso_a3'],
+                  'IRN', '#1a1520',
+                  'USA', '#151a28',
+                  '#111620',
+                ] as unknown as string,
+                'fill-opacity': 1,
               }}
             />
             <Layer
               id="country-borders"
               type="line"
               paint={{
-                'line-color': (is1939
-                  ? ['match', ['get', 'iso_a3'], 'DEU', '#a3b8cc', 'POL', '#d7aa82', '#5b6b73']
-                  : ['match', ['get', 'iso_a3'], 'IRN', '#553333', 'USA', '#334455', '#2d4a3e']
-                ) as unknown as string,
-                'line-width': (is1939
-                  ? ['match', ['get', 'iso_a3'], 'DEU', 2.6, 'POL', 2.6, 1.1]
-                  : ['match', ['get', 'iso_a3'], 'IRN', 1.5, 0.6]
-                ) as unknown as number,
-                'line-opacity': is1939 ? 1 : 0.9,
+                'line-color': ['match', ['get', 'iso_a3'],
+                  'IRN', '#553333',
+                  'USA', '#334455',
+                  '#2d4a3e',
+                ] as unknown as string,
+                'line-width': ['match', ['get', 'iso_a3'],
+                  'IRN', 1.5,
+                  0.6,
+                ] as unknown as number,
+                'line-opacity': 0.9,
               }}
             />
-            {is1939 && (
-              <Layer
-                id="deu-glow"
-                type="line"
-                source="countries"
-                filter={['==', ['get', 'iso_a3'], 'DEU']}
-                paint={{
-                  'line-color': '#74879a',
-                  'line-width': 4,
-                  'line-opacity': 0.35,
-                  'line-blur': 4,
-                }}
-              />
-            )}
-            {is1939 && (
-              <Layer
-                id="pol-glow"
-                type="line"
-                source="countries"
-                filter={['==', ['get', 'iso_a3'], 'POL']}
-                paint={{
-                  'line-color': '#be8d65',
-                  'line-width': 4,
-                  'line-opacity': 0.35,
-                  'line-blur': 4,
-                }}
-              />
-            )}
-            {!is1939 && (
-              <Layer
-                id="iran-glow"
-                type="line"
-                source="countries"
-                filter={['==', ['get', 'iso_a3'], 'IRN']}
-                paint={{
-                  'line-color': '#cc4444',
-                  'line-width': 2,
-                  'line-opacity': 0.3,
-                  'line-blur': 3,
-                }}
-              />
-            )}
+            <Layer
+              id="iran-glow"
+              type="line"
+              source="countries"
+              filter={['==', ['get', 'iso_a3'], 'IRN']}
+              paint={{
+                'line-color': '#cc4444',
+                'line-width': 2,
+                'line-opacity': 0.3,
+                'line-blur': 3,
+              }}
+            />
             {/* Country name labels — placed at polygon centroids */}
             <Layer
               id="country-labels"
@@ -752,29 +630,11 @@ export default function GameMap() {
                 'text-allow-overlap': false,
               }}
               paint={{
-                'text-color': is1939 ? 'rgba(220, 220, 205, 0.72)' : 'rgba(180, 180, 170, 0.45)',
-                'text-halo-color': is1939 ? 'rgba(10, 14, 20, 0.9)' : 'rgba(10, 14, 20, 0.8)',
+                'text-color': 'rgba(180, 180, 170, 0.45)',
+                'text-halo-color': 'rgba(10, 14, 20, 0.8)',
                 'text-halo-width': 2,
               }}
             />
-          </Source>
-          )
-        })()}
-
-        {!!borderGeojsonPath && territories && territories.length > 0 && (
-          <Source id="territory-source" type="geojson" data={territoryGeoJSON}>
-            {TERRITORY_LAYER_STYLES.map((style) => (
-              <Layer key={String(style.id)} {...(style as any)} />
-            ))}
-          </Source>
-        )}
-
-        {/* Frontlines — render AFTER countries so they're visible on top */}
-        {frontlines && frontlines.length > 0 && (
-          <Source id="frontline-source" type="geojson" data={frontlineGeoJSON}>
-            {FRONTLINE_LAYER_STYLES.map((style) => (
-              <Layer key={String(style.id)} {...(style as any)} />
-            ))}
           </Source>
         )}
 

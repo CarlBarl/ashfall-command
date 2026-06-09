@@ -3,8 +3,7 @@ import Panel from '@/components/common/Panel'
 import { useGameStore } from '@/store/game-store'
 import { useUIStore } from '@/store/ui-store'
 import type { NationId, UnitCategory } from '@/types/game'
-import type { ViewUnit, ViewGroundUnit, ViewArmyGroup, ViewGeneral } from '@/types/view'
-import type { DivisionType } from '@/types/ground'
+import type { ViewUnit } from '@/types/view'
 
 const CATEGORY_LABELS: Record<UnitCategory, string> = {
   airbase: 'Airbases',
@@ -15,15 +14,7 @@ const CATEGORY_LABELS: Record<UnitCategory, string> = {
   ship: 'Ships',
   submarine: 'Submarines',
   carrier_group: 'Carrier Groups',
-}
-
-const DIVISION_TYPE_LABELS: Record<DivisionType, string> = {
-  infantry: 'Infantry',
-  armor: 'Armor',
-  mechanized: 'Mechanized',
-  artillery: 'Artillery',
-  airborne: 'Airborne',
-  mountain: 'Mountain',
+  minefield: 'Minefields',
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -42,8 +33,6 @@ const STATUS_COLORS: Record<string, string> = {
 const NATION_COLORS: Record<string, string> = {
   usa: 'var(--usa-primary)',
   iran: 'var(--iran-primary)',
-  germany: '#6a85a8',
-  poland: '#a88060',
 }
 
 function getNationLabel(id: string, nations: { id: string; name: string }[]): string {
@@ -110,53 +99,6 @@ function UnitRow({ unit, selected, onClick }: { unit: ViewUnit; selected: boolea
         flexShrink: 0,
       }}>
         {destroyed ? 'KIA' : `${Math.round(unit.health)}%`}
-      </span>
-    </div>
-  )
-}
-
-function GroundUnitRow({ unit }: { unit: ViewGroundUnit }) {
-  const destroyed = unit.status === 'destroyed'
-  const stanceLabel = unit.stance === 'attack' ? 'ATK' : unit.stance === 'defend' ? 'DEF' : unit.stance === 'retreat' ? 'RET' : unit.stance === 'fortify' ? 'FRT' : 'RSV'
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '2px 6px',
-        marginLeft: 16,
-        borderRadius: 3,
-        opacity: destroyed ? 0.4 : 1,
-      }}
-    >
-      <StatusDot status={unit.status} />
-      <span style={{
-        flex: 1,
-        textDecoration: destroyed ? 'line-through' : 'none',
-        color: destroyed ? 'var(--text-muted)' : 'var(--text-primary)',
-        fontSize: 'var(--font-size-xs)',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-      }}>
-        {unit.name}
-      </span>
-      <span style={{
-        fontSize: '0.5rem',
-        color: 'var(--text-muted)',
-        flexShrink: 0,
-      }}>
-        {stanceLabel}
-      </span>
-      <span style={{
-        fontSize: 'var(--font-size-xs)',
-        color: destroyed ? 'var(--status-destroyed)' : unit.strength < 50 ? 'var(--status-damaged)' : 'var(--text-secondary)',
-        flexShrink: 0,
-        minWidth: 28,
-        textAlign: 'right',
-      }}>
-        {destroyed ? 'KIA' : `${Math.round(unit.strength)}%`}
       </span>
     </div>
   )
@@ -239,93 +181,10 @@ function CategorySection({
   )
 }
 
-/** Collapsible section showing ground divisions grouped by army group */
-function ArmyGroupSection({
-  armyGroup,
-  general,
-  groundUnits,
-}: {
-  armyGroup: ViewArmyGroup
-  general: ViewGeneral | undefined
-  groundUnits: ViewGroundUnit[]
-}) {
-  const [collapsed, setCollapsed] = useState(false)
-  const activeCount = groundUnits.filter(u => u.status !== 'destroyed').length
-  const byType = new Map<DivisionType, ViewGroundUnit[]>()
-  for (const gu of groundUnits) {
-    if (!byType.has(gu.type)) byType.set(gu.type, [])
-    byType.get(gu.type)!.push(gu)
-  }
-
-  return (
-    <div style={{ marginBottom: 6 }}>
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        padding: '2px 4px',
-        userSelect: 'none',
-      }}>
-        <span
-          onClick={() => setCollapsed(c => !c)}
-          style={{ fontSize: 8, cursor: 'pointer', color: 'var(--text-muted)' }}
-        >
-          {collapsed ? '>' : 'v'}
-        </span>
-        <span
-          onClick={() => setCollapsed(c => !c)}
-          style={{
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
-            color: 'var(--text-secondary)',
-            fontSize: 'var(--font-size-xs)',
-            cursor: 'pointer',
-            flex: 1,
-          }}
-        >
-          {armyGroup.name}
-        </span>
-        <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)' }}>
-          {activeCount}/{groundUnits.length}
-        </span>
-      </div>
-      {general && !collapsed && (
-        <div style={{
-          marginLeft: 16,
-          fontSize: '0.5rem',
-          color: 'var(--text-muted)',
-          fontStyle: 'italic',
-          marginBottom: 2,
-        }}>
-          Gen. {general.name}
-          {general.currentOrder && ` — ${general.currentOrder.type.replace('_', ' ')}`}
-        </div>
-      )}
-      {!collapsed && Array.from(byType.entries()).map(([type, units]) => (
-        <div key={type} style={{ marginBottom: 2 }}>
-          <div style={{
-            marginLeft: 12,
-            fontSize: '0.5rem',
-            color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}>
-            {DIVISION_TYPE_LABELS[type] ?? type} ({units.length})
-          </div>
-          {units.map(u => <GroundUnitRow key={u.id} unit={u} />)}
-        </div>
-      ))}
-    </div>
-  )
-}
-
 function NationSection({
   nationId,
   nationLabel,
   units,
-  groundUnits,
-  armyGroups,
-  generals,
   selectedUnitIds,
   onSelectUnit,
   onSelectAll,
@@ -334,9 +193,6 @@ function NationSection({
   nationId: NationId
   nationLabel: string
   units: ViewUnit[]
-  groundUnits: ViewGroundUnit[]
-  armyGroups: ViewArmyGroup[]
-  generals: ViewGeneral[]
   selectedUnitIds: Set<string>
   onSelectUnit: (id: string, e: MouseEvent) => void
   onSelectAll: (ids: string[]) => void
@@ -344,7 +200,6 @@ function NationSection({
 }) {
   const [collapsed, setCollapsed] = useState(false)
   const hasModernUnits = units.length > 0
-  const hasGroundUnits = groundUnits.length > 0
 
   const byCategory = new Map<UnitCategory, ViewUnit[]>()
   for (const unit of units) {
@@ -353,8 +208,7 @@ function NationSection({
   }
 
   const aliveCount = units.filter(u => u.status !== 'destroyed').length
-  const groundAliveCount = groundUnits.filter(u => u.status !== 'destroyed').length
-  const totalActive = aliveCount + groundAliveCount
+  const totalActive = aliveCount
   const aliveUnits = units.filter(u => u.status !== 'destroyed')
 
   const nationColor = getNationColor(nationId)
@@ -422,14 +276,6 @@ function NationSection({
           onSelectAll={onSelectAll}
         />
       ))}
-      {!collapsed && hasGroundUnits && armyGroups.map(ag => (
-        <ArmyGroupSection
-          key={ag.id}
-          armyGroup={ag}
-          general={generals.find(g => g.id === ag.generalId)}
-          groundUnits={groundUnits.filter(gu => gu.armyGroupId === ag.id)}
-        />
-      ))}
     </div>
   )
 }
@@ -439,9 +285,6 @@ export default function OrbatPanel() {
   const units = viewState.units
   const nations = viewState.nations
   const playerNation = viewState.playerNation
-  const vGroundUnits = viewState.groundUnits ?? []
-  const vGenerals = viewState.generals ?? []
-  const vArmyGroups = viewState.armyGroups ?? []
   const selectedUnitIds = useUIStore(s => s.selectedUnitIds)
   const selectUnit = useUIStore(s => s.selectUnit)
   const toggleUnitSelection = useUIStore(s => s.toggleUnitSelection)
@@ -483,9 +326,6 @@ export default function OrbatPanel() {
           nationId={nation}
           nationLabel={getNationLabel(nation, nations)}
           units={units.filter(u => u.nation === nation)}
-          groundUnits={vGroundUnits.filter(gu => gu.nation === nation)}
-          armyGroups={vArmyGroups.filter(ag => ag.nation === nation)}
-          generals={vGenerals.filter(g => g.nation === nation)}
           selectedUnitIds={selectedUnitIds}
           onSelectUnit={handleSelectUnit}
           onSelectAll={handleSelectAll}

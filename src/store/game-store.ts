@@ -15,6 +15,7 @@ const emptyViewState: GameViewState = {
   units: [],
   missiles: [],
   supplyLines: [],
+  shippingLanes: [],
   events: [],
   pendingEventCount: 0,
   satelliteDetectedUnitIds: [],

@@ -17,8 +17,6 @@ export interface GameTime {
   speed: number
   /** Real ms between ticks — always 100ms */
   tickIntervalMs: number
-  /** Game-seconds per tick. Default 1 (modern). WW2 = 3600 (1 tick = 1 hour). */
-  tickScale?: number
 }
 
 export interface SatellitePass {
@@ -63,6 +61,8 @@ export interface Economy {
   reserves_billions: number
   /** Currency symbol for display (default '$') */
   currency?: string
+  /** World oil price in $/barrel (computed from shipping lane throughput) */
+  oilPrice_per_barrel?: number
 }
 
 export interface Unit {
@@ -101,6 +101,14 @@ export interface Unit {
   deploy_time_sec?: number
   /** Time in seconds to pack up before moving */
   pack_time_sec?: number
+  /** For minefield units — threat radius in km */
+  radius_km?: number
+  /** For minefield units — remaining active mines */
+  mine_count?: number
+  /** For minefield units — damage per mine contact */
+  damage_per_contact?: number
+  /** For drone launcher units — current tactical mission */
+  droneMission?: 'military' | 'shipping_interdiction'
 }
 
 export interface WeaponStock {
@@ -130,6 +138,7 @@ export type UnitCategory =
   | 'ship'
   | 'submarine'
   | 'carrier_group'
+  | 'minefield'
 
 export type UnitStatus =
   | 'ready'
@@ -262,6 +271,20 @@ export interface Engagement {
   resolved: boolean
 }
 
+export interface ShippingLane {
+  id: string
+  name: string
+  /** Polyline path as [lng, lat] pairs defining the lane's geographic corridor */
+  path: [number, number][]
+  /** Normal-conditions throughput in millions of barrels per day */
+  baseThroughput_mbd: number
+  /** Current effective throughput, 0 to baseThroughput_mbd */
+  currentThroughput_mbd: number
+  /** Combined suppression factor from all threats, 0 (clear) to 1 (blocked) */
+  suppressionFactor: number
+  status: 'open' | 'reduced' | 'blocked'
+}
+
 export interface GameState {
   /** Which nation the player controls (enemy runs on AI) */
   playerNation: NationId
@@ -276,13 +299,7 @@ export interface GameState {
   events: GameEvent[]
   /** Events accumulated since last getViewState() call */
   pendingEvents: GameEvent[]
-
-  // ─── Ground warfare (optional, present only in ground scenarios) ───
-  groundUnits?: Map<import('./ground').GroundUnitId, import('./ground').GroundUnit>
-  generals?: Map<import('./ground').GeneralId, import('./ground').General>
-  armyGroups?: Map<import('./ground').ArmyGroupId, import('./ground').ArmyGroup>
-  controlGrid?: import('./ground').ControlGrid
-  research?: Map<string, import('./ground').ResearchState>
+  shippingLanes: Map<string, ShippingLane>
 }
 
 export type GameEvent =
@@ -296,11 +313,7 @@ export type GameEvent =
   | { type: 'SUPPLY_LINE_CUT'; lineId: string; tick: number }
   | { type: 'UNIT_REPAIRED'; unitId: UnitId; healthRestored: number; tick: number }
   | { type: 'POINT_DEFENSE_KILL'; unitId: UnitId; missileId: string; specId: string; tick: number }
-  // ─── Ground warfare events ───
-  | { type: 'BATTLE_RESULT'; cellRow: number; cellCol: number; attackerNation: NationId; defenderNation: NationId; attackerLosses: number; defenderLosses: number; cellFlipped: boolean; tick: number }
-  | { type: 'FRONTLINE_SHIFT'; nation: NationId; cellsGained: number; cellsLost: number; tick: number }
-  | { type: 'ENCIRCLEMENT'; nation: NationId; divisionCount: number; tick: number }
-  | { type: 'GENERAL_REPORT'; generalId: string; report: import('./ground').GeneralReport; tick: number }
-  | { type: 'TECH_COMPLETED'; nation: NationId; techId: string; techName: string; tick: number }
-  | { type: 'DIVISION_DESTROYED'; divisionId: string; divisionName: string; nation: NationId; tick: number }
-  | { type: 'DIVISION_ROUTING'; divisionId: string; divisionName: string; nation: NationId; tick: number }
+  | { type: 'OIL_PRICE_CHANGE'; newPrice: number; oldPrice: number; tick: number }
+  | { type: 'SHIPPING_LANE_STATUS_CHANGE'; laneId: string; newStatus: ShippingLane['status']; suppressionFactor: number; tick: number }
+  | { type: 'MINE_CONTACT'; minefieldId: UnitId; targetId: UnitId; damage: number; tick: number }
+  | { type: 'SUPPLY_LINE_INTERDICTED'; lineId: string; threatUnitId: UnitId; healthAfter: number; tick: number }

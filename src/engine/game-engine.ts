@@ -26,12 +26,8 @@ import { processSatellites, resetSatelliteState, getSatelliteDetections } from '
 import { processEspionage, type EspionageResult } from './systems/espionage'
 import { findNavalRoute } from './systems/route-planner'
 import type { SatellitePass } from '@/types/game'
-// Ground warfare systems
-import { processFrontline, resetFrontlineState, getCachedFrontlines, getCachedTerritories } from './systems/frontline'
-import { processGroundCombat, resetGroundCombatState, getTickBattles } from './systems/ground-combat'
-import { processGeneralAI, resetGeneralAIState } from './systems/general-ai'
-import { processGroundSupply, resetGroundSupplyState } from './systems/ground-supply'
-import { processResearch, resetResearchState } from './systems/research'
+import { processShipping, resetShippingState } from './systems/shipping'
+import { shippingLanes as defaultShippingLanes } from '@/data/shipping/shipping-lanes'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
 const SCENARIO_START = new Date('2026-06-15T06:00:00Z').getTime()
@@ -49,6 +45,7 @@ function createEmptyState(): GameState {
     missiles: new Map(),
     engagements: new Map(),
     supplyLines: new Map(),
+    shippingLanes: new Map(),
     events: [],
     pendingEvents: [],
   }
@@ -125,6 +122,7 @@ export class GameEngine {
       missiles: new Map(),
       engagements: new Map(),
       supplyLines: new Map<string, import('@/types/game').SupplyLine>(),
+      shippingLanes: new Map(),
       events: [],
       pendingEvents: [],
     }
@@ -139,6 +137,9 @@ export class GameEngine {
     }
     for (const line of [...usaSupplyLines, ...iranSupplyLines]) {
       this.state.supplyLines.set(line.id, { ...line })
+    }
+    for (const lane of defaultShippingLanes) {
+      this.state.shippingLanes.set(lane.id, { ...lane })
     }
 
     // Initialize intel budgets
@@ -162,14 +163,6 @@ export class GameEngine {
     supplyLines: import('@/types/game').SupplyLine[],
     baseSupply: Record<string, import('@/types/game').WeaponStock[]>,
     startDate?: string,
-    ground?: {
-      groundUnits?: import('@/types/ground').GroundUnit[]
-      generals?: import('@/types/ground').General[]
-      armyGroups?: import('@/types/ground').ArmyGroup[]
-      controlGrid?: import('@/types/ground').ControlGrid
-      initialResearch?: Record<string, import('@/types/ground').ResearchState>
-      tickScale?: number
-    },
   ): void {
     const units = new Map<UnitId, Unit>()
     for (const u of unitList) {
@@ -181,12 +174,13 @@ export class GameEngine {
     this.state = {
       playerNation,
       initialized: true,
-      time: { tick: 0, timestamp, speed: 0, tickIntervalMs: 100, tickScale: ground?.tickScale },
+      time: { tick: 0, timestamp, speed: 0, tickIntervalMs: 100 },
       nations,
       units,
       missiles: new Map(),
       engagements: new Map(),
       supplyLines: new Map<string, import('@/types/game').SupplyLine>(),
+      shippingLanes: new Map(),
       events: [],
       pendingEvents: [],
     }
@@ -201,34 +195,8 @@ export class GameEngine {
     for (const line of supplyLines) {
       this.state.supplyLines.set(line.id, { ...line })
     }
-
-    // ─── Ground warfare data ───
-    if (ground?.groundUnits?.length) {
-      this.state.groundUnits = new Map()
-      for (const gu of ground.groundUnits) {
-        this.state.groundUnits.set(gu.id, { ...gu })
-      }
-    }
-    if (ground?.generals?.length) {
-      this.state.generals = new Map()
-      for (const gen of ground.generals) {
-        this.state.generals.set(gen.id, { ...gen, pendingReports: [] })
-      }
-    }
-    if (ground?.armyGroups?.length) {
-      this.state.armyGroups = new Map()
-      for (const ag of ground.armyGroups) {
-        this.state.armyGroups.set(ag.id, { ...ag })
-      }
-    }
-    if (ground?.controlGrid) {
-      this.state.controlGrid = ground.controlGrid
-    }
-    if (ground?.initialResearch) {
-      this.state.research = new Map()
-      for (const [nation, rs] of Object.entries(ground.initialResearch)) {
-        this.state.research.set(nation, { ...rs })
-      }
+    for (const lane of defaultShippingLanes) {
+      this.state.shippingLanes.set(lane.id, { ...lane })
     }
 
     // Initialize intel budgets for all nations that don't have one
@@ -245,11 +213,6 @@ export class GameEngine {
     if (this.state.nations.usa && this.state.nations.iran) {
       this.initSatellites()
     }
-
-    // Compute initial frontlines so they're visible before first tick
-    if (this.state.groundUnits?.size) {
-      processFrontline(this.state)
-    }
   }
 
   /** Advance simulation by one tick */
@@ -257,8 +220,7 @@ export class GameEngine {
     if (!this.state.initialized) return
     const { state } = this
     state.time.tick++
-    const scale = state.time.tickScale ?? 1
-    state.time.timestamp += TICK_MS * scale
+    state.time.timestamp += TICK_MS
 
     processMovement(state, this.elevationGrid)
     processReadiness(state)
@@ -274,6 +236,7 @@ export class GameEngine {
 
     processCombat(state, this.rng, this.elevationGrid, this.sensorNetwork)
     processPointDefense(state, this.rng)
+    processShipping(state, this.rng)
     processEconomy(state)
     processLogistics(state)
     processRepair(state)
@@ -291,18 +254,6 @@ export class GameEngine {
 
     // Espionage: HUMINT reveals + SIGINT multiplier
     this.lastEspionageResult = processEspionage(state, this.rng)
-
-    // ─── Ground warfare systems (skip when no ground units) ───
-    if (state.groundUnits && state.groundUnits.size > 0) {
-      const tick = state.time.tick
-      if (tick % 60 === 0) processGroundSupply(state)
-      if (tick % 120 === 0) processGeneralAI(state, this.rng)
-      if (tick % 30 === 0) {
-        processGroundCombat(state, this.rng)
-        processFrontline(state)
-      }
-      if (tick % 720 === 0) processResearch(state)
-    }
 
     // Cap pendingEvents to prevent unbounded growth during fast-forward
     if (state.pendingEvents.length > 2000) {
@@ -417,40 +368,9 @@ export class GameEngine {
         if (nation) nation.intelBudget = cmd.budget
         break
       }
-      // ─── Ground warfare commands ───
-      case 'GENERAL_ORDER': {
-        const general = state.generals?.get(cmd.generalId)
-        if (general) general.currentOrder = cmd.order
-        break
-      }
-      case 'REASSIGN_DIVISION': {
-        const div = state.groundUnits?.get(cmd.divisionId)
-        if (div && state.armyGroups) {
-          // Remove from old army group
-          const oldAG = state.armyGroups.get(div.armyGroupId)
-          if (oldAG) {
-            oldAG.divisionIds = oldAG.divisionIds.filter(id => id !== cmd.divisionId)
-          }
-          // Add to new army group
-          const newAG = state.armyGroups.get(cmd.targetArmyGroupId)
-          if (newAG) {
-            newAG.divisionIds.push(cmd.divisionId)
-            div.armyGroupId = cmd.targetArmyGroupId
-          }
-        }
-        break
-      }
-      case 'SET_RESEARCH': {
-        const rs = state.research?.get(cmd.nation)
-        if (rs) {
-          rs.currentResearch = cmd.techId
-          rs.researchProgress = 0
-        }
-        break
-      }
-      case 'SET_RESEARCH_BUDGET': {
-        const rs = state.research?.get(cmd.nation)
-        if (rs) rs.monthlyBudget = cmd.budget
+      case 'SET_DRONE_MISSION': {
+        const unit = state.units.get(cmd.unitId)
+        if (unit) unit.droneMission = cmd.mission
         break
       }
     }
@@ -470,105 +390,10 @@ export class GameEngine {
       units: Array.from(state.units.values()).map(toViewUnit),
       missiles: Array.from(state.missiles.values()),
       supplyLines: Array.from(state.supplyLines.values()),
+      shippingLanes: Array.from(state.shippingLanes.values()),
       events,
       pendingEventCount: state.events.length,
       satelliteDetectedUnitIds: Array.from(getSatelliteDetections(state.time.tick)),
-      // Ground warfare data (from cache, no recomputation)
-      ...(state.groundUnits?.size ? this.getGroundViewData() : {}),
-    }
-  }
-
-  /** Extract ground warfare data for the view state */
-  private getGroundViewData(): Partial<GameViewState> {
-    const { state } = this
-
-    // Collect general reports (one-shot delivery like events)
-    const reports: import('@/types/ground').GeneralReport[] = []
-    if (state.generals) {
-      for (const gen of state.generals.values()) {
-        reports.push(...gen.pendingReports)
-        gen.pendingReports = []
-      }
-    }
-    // Build research summary
-    const researchSummary: Record<string, { current: string | null; progress: number; completed: string[] }> = {}
-    if (state.research) {
-      for (const [nation, rs] of state.research) {
-        researchSummary[nation] = {
-          current: rs.currentResearch,
-          progress: rs.researchProgress,
-          completed: Array.from(rs.completedTechs),
-        }
-      }
-    }
-
-    // Convert ground units from grid coords to lat/lng for map display
-    const grid = state.controlGrid
-    const groundUnits: import('@/types/view').ViewGroundUnit[] = []
-    if (state.groundUnits && grid) {
-      const kmPerDegLat = 111.32
-      const kmPerDegLng = kmPerDegLat * Math.cos((grid.originLat * Math.PI) / 180)
-      for (const gu of state.groundUnits.values()) {
-        groundUnits.push({
-          id: gu.id,
-          name: gu.name,
-          nation: gu.nation,
-          type: gu.type,
-          armyGroupId: gu.armyGroupId,
-          lat: grid.originLat + (gu.gridRow * grid.cellSizeKm) / kmPerDegLat,
-          lng: grid.originLng + (gu.gridCol * grid.cellSizeKm) / kmPerDegLng,
-          strength: gu.strength,
-          morale: gu.morale,
-          organization: gu.organization,
-          stance: gu.stance,
-          status: gu.status,
-          supplyState: gu.supplyState,
-          entrenched: gu.entrenched,
-        })
-      }
-    }
-
-    // Convert generals and army groups for UI
-    const generals: import('@/types/view').ViewGeneral[] = []
-    if (state.generals) {
-      for (const gen of state.generals.values()) {
-        generals.push({
-          id: gen.id,
-          name: gen.name,
-          nation: gen.nation,
-          armyGroupId: gen.armyGroupId,
-          traits: gen.traits,
-          currentOrder: gen.currentOrder,
-          pendingReports: gen.pendingReports,
-        })
-      }
-    }
-
-    const armyGroups: import('@/types/view').ViewArmyGroup[] = []
-    if (state.armyGroups) {
-      for (const ag of state.armyGroups.values()) {
-        armyGroups.push({
-          id: ag.id,
-          name: ag.name,
-          nation: ag.nation,
-          generalId: ag.generalId,
-          divisionIds: ag.divisionIds,
-        })
-      }
-    }
-
-    const territories = getCachedTerritories()
-    const frontlines = getCachedFrontlines()
-    const battles = getTickBattles()
-    return {
-      frontlines,
-      territories: territories.length > 0 ? territories : undefined,
-      battles: battles.length > 0 ? battles : undefined,
-      generalReports: reports.length > 0 ? reports : undefined,
-      researchSummary: Object.keys(researchSummary).length > 0 ? researchSummary : undefined,
-      groundUnits: groundUnits.length > 0 ? groundUnits : undefined,
-      generals: generals.length > 0 ? generals : undefined,
-      armyGroups: armyGroups.length > 0 ? armyGroups : undefined,
     }
   }
 
@@ -584,6 +409,7 @@ export class GameEngine {
       if (unit.deploy_time_sec != null && unit.readiness == null) {
         unit.readiness = 'deployed'
       }
+      if (unit.droneMission == null) unit.droneMission = 'military'
     }
     this.state = {
       playerNation: raw.playerNation ?? 'usa',
@@ -594,8 +420,15 @@ export class GameEngine {
       missiles: new Map(raw.missiles),
       engagements: new Map(raw.engagements),
       supplyLines: new Map(raw.supplyLines ?? []),
+      shippingLanes: new Map(raw.shippingLanes ?? []),
       events: raw.events ?? [],
       pendingEvents: [],
+    }
+    // Backfill shipping lanes for old saves that didn't have them
+    if (!raw.shippingLanes || raw.shippingLanes.length === 0) {
+      for (const lane of defaultShippingLanes) {
+        this.state.shippingLanes.set(lane.id, { ...lane })
+      }
     }
     // Reset all module-level state that would otherwise persist across loads
     resetCombatState()
@@ -607,12 +440,7 @@ export class GameEngine {
     resetRepairState()
     resetDroneAIState()
     resetSatelliteState()
-    // Ground warfare resets
-    resetFrontlineState()
-    resetGroundCombatState()
-    resetGeneralAIState()
-    resetGroundSupplyState()
-    resetResearchState()
+    resetShippingState()
   }
 
   /** Set up satellite constellations for each nation */
@@ -732,5 +560,8 @@ function toViewUnit(u: Unit): ViewUnit {
     subordinateIds: [...u.subordinateIds],
     readiness: u.readiness,
     readinessTimer: u.readinessTimer,
+    radius_km: u.radius_km,
+    mine_count: u.mine_count,
+    droneMission: u.droneMission,
   }
 }
