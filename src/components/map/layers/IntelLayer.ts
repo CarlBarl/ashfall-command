@@ -1,4 +1,4 @@
-import { IconLayer, TextLayer } from '@deck.gl/layers'
+﻿import { IconLayer, TextLayer } from '@deck.gl/layers'
 import type { EstimatedUnit } from '@/store/intel-store'
 
 const ICON_MAPPING: Record<string, { x: number; y: number; width: number; height: number; mask: boolean }> = {
@@ -17,7 +17,7 @@ export function createIntelUnitLayers(estimatedUnits: EstimatedUnit[]) {
     id: 'intel-estimate-icons',
     data: estimatedUnits,
     pickable: true,
-    iconAtlas: '/sprites/unit-atlas.svg',
+    iconAtlas: '/sprites/unit-atlas.png',
     iconMapping: ICON_MAPPING,
     getIcon: (d) => d.category,
     getPosition: (d) => [d.position.lng, d.position.lat],
@@ -41,7 +41,6 @@ export function createIntelUnitLayers(estimatedUnits: EstimatedUnit[]) {
     getPixelOffset: [0, 20],
     fontFamily: 'JetBrains Mono, Fira Code, monospace',
     fontWeight: 600,
-    fontSettings: { sdf: true },
     outlineWidth: 2,
     outlineColor: [13, 17, 23, 220],
     sizeUnits: 'pixels',

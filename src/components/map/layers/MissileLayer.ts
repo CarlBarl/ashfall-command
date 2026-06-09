@@ -1,4 +1,4 @@
-import { PathLayer, IconLayer } from '@deck.gl/layers'
+﻿import { PathLayer, IconLayer } from '@deck.gl/layers'
 import { PathStyleExtension } from '@deck.gl/extensions'
 import type { Missile, NationId } from '@/types/game'
 import type { ViewUnit } from '@/types/view'
@@ -25,7 +25,7 @@ const ICON_MAPPING: Record<string, { x: number; y: number; width: number; height
 interface MissileRender {
   id: string
   trail: [number, number][]       // traveled path (solid line)
-  predicted: [number, number][]   // current pos → target (dashed line)
+  predicted: [number, number][]   // current pos â†’ target (dashed line)
   position: [number, number]      // current head position
   nation: NationId
   type: 'cruise' | 'ballistic'
@@ -144,7 +144,7 @@ export function createMissileLayers(
   const offensive = renders.filter(r => !r.isInterceptor)
 
   return [
-    // Solid trail — where the missile has been (subtle)
+    // Solid trail â€” where the missile has been (subtle)
     new PathLayer<MissileRender>({
       id: 'missile-trail',
       data: renders,
@@ -160,7 +160,7 @@ export function createMissileLayers(
       updateTriggers: { getPath: currentTime },
     }),
 
-    // Dashed predicted path — very faint, only shows direction
+    // Dashed predicted path â€” very faint, only shows direction
     new (PathLayer as any)({
       id: 'missile-predicted',
       data: offensive.filter(r => r.predicted.length >= 2),
@@ -182,7 +182,7 @@ export function createMissileLayers(
       id: 'missile-heads',
       data: renders,
       pickable: true,
-      iconAtlas: '/sprites/missile-atlas.svg',
+      iconAtlas: '/sprites/missile-atlas.png',
       iconMapping: ICON_MAPPING,
       getIcon: (d) => d.type,
       getPosition: (d) => d.position,

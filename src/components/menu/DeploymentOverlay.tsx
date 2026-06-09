@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo, useRef, useState, type CSSProperties } from 'react'
+﻿import { useEffect, useCallback, useMemo, useRef, useState, type CSSProperties } from 'react'
 import MapGL from 'react-map-gl/maplibre'
 import type { MapLayerMouseEvent } from 'react-map-gl/maplibre'
 import DeckOverlay from '@/components/map/DeckOverlay'
@@ -47,7 +47,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   carrier_group: 'Carrier Group',
 }
 
-// ── Styles ──────────────────────────────────────────────────────────
+// â”€â”€ Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const overlay: CSSProperties = {
   position: 'fixed',
@@ -96,7 +96,7 @@ const buttonBar: CSSProperties = {
   gap: 8,
 }
 
-// ── Component ───────────────────────────────────────────────────────
+// â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function DeploymentOverlay() {
   const screen = useMenuStore(s => s.screen)
@@ -222,12 +222,12 @@ export default function DeploymentOverlay() {
     nation: u.nation,
   }))
 
-  // Player placed units — pickable, click to select for repositioning
+  // Player placed units â€” pickable, click to select for repositioning
   const playerIconLayer = new IconLayer<MarkerData>({
     id: 'deployment-player-icons',
     data: placedData,
     pickable: true,
-    iconAtlas: '/sprites/unit-atlas.svg',
+    iconAtlas: '/sprites/unit-atlas.png',
     iconMapping: ICON_MAPPING,
     getIcon: (d) => d.category,
     getPosition: (d) => [d.position.lng, d.position.lat],
@@ -251,12 +251,12 @@ export default function DeploymentOverlay() {
     },
   })
 
-  // Enemy units — non-pickable
+  // Enemy units â€” non-pickable
   const enemyIconLayer = new IconLayer<MarkerData>({
     id: 'deployment-enemy-icons',
     data: enemyData,
     pickable: false,
-    iconAtlas: '/sprites/unit-atlas.svg',
+    iconAtlas: '/sprites/unit-atlas.png',
     iconMapping: ICON_MAPPING,
     getIcon: (d) => d.category,
     getPosition: (d) => [d.position.lng, d.position.lat],
@@ -324,7 +324,7 @@ export default function DeploymentOverlay() {
           {placementError ?? (selectedPlacedIndex != null
             ? `CLICK MAP TO REPOSITION: ${placedUnits[selectedPlacedIndex]?.entry.name ?? ''}`
             : allPlaced
-              ? 'ALL PLACED — CLICK A UNIT TO REPOSITION, OR LAUNCH'
+              ? 'ALL PLACED â€” CLICK A UNIT TO REPOSITION, OR LAUNCH'
               : `CLICK MAP TO PLACE: ${activeUnit?.name ?? ''}`)}
         </div>
       </div>
@@ -455,7 +455,7 @@ export default function DeploymentOverlay() {
               marginTop: 8,
             }}
           >
-            ENEMY FORCES ({enemyNation.toUpperCase()}) — {enemyUnits.length} UNITS
+            ENEMY FORCES ({enemyNation.toUpperCase()}) â€” {enemyUnits.length} UNITS
           </div>
           {enemyUnits.slice(0, 10).map(u => (
             <div

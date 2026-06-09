@@ -103,7 +103,9 @@ export function createUnitLayer(
     id: 'unit-layer',
     data: renderItems,
     pickable: true,
-    iconAtlas: '/sprites/unit-atlas.svg',
+    // PNG raster of unit-atlas.svg (scripts/rasterize-atlas.mjs) — Chrome's
+    // createImageBitmap rejects the SVG, which intermittently killed icon loading
+    iconAtlas: '/sprites/unit-atlas.png',
     iconMapping: ICON_MAPPING,
     getIcon: (d) => d.category,
     getAngle: (d) => -d.heading, // negative: deck.gl rotates counter-clockwise, heading is CW from north
@@ -167,7 +169,6 @@ export function createUnitLayer(
     getPixelOffset: [0, 24],
     fontFamily: 'JetBrains Mono, Fira Code, monospace',
     fontWeight: 600,
-    fontSettings: { sdf: true },
     outlineWidth: 2,
     outlineColor: [13, 17, 23, 220],
     sizeUnits: 'pixels',
@@ -189,7 +190,6 @@ export function createUnitLayer(
     getPixelOffset: [16, -16],
     fontFamily: 'JetBrains Mono, Fira Code, monospace',
     fontWeight: 700,
-    fontSettings: { sdf: true },
     outlineWidth: 3,
     outlineColor: [13, 17, 23, 255],
     sizeUnits: 'pixels',
