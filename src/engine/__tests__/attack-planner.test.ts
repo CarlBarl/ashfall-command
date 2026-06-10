@@ -33,6 +33,8 @@ function toViewUnit(u: Unit): ViewUnit {
     radius_km: u.radius_km,
     mine_count: u.mine_count,
     droneMission: u.droneMission,
+    visibility: 'identified',
+    stale: false,
   }
 }
 

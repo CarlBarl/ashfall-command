@@ -22,6 +22,8 @@ const target = {
   roe: 'weapons_tight',
   waypoints: [],
   subordinateIds: [],
+  visibility: 'identified',
+  stale: false,
 } as ViewUnit
 
 function impactAt(tick: number): GameEvent {

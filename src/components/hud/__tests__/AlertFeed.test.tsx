@@ -24,6 +24,8 @@ const lincoln = {
   roe: 'weapons_tight',
   waypoints: [],
   subordinateIds: [],
+  visibility: 'identified',
+  stale: false,
 } as ViewUnit
 
 function makeViewState(events: GameEvent[]): GameViewState {
@@ -39,6 +41,9 @@ function makeViewState(events: GameEvent[]): GameViewState {
     events,
     pendingEventCount: 0,
     satelliteDetectedUnitIds: [],
+    warSupport: {},
+    gameOver: null,
+    objectives: [],
   }
 }
 

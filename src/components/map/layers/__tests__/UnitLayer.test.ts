@@ -22,6 +22,8 @@ function makeUnit(overrides: Partial<ViewUnit>): ViewUnit {
     roe: 'weapons_tight',
     waypoints: [],
     subordinateIds: [],
+    visibility: 'identified',
+    stale: false,
     ...overrides,
   }
 }

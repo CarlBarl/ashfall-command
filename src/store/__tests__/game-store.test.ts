@@ -19,6 +19,9 @@ function makeViewState(
     events: [],
     pendingEventCount: 0,
     satelliteDetectedUnitIds: [],
+    warSupport: {},
+    gameOver: null,
+    objectives: [],
     ...overrides,
   }
 }

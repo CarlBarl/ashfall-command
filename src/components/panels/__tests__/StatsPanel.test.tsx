@@ -23,6 +23,8 @@ function makeUnit(id: string, nation: string): ViewUnit {
     roe: 'weapons_free',
     waypoints: [],
     subordinateIds: [],
+    visibility: 'identified',
+    stale: false,
   } as ViewUnit
 }
 

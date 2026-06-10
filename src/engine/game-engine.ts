@@ -24,6 +24,8 @@ import { findNavalRoute } from './systems/route-planner'
 import type { SatellitePass } from '@/types/game'
 import { processShipping, resetShippingState } from './systems/shipping'
 import { shippingLanes as defaultShippingLanes } from '@/data/shipping/shipping-lanes'
+import { processVisibility, resetVisibilityState, getViewVisibility, contactDisplayName, type ViewVisibility } from './systems/visibility'
+import { processWarSupport, resetWarSupportState, offerCeasefire, acceptCeasefire, resign, getWarSupport, getObjectives } from './systems/war-support'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
 const SCENARIO_START = new Date('2026-06-15T06:00:00Z').getTime()
@@ -170,6 +172,12 @@ export class GameEngine {
     // Espionage: HUMINT reveals + SIGINT multiplier
     this.lastEspionageResult = processEspionage(state, this.rng)
 
+    // Fog of war: fold radar/satellite/HUMINT/ELINT pictures into per-nation contacts
+    processVisibility(state, this.sensorNetwork, this.lastEspionageResult, this.elevationGrid)
+
+    // Political will: war-support drains, ceasefire logic, capitulation, objectives
+    processWarSupport(state)
+
     // Cap pendingEvents to prevent unbounded growth during fast-forward
     if (state.pendingEvents.length > 2000) {
       state.pendingEvents.splice(0, state.pendingEvents.length - 2000)
@@ -268,9 +276,15 @@ export class GameEngine {
         break
       }
       case 'CEASE_FIRE': {
-        const player = state.playerNation
-        state.nations[player].atWar = state.nations[player].atWar.filter(n => n !== cmd.target)
-        state.nations[cmd.target].atWar = state.nations[cmd.target].atWar.filter(n => n !== player)
+        acceptCeasefire(state, state.playerNation, cmd.target)
+        break
+      }
+      case 'OFFER_CEASEFIRE': {
+        offerCeasefire(state, state.playerNation, cmd.target)
+        break
+      }
+      case 'RESIGN': {
+        resign(state)
         break
       }
       case 'SET_HEADING': {
@@ -297,18 +311,27 @@ export class GameEngine {
     const events = [...state.pendingEvents]
     state.pendingEvents = [] // one-shot delivery
 
+    const units: ViewUnit[] = []
+    for (const u of state.units.values()) {
+      const vis = getViewVisibility(state, state.playerNation, u)
+      if (vis) units.push(toViewUnit(u, vis))
+    }
+
     return {
       playerNation: state.playerNation,
       initialized: state.initialized,
       time: { ...state.time },
       nations: Object.values(state.nations),
-      units: Array.from(state.units.values()).map(toViewUnit),
+      units,
       missiles: Array.from(state.missiles.values()),
       supplyLines: Array.from(state.supplyLines.values()),
       shippingLanes: Array.from(state.shippingLanes.values()),
       events,
       pendingEventCount: state.events.length,
       satelliteDetectedUnitIds: Array.from(getSatelliteDetections(state.playerNation, state.time.tick)),
+      warSupport: getWarSupport(state),
+      gameOver: state.gameOver ?? null,
+      objectives: getObjectives(state),
     }
   }
 
@@ -321,6 +344,9 @@ export class GameEngine {
       time: s.time,
       nations: s.nations,
       attackCounters: s.attackCounters ?? {},
+      visibility: s.visibility ?? {},
+      warStatus: s.warStatus ?? {},
+      gameOver: s.gameOver ?? null,
       units: Array.from(s.units.entries()),
       missiles: Array.from(s.missiles.entries()),
       supplyLines: Array.from(s.supplyLines.entries()),
@@ -360,6 +386,9 @@ export class GameEngine {
       events: raw.events ?? [],
       pendingEvents: [],
       attackCounters: raw.attackCounters ?? {},
+      visibility: raw.visibility ?? {},
+      warStatus: raw.warStatus ?? {},
+      gameOver: raw.gameOver ?? undefined,
     }
     // Backfill shipping lanes for old saves that didn't have them
     if (!raw.shippingLanes || raw.shippingLanes.length === 0) {
@@ -404,6 +433,8 @@ export class GameEngine {
     resetDroneAIState()
     resetSatelliteState()
     resetShippingState()
+    resetVisibilityState()
+    resetWarSupportState()
   }
 
   /** Set up satellite constellations for each nation */
@@ -500,31 +531,37 @@ export class GameEngine {
   }
 }
 
-function toViewUnit(u: Unit): ViewUnit {
+function toViewUnit(u: Unit, vis: ViewVisibility): ViewUnit {
+  // Scrub by contact quality: 'detected' hides everything but the contact itself,
+  // 'tracked' shows identity and condition but not loadout. Own units are 'identified'.
+  const identified = vis.level === 'identified'
+  const trackedPlus = identified || vis.level === 'tracked'
   return {
     id: u.id,
-    name: u.name,
+    name: trackedPlus ? u.name : contactDisplayName(u.category),
     nation: u.nation,
     category: u.category,
-    position: { ...u.position },
-    heading: u.heading,
-    speed_kts: u.speed_kts,
-    status: u.status,
-    health: u.health,
-    maxHealth: u.maxHealth,
-    logistics: u.logistics,
-    supplyStocks: u.supplyStocks.map(s => ({ ...s })),
-    weapons: u.weapons.map(w => ({ ...w })),
-    pointDefense: u.pointDefense.map(pd => ({ ...pd })),
-    sensors: u.sensors.map(s => ({ ...s })),
+    position: { ...vis.position },
+    heading: trackedPlus ? u.heading : 0,
+    speed_kts: trackedPlus ? u.speed_kts : 0,
+    status: trackedPlus ? u.status : 'ready',
+    health: trackedPlus ? u.health : 100,
+    maxHealth: trackedPlus ? u.maxHealth : 100,
+    logistics: identified ? u.logistics : 0,
+    supplyStocks: identified ? u.supplyStocks.map(s => ({ ...s })) : [],
+    weapons: identified ? u.weapons.map(w => ({ ...w })) : [],
+    pointDefense: identified ? u.pointDefense.map(pd => ({ ...pd })) : [],
+    sensors: identified ? u.sensors.map(s => ({ ...s })) : [],
     roe: u.roe,
-    waypoints: u.waypoints.map(w => ({ ...w })),
-    parentId: u.parentId,
-    subordinateIds: [...u.subordinateIds],
-    readiness: u.readiness,
-    readinessTimer: u.readinessTimer,
+    waypoints: identified ? u.waypoints.map(w => ({ ...w })) : [],
+    parentId: identified ? u.parentId : undefined,
+    subordinateIds: identified ? [...u.subordinateIds] : [],
+    readiness: identified ? u.readiness : undefined,
+    readinessTimer: identified ? u.readinessTimer : undefined,
     radius_km: u.radius_km,
-    mine_count: u.mine_count,
-    droneMission: u.droneMission,
+    mine_count: identified ? u.mine_count : undefined,
+    droneMission: identified ? u.droneMission : undefined,
+    visibility: vis.level,
+    stale: vis.stale,
   }
 }
