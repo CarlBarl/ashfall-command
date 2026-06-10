@@ -1,10 +1,12 @@
-import type { GameState, NationId, Position, Unit } from '@/types/game'
+import type { GameState, NationId, Position, TrackQuality, Unit } from '@/types/game'
 import type { Command } from '@/types/commands'
+import type { ElevationGrid } from './elevation'
 import type { SeededRNG } from '../utils/rng'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import { haversine, bearing } from '../utils/geo'
 import { processDroneSwarm, getDroneAmmo } from './drone-ai'
 import { WAR_SUPPORT_CRITICAL_THRESHOLD } from './war-support'
+import { getFireControlQuality } from './visibility'
 
 type AIPhase = 'PEACETIME' | 'ALERT' | 'DEFENSIVE' | 'OFFENSIVE' | 'ATTRITION'
 
@@ -83,7 +85,7 @@ export function orientSAMRadars(state: GameState, excludeNation?: NationId): voi
 }
 
 /** Process AI for all non-player nations. Returns commands to execute. */
-export function processAI(state: GameState, rng: SeededRNG): Command[] {
+export function processAI(state: GameState, rng: SeededRNG, grid?: ElevationGrid | null): Command[] {
   const commands: Command[] = []
 
   // Re-orient enemy SAMs periodically (initial orient done in game-engine init)
@@ -160,7 +162,7 @@ export function processAI(state: GameState, rng: SeededRNG): Command[] {
       case 'DEFENSIVE':
         // Retaliate within 5 minutes of being attacked
         if (ai.attacksReceived > 0 && state.time.tick - ai.lastRetaliationTick > 300) {
-          const salvoCommands = generateRetaliatorySalvo(state, nation.id, enemyNation, rng, 'defensive')
+          const salvoCommands = generateRetaliatorySalvo(state, nation.id, enemyNation, rng, 'defensive', grid)
           commands.push(...salvoCommands)
           // Accompany with drone swarm for saturation effect
           if (getDroneAmmo(state, nation.id) > 10) {
@@ -177,7 +179,7 @@ export function processAI(state: GameState, rng: SeededRNG): Command[] {
       case 'OFFENSIVE':
         // Launch salvos every 15 minutes
         if (state.time.tick - ai.lastRetaliationTick > 900) {
-          const salvoCommands = generateRetaliatorySalvo(state, nation.id, enemyNation, rng, 'offensive')
+          const salvoCommands = generateRetaliatorySalvo(state, nation.id, enemyNation, rng, 'offensive', grid)
           commands.push(...salvoCommands)
           ai.lastRetaliationTick = state.time.tick
           ai.salvosLaunched++
@@ -192,7 +194,7 @@ export function processAI(state: GameState, rng: SeededRNG): Command[] {
       case 'ATTRITION':
         // Conserve ballistic ammo — launch only for saturation
         if (state.time.tick - ai.lastRetaliationTick > 3600) {
-          const salvoCommands = generateRetaliatorySalvo(state, nation.id, enemyNation, rng, 'saturation')
+          const salvoCommands = generateRetaliatorySalvo(state, nation.id, enemyNation, rng, 'saturation', grid)
           commands.push(...salvoCommands)
           ai.lastRetaliationTick = state.time.tick
         }
@@ -246,6 +248,7 @@ function generateRetaliatorySalvo(
   enemyNation: NationId,
   rng: SeededRNG,
   mode: 'defensive' | 'offensive' | 'saturation',
+  grid?: ElevationGrid | null,
 ): Command[] {
   const commands: Command[] = []
 
@@ -259,7 +262,8 @@ function generateRetaliatorySalvo(
     }),
   )
 
-  // Find enemy targets, prioritized
+  // Find enemy targets, prioritized — the AI fights on its own intel picture,
+  // so it can only target units it holds a fire-quality track on
   const targets = Array.from(state.units.values())
     .filter(u => u.nation === enemyNation && u.status !== 'destroyed')
     .sort((a, b) => targetPriority(b) - targetPriority(a))
@@ -284,13 +288,16 @@ function generateRetaliatorySalvo(
       const spec = weaponSpecs[loadout.weaponId]
       if (!spec || spec.type === 'sam' || loadout.count <= 0) continue
 
-      // Pick a target in range
+      // Pick a target in range that this launcher has fire-control quality on
+      let quality: TrackQuality | null = null
       const target = targets.find(t => {
         const dist = haversine(launcher.position, t.position)
-        return dist <= spec.range_km
+        if (dist > spec.range_km) return false
+        quality = getFireControlQuality(state, launcher, t, grid ?? null)
+        return quality !== null
       })
 
-      if (!target) continue
+      if (!target || !quality) continue
 
       // Launch 1-3 missiles at this target
       const count = Math.min(loadout.count, rng.int(1, 3), maxLaunches - launched)
@@ -300,6 +307,7 @@ function generateRetaliatorySalvo(
           launcherId: launcher.id,
           weaponId: loadout.weaponId,
           targetId: target.id,
+          trackQuality: quality,
         })
         launched++
       }

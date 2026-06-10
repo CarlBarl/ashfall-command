@@ -3,6 +3,7 @@ import type {
   Nation,
   NationId,
   Position,
+  TrackQuality,
   Unit,
   UnitCategory,
   UnitId,
@@ -12,9 +13,10 @@ import type {
 import type { ElevationGrid } from './elevation'
 import type { SensorNetwork } from './sensor-network'
 import type { EspionageResult } from './espionage'
-import { hasLineOfSight } from './detection'
+import { hasLineOfSight, radarHorizon } from './detection'
+import { isDatalinkConnected } from './sensor-network'
 import { getSatelliteDetections, pointToLineDistKm, DETECTION_FADE_TICKS } from './satellites'
-import { haversine } from '../utils/geo'
+import { haversine, bearing } from '../utils/geo'
 
 /**
  * Fog of war. Maintains state.visibility — per observing nation, a contact map over
@@ -33,6 +35,22 @@ const RADAR_IDENTIFY_FRACTION = 0.6
 const DEFAULT_SIGINT_MULTIPLIER = 1.5
 const DEFAULT_ANTENNA_HEIGHT_M = 15
 const TARGET_HEIGHT_M = 10
+
+/** Effective radar target height per category — drives the radar-horizon cap */
+const TARGET_HEIGHT_BY_CATEGORY: Partial<Record<UnitCategory, number>> = {
+  aircraft: 8000,
+  carrier_group: 40,
+  ship: 20,
+  naval_base: 30,
+  airbase: 25,
+  submarine: 2,
+  missile_battery: 5,
+  sam_site: 8,
+}
+
+function targetHeightM(category: UnitCategory): number {
+  return TARGET_HEIGHT_BY_CATEGORY[category] ?? TARGET_HEIGHT_M
+}
 
 const LEVEL_RANK: Record<VisibilityLevel, number> = { unseen: 0, detected: 1, tracked: 2, identified: 3 }
 
@@ -68,6 +86,24 @@ export function processVisibility(
 
 export function resetVisibilityState(): void {
   metaByObserver.clear()
+}
+
+/**
+ * Seed scenario-start contacts: fixed military installations (airbases, naval bases)
+ * are public knowledge — both sides start with them identified and pinned.
+ */
+export function seedInitialVisibility(state: GameState): void {
+  state.visibility ??= {}
+  for (const nation of Object.values(state.nations)) {
+    const contacts = (state.visibility[nation.id as string] ??= {})
+    const meta = metaFor(nation.id as string)
+    for (const unit of state.units.values()) {
+      if (unit.nation === nation.id || unit.status === 'destroyed') continue
+      if (unit.category !== 'airbase' && unit.category !== 'naval_base') continue
+      if (contacts[unit.id]) continue
+      contacts[unit.id] = newContact(meta, unit, 'identified', state.time.tick)
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -145,24 +181,52 @@ function evaluateSources(state: GameState, espionage: EspionageResult | null, gr
 function radarContactLevel(ownRadars: Unit[], target: Unit, grid: ElevationGrid | null): VisibilityLevel {
   let best: VisibilityLevel = 'unseen'
   for (const radar of ownRadars) {
-    let range = 0
-    let antennaHeight = DEFAULT_ANTENNA_HEIGHT_M
-    for (const s of radar.sensors) {
-      if (s.type === 'radar' && s.range_km > range) {
-        range = s.range_km
-        antennaHeight = s.antenna_height_m ?? DEFAULT_ANTENNA_HEIGHT_M
-      }
+    const level = radarSeesUnit(radar, target, grid)
+    if (level === 'identified') return 'identified'
+    if (level === 'tracked') best = 'tracked'
+  }
+  return best
+}
+
+/**
+ * Can a single unit's radar see a target unit right now?
+ * Models nominal range, the radar horizon (earth curvature), the antenna's
+ * sector arc relative to the unit's heading, and terrain line-of-sight.
+ */
+export function radarSeesUnit(radar: Unit, target: Unit, grid: ElevationGrid | null): VisibilityLevel {
+  if (radar.status === 'destroyed') return 'unseen'
+  const dist = haversine(radar.position, target.position)
+  const targetAltAglM = targetHeightM(target.category)
+
+  let best: VisibilityLevel = 'unseen'
+  for (const s of radar.sensors) {
+    if (s.type !== 'radar' || s.range_km <= 0) continue
+    if (dist > s.range_km) continue
+
+    const antennaHeight = s.antenna_height_m ?? DEFAULT_ANTENNA_HEIGHT_M
+
+    // Earth curvature: low antennas can't see surface targets far away no matter
+    // the radar's nominal range. This is what makes AWACS the long-range eyes.
+    const horizonKm = radarHorizon(antennaHeight, targetAltAglM)
+    if (dist > horizonKm) continue
+
+    // Sector arc relative to the unit's heading
+    const sectorDeg = s.sector_deg ?? 360
+    if (sectorDeg < 360) {
+      const brg = bearing(radar.position, target.position)
+      const diff = ((brg - radar.heading) % 360 + 540) % 360 - 180
+      if (Math.abs(diff) > sectorDeg / 2) continue
     }
-    const dist = haversine(radar.position, target.position)
-    if (dist > range) continue
+
     if (grid) {
       const radarAltM = grid.getElevation(radar.position.lat, radar.position.lng) + antennaHeight
-      const targetAltM = grid.getElevation(target.position.lat, target.position.lng) + TARGET_HEIGHT_M
+      const targetAltM = grid.getElevation(target.position.lat, target.position.lng) + targetAltAglM
       if (!hasLineOfSight(radar.position, radarAltM, target.position.lat, target.position.lng, targetAltM, grid)) {
         continue
       }
     }
-    if (dist <= range * RADAR_IDENTIFY_FRACTION) return 'identified'
+
+    if (dist <= s.range_km * RADAR_IDENTIFY_FRACTION) return 'identified'
     best = 'tracked'
   }
   return best
@@ -369,4 +433,46 @@ const CONTACT_NAMES: Record<UnitCategory, string> = {
 /** Generic display name for a low-confidence contact */
 export function contactDisplayName(category: UnitCategory): string {
   return CONTACT_NAMES[category] ?? 'Unknown contact'
+}
+
+// ---------------------------------------------------------------------------
+// Fire control — what may a unit shoot at, and on whose data?
+// ---------------------------------------------------------------------------
+
+const FIXED_SITE_CATEGORIES = new Set<UnitCategory>(['airbase', 'naval_base'])
+
+/**
+ * Fire-control quality for shooter → target:
+ *   'own'      — the shooter's own radar holds the target right now
+ *   'datalink' — a live nation-level track exists and the shooter is on the network,
+ *                or the target is a fixed site with known coordinates
+ *   null       — no engageable track; the shooter may not fire at this target
+ */
+export function getFireControlQuality(
+  state: GameState,
+  shooter: Unit,
+  target: Unit,
+  grid: ElevationGrid | null,
+): TrackQuality | null {
+  if (target.nation === shooter.nation || target.status === 'destroyed') return null
+
+  // Fixed installations are public knowledge — surveyed coordinates, no track needed
+  if (FIXED_SITE_CATEGORIES.has(target.category)) return 'datalink'
+
+  if (radarSeesUnit(shooter, target, grid) !== 'unseen') return 'own'
+
+  const contact = state.visibility?.[shooter.nation as string]?.[target.id]
+  if (!contact || contact.level === 'unseen') return null
+
+  // Unmoved SAM sites pin at their last fix — strikable on coordinates
+  if (target.category === 'sam_site' && contact.pinned &&
+      target.position.lat === contact.lastKnownPosition.lat &&
+      target.position.lng === contact.lastKnownPosition.lng) {
+    return 'datalink'
+  }
+
+  const live = contact.level === 'tracked' || contact.level === 'identified'
+  if (live && isDatalinkConnected(state, shooter)) return 'datalink'
+
+  return null
 }

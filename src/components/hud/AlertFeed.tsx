@@ -436,6 +436,9 @@ function eventColor(e: GameEvent): string {
     case 'CEASEFIRE_OFFERED': return 'var(--status-ready)'
     case 'CEASEFIRE_REJECTED': return 'var(--text-muted)'
     case 'WAR_ENDED': return 'var(--status-ready)'
+    case 'AUTO_ENGAGEMENT': return 'var(--status-engaged)'
+    case 'MISSILE_MISSED': return 'var(--text-muted)'
+    case 'ORDER_REJECTED': return 'var(--text-muted)'
     default: return 'var(--text-secondary)'
   }
 }
@@ -475,7 +478,12 @@ function eventPosition(
     case 'UNIT_REPAIRED':
     case 'POINT_DEFENSE_KILL':
     case 'RESUPPLIED':
+    case 'ORDER_REJECTED':
       return unitPositions.get(e.unitId) ?? null
+    case 'AUTO_ENGAGEMENT':
+      return unitPositions.get(e.targetId) ?? unitPositions.get(e.unitId) ?? null
+    case 'MISSILE_MISSED':
+      return unitPositions.get(e.targetId) ?? null
     case 'SUPPLY_LINE_INTERDICTED':
       return unitPositions.get(e.threatUnitId) ?? null
     case 'SHIPPING_LANE_STATUS_CHANGE':
@@ -525,6 +533,12 @@ function formatEvent(e: GameEvent, names: Map<string, string>, lanes: Map<string
       return e.outcome === 'capitulation'
         ? `T+${e.tick} WAR ENDED: ${(e.loser ?? '').toUpperCase()} CAPITULATED`
         : `T+${e.tick} WAR ENDED: CEASEFIRE`
+    case 'AUTO_ENGAGEMENT':
+      return `T+${e.tick} ENGAGING ${unitName(e.targetId, names)}: ${e.weaponName} x${e.count}${e.quality === 'datalink' ? ' [LINK]' : ''}`
+    case 'MISSILE_MISSED':
+      return `T+${e.tick} MISS: ${unitName(e.targetId, names)} evaded (stale track)`
+    case 'ORDER_REJECTED':
+      return `T+${e.tick} ORDER REJECTED: ${unitName(e.unitId, names)} — ${e.reason}`
     default:
       return `T+${(e as GameEvent & { tick: number }).tick} ${(e as GameEvent & { type: string }).type}`
   }

@@ -1,4 +1,4 @@
-import type { GameState, GameEvent, Missile, NationId, Unit, WeaponSpec, ADSystemSpec, Position } from '@/types/game'
+import type { GameState, GameEvent, Missile, NationId, TrackQuality, Unit, WeaponSpec, ADSystemSpec, Position } from '@/types/game'
 import type { ElevationGrid } from './elevation'
 import type { SeededRNG } from '../utils/rng'
 import { weaponSpecs } from '@/data/weapons/missiles'
@@ -131,7 +131,7 @@ export function processCombat(state: GameState, rng: SeededRNG, elevationGrid?: 
   updateMissilePositions(state)
   runADEngagement(state, rng, elevationGrid, sensorNetwork)
   updateInterceptors(state, rng)
-  resolveImpacts(state)
+  resolveImpacts(state, rng)
   updateReloads(state)
 }
 
@@ -840,6 +840,7 @@ export function launchMissile(
   weaponId: string,
   targetId: string,
   waypoints?: Position[],
+  trackQuality?: TrackQuality,
 ): GameEvent | null {
   const launcher = state.units.get(launcherId)
   const target = state.units.get(targetId)
@@ -940,6 +941,7 @@ export function launchMissile(
     speed_current_mach: spec.type === 'ballistic_missile' ? 0 : spec.speed_mach,
     fuel_remaining_sec: fuelSec,
     is_interceptor: false,
+    networkQuality: trackQuality === 'datalink' ? 'tracked' : 'own',
   }
 
   state.missiles.set(id, missile)
@@ -1105,7 +1107,11 @@ function isAlreadyEngagedByUnit(unitId: string, missileId: string): boolean {
 //  IMPACT RESOLUTION
 // ===============================================
 
-function resolveImpacts(state: GameState): void {
+/** Categories that can move between launch and impact — datalink shots may miss them */
+const MOBILE_TARGET_CATEGORIES = new Set(['ship', 'carrier_group', 'submarine', 'aircraft'])
+const DATALINK_MISS_CHANCE = 0.12
+
+function resolveImpacts(state: GameState, rng: SeededRNG): void {
   const events: GameEvent[] = []
 
   for (const missile of state.missiles.values()) {
@@ -1119,6 +1125,19 @@ function resolveImpacts(state: GameState): void {
 
     const target = state.units.get(missile.targetId)
     const spec = weaponSpecs[missile.weaponId]
+
+    // Shots on relayed tracks lack terminal-quality data — moving targets can evade
+    if (target && spec && missile.networkQuality === 'tracked' &&
+        MOBILE_TARGET_CATEGORIES.has(target.category) && rng.chance(DATALINK_MISS_CHANCE)) {
+      events.push({
+        type: 'MISSILE_MISSED',
+        missileId: missile.id,
+        targetId: missile.targetId,
+        tick: state.time.tick,
+      })
+      state.missiles.delete(missile.id)
+      continue
+    }
 
     if (target && target.status !== 'destroyed' && spec) {
       const damage = computeDamage(spec, target.hardness)

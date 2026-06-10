@@ -24,7 +24,7 @@ import { findNavalRoute } from './systems/route-planner'
 import type { SatellitePass } from '@/types/game'
 import { processShipping, resetShippingState } from './systems/shipping'
 import { shippingLanes as defaultShippingLanes } from '@/data/shipping/shipping-lanes'
-import { processVisibility, resetVisibilityState, getViewVisibility, contactDisplayName, type ViewVisibility } from './systems/visibility'
+import { processVisibility, resetVisibilityState, seedInitialVisibility, getViewVisibility, contactDisplayName, type ViewVisibility } from './systems/visibility'
 import { processWarSupport, resetWarSupportState, offerCeasefire, acceptCeasefire, resign, getWarSupport, getObjectives } from './systems/war-support'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
@@ -129,6 +129,9 @@ export class GameEngine {
     // Orient sector-limited SAMs toward enemy before first tick
     orientSAMRadars(this.state)
 
+    // Fixed installations are public knowledge — both sides start with them on the map
+    seedInitialVisibility(this.state)
+
     // Initialize satellite constellations (only for modern scenarios with USA/Iran)
     if (this.state.nations.usa && this.state.nations.iran) {
       this.initSatellites()
@@ -158,10 +161,10 @@ export class GameEngine {
     processLogistics(state)
     processRepair(state)
 
-    // Autonomous offensive fire for weapons_free units (any nation)
-    const friendlyCmds = processFriendlyAI(state, this.rng)
+    // Autonomous engagement of tracked contacts (any nation, ROE-gated)
+    const friendlyCmds = processFriendlyAI(state, this.rng, this.elevationGrid)
     // Enemy AI generates commands
-    const aiCommands = processAI(state, this.rng)
+    const aiCommands = processAI(state, this.rng, this.elevationGrid)
     for (const cmd of [...friendlyCmds, ...aiCommands]) {
       this.executeCommand(cmd)
     }
@@ -203,6 +206,18 @@ export class GameEngine {
       case 'MOVE_UNIT': {
         const unit = state.units.get(cmd.unitId)
         if (unit) {
+          // Land units can't be ordered into the sea — reject up front with feedback
+          const isLandMover = unit.category === 'missile_battery' || unit.category === 'sam_site'
+          const dest = cmd.waypoints[cmd.waypoints.length - 1]
+          if (isLandMover && dest && this.elevationGrid?.isWater(dest.lat, dest.lng)) {
+            this.emitEvent({
+              type: 'ORDER_REJECTED',
+              unitId: unit.id,
+              reason: 'destination is open water',
+              tick: state.time.tick,
+            })
+            break
+          }
           if (unit.deploy_time_sec != null) {
             // Unit has readiness lifecycle (mobile SAMs, TELs)
             if (unit.readiness === 'deployed') {
@@ -220,14 +235,16 @@ export class GameEngine {
             // No readiness lifecycle (ships, aircraft, etc.) — move immediately
             const isNaval = unit.category === 'ship' || unit.category === 'submarine' || unit.category === 'carrier_group'
             if (isNaval && this.elevationGrid && cmd.waypoints.length > 0) {
-              // Auto-route naval units around land
-              const finalDest = cmd.waypoints[cmd.waypoints.length - 1]
-              const route = findNavalRoute(unit.position, finalDest, this.elevationGrid)
-              if (route) {
-                unit.waypoints = [...route, finalDest]
-              } else {
-                unit.waypoints = cmd.waypoints // fallback to direct if no route
+              // Auto-route naval units around land, honoring every player waypoint as a leg
+              const routed: typeof cmd.waypoints = []
+              let from = unit.position
+              for (const wp of cmd.waypoints) {
+                const leg = findNavalRoute(from, wp, this.elevationGrid)
+                if (leg) routed.push(...leg)
+                routed.push(wp)
+                from = wp
               }
+              unit.waypoints = routed
             } else {
               unit.waypoints = cmd.waypoints
             }
@@ -237,7 +254,7 @@ export class GameEngine {
         break
       }
       case 'LAUNCH_MISSILE': {
-        const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId, cmd.waypoints)
+        const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId, cmd.waypoints, cmd.trackQuality)
         if (event) {
           const launcher = state.units.get(cmd.launcherId)
           const target = state.units.get(cmd.targetId)

@@ -67,9 +67,18 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
           continue
         }
         if (!isNaval && nextIsWater) {
-          // Land unit hitting water — skip this waypoint
-          unit.waypoints.shift()
-          if (unit.waypoints.length === 0) finishMovement(unit)
+          // Land unit hitting water — halt and tell the player instead of silently
+          // skipping waypoints (which read as "my order vanished")
+          unit.waypoints = []
+          finishMovement(unit)
+          const event = {
+            type: 'ORDER_REJECTED' as const,
+            unitId: unit.id,
+            reason: 'route blocked by water',
+            tick: state.time.tick,
+          }
+          state.events.push(event)
+          state.pendingEvents.push(event)
           continue
         }
       }

@@ -10,7 +10,7 @@ export interface DetectedThreat {
 }
 
 /** Radar horizon distance in km using 4/3 earth refraction model */
-function radarHorizon(antennaHeightM: number, targetHeightM: number): number {
+export function radarHorizon(antennaHeightM: number, targetHeightM: number): number {
   return 4.12 * (Math.sqrt(Math.max(0, antennaHeightM)) + Math.sqrt(Math.max(0, targetHeightM)))
 }
 

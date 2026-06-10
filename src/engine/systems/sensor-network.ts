@@ -255,3 +255,18 @@ export function isDetectedByELINT(
 ): boolean {
   return network.elintDetections.get(nation)?.has(unitId) ?? false
 }
+
+// ---------------------------------------------------------------------------
+// Datalink connectivity — can this unit receive fire-quality tracks from the net?
+// ---------------------------------------------------------------------------
+
+/** A unit is on the datalink if it is a hub itself or within range of any friendly hub */
+export function isDatalinkConnected(state: GameState, unit: Unit): boolean {
+  if (unit.datalink_range_km && unit.datalink_range_km > 0) return true
+  for (const hub of state.units.values()) {
+    if (hub.nation !== unit.nation || hub.status === 'destroyed') continue
+    if (!hub.datalink_range_km || hub.datalink_range_km <= 0) continue
+    if (haversine(unit.position, hub.position) <= hub.datalink_range_km) return true
+  }
+  return false
+}
