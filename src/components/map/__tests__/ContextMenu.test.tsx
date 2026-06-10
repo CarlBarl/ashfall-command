@@ -23,6 +23,8 @@ function makeUnit(over: Partial<ViewUnit> & Pick<ViewUnit, 'id' | 'category'>): 
     roe: 'hold_fire',
     waypoints: [],
     subordinateIds: [],
+    visibility: 'identified',
+    stale: false,
     ...over,
   } as ViewUnit
 }
@@ -40,6 +42,9 @@ function makeViewState(units: ViewUnit[]): GameViewState {
     events: [],
     pendingEventCount: 0,
     satelliteDetectedUnitIds: [],
+    warSupport: {},
+    gameOver: null,
+    objectives: [],
   }
 }
 

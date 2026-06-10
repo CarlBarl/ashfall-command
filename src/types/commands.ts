@@ -12,3 +12,5 @@ export type Command =
   | { type: 'SET_HEADING'; unitId: UnitId; heading: number }
   | { type: 'SET_INTEL_BUDGET'; budget: IntelBudget }
   | { type: 'SET_DRONE_MISSION'; unitId: UnitId; mission: 'military' | 'shipping_interdiction' }
+  | { type: 'OFFER_CEASEFIRE'; target: NationId }
+  | { type: 'RESIGN' }

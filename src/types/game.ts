@@ -4,6 +4,47 @@ export type WeaponId = string
 
 export type DetectionState = 'unknown' | 'estimated' | 'detected' | 'tracked'
 
+/** Fog-of-war contact quality, in escalating order */
+export type VisibilityLevel = 'unseen' | 'detected' | 'tracked' | 'identified'
+
+export interface VisibilityContact {
+  level: VisibilityLevel
+  /** Tick when any sensor last refreshed this contact */
+  lastSeenTick: number
+  /** Position captured at lastSeenTick — shown when the live track is lost */
+  lastKnownPosition: Position
+  /** True for contacts whose level can no longer decay below 'detected' (fixed sites) */
+  pinned?: boolean
+}
+
+/** Political will to keep fighting — the win/lose meter */
+export interface WarStatus {
+  /** 0-100; at 0 the nation capitulates */
+  warSupport: number
+  warStartTick?: number
+  /** Set while this nation has an unanswered ceasefire offer on the table */
+  ceasefireOffered?: boolean
+}
+
+export interface WarStats {
+  durationTicks: number
+  unitsLost: Record<string, number>
+  missilesFired: Record<string, number>
+  missilesIntercepted: Record<string, number>
+  oilPeak: number
+  /** Game seconds the Hormuz lane spent in each non-open state */
+  hormuzReducedTicks: number
+  hormuzBlockedTicks: number
+}
+
+export interface GameOverReport {
+  outcome: 'victory' | 'defeat' | 'ceasefire'
+  /** Nation whose war support collapsed (capitulation outcomes) */
+  loser?: NationId
+  endTick: number
+  stats: WarStats
+}
+
 export interface Position {
   lng: number
   lat: number
@@ -292,6 +333,12 @@ export interface GameState {
   shippingLanes: Map<string, ShippingLane>
   /** Cumulative missile impacts + unit losses per nation — combat writes, enemy AI reads for escalation */
   attackCounters?: Record<string, number>
+  /** Fog of war: contacts on ENEMY units, keyed by observing nation then unit id */
+  visibility?: Record<string, Record<UnitId, VisibilityContact>>
+  /** Per-nation war-support / termination state */
+  warStatus?: Record<string, WarStatus>
+  /** Set once the war has been resolved — the world keeps ticking but the game is decided */
+  gameOver?: GameOverReport
 }
 
 export type GameEvent =
@@ -309,3 +356,7 @@ export type GameEvent =
   | { type: 'SHIPPING_LANE_STATUS_CHANGE'; laneId: string; newStatus: ShippingLane['status']; suppressionFactor: number; tick: number }
   | { type: 'MINE_CONTACT'; minefieldId: UnitId; targetId: UnitId; damage: number; tick: number }
   | { type: 'SUPPLY_LINE_INTERDICTED'; lineId: string; threatUnitId: UnitId; healthAfter: number; tick: number }
+  | { type: 'WAR_SUPPORT_CRITICAL'; nation: NationId; support: number; tick: number }
+  | { type: 'CEASEFIRE_OFFERED'; by: NationId; tick: number }
+  | { type: 'CEASEFIRE_REJECTED'; by: NationId; tick: number }
+  | { type: 'WAR_ENDED'; outcome: 'ceasefire' | 'capitulation'; loser?: NationId; tick: number }

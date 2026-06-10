@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import GameMap from '@/components/map/GameMap'
 import TopBar from '@/components/hud/TopBar'
 import AlertFeed from '@/components/hud/AlertFeed'
+import DebriefScreen from '@/components/hud/DebriefScreen'
 import StrikePanel from '@/components/panels/StrikePanel'
 import UnitInfoPanel from '@/components/panels/UnitInfoPanel'
 import EconomyPanel from '@/components/panels/EconomyPanel'
@@ -59,12 +60,25 @@ export default function App() {
   }, [screen])
 
   const units = useGameStore((s) => s.viewState.units)
+  const gameOver = useGameStore((s) => s.viewState.gameOver)
   const selectedUnitId = useUIStore((s) => s.selectedUnitId)
   const showOrbat = useUIStore((s) => s.showOrbat)
   const showStats = useUIStore((s) => s.showStats)
   const showEconomy = useUIStore((s) => s.showEconomy)
   const showIntel = useUIStore((s) => s.showIntel)
   // StrikePanel manages its own visibility via useStrikeStore
+
+  // Debrief overlay: shown when the war is decided, until dismissed (keyed by
+  // endTick so a fresh game's report shows again)
+  const [dismissedDebriefTick, setDismissedDebriefTick] = useState<number | null>(null)
+  useEffect(() => {
+    if (screen === 'playing') setDismissedDebriefTick(null)
+  }, [screen])
+  const showDebrief = gameOver !== null && gameOver.endTick !== dismissedDebriefTick
+  const dismissDebrief = useCallback(() => {
+    const report = useGameStore.getState().viewState.gameOver
+    if (report) setDismissedDebriefTick(report.endTick)
+  }, [])
 
   // On mobile: auto-open UNIT panel on select, close all on deselect (map tap)
   useEffect(() => {
@@ -155,6 +169,7 @@ export default function App() {
         {mobilePanel === 'events' && <AlertFeed />}
         {mobilePanel === 'intel' && <IntelPanel onClose={() => setMobilePanel(null)} />}
         <MobileNav active={mobilePanel} onSelect={setMobilePanel} hasSelection={!!selectedUnitId} />
+        {showDebrief && <DebriefScreen onDismiss={dismissDebrief} />}
       </div>
     )
   }
@@ -170,6 +185,7 @@ export default function App() {
       {showStats && <StatsPanel />}
       {showEconomy && <EconomyPanel />}
       {showIntel && <IntelPanel />}
+      {showDebrief && <DebriefScreen onDismiss={dismissDebrief} />}
     </div>
   )
 }

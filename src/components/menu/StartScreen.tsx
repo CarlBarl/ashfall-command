@@ -198,8 +198,8 @@ export default function StartScreen() {
       <div style={scanline} />
 
       <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', padding: '0 20px' }}>
-        <div style={title}>REALPOLITIK</div>
-        <div style={subtitle}>GEOPOLITICAL STRATEGY SIMULATOR</div>
+        <div style={title}>ASHFALL COMMAND</div>
+        <div style={subtitle}>MODERN GRAND STRATEGY WARGAME</div>
 
         {/* Mode selection */}
         <div style={{ marginBottom: 8 }}>

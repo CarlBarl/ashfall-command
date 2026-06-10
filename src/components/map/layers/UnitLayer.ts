@@ -26,6 +26,17 @@ const STATUS_ALPHA: Record<string, number> = {
   reloading: 200,
 }
 
+const VISIBILITY_RANK: Record<string, number> = {
+  detected: 0,
+  tracked: 1,
+  identified: 2,
+}
+
+const TRACKED_ALPHA_FACTOR = 0.8
+const DETECTED_ALPHA_FACTOR = 0.75
+const DETECTED_STALE_ALPHA_FACTOR = 0.55
+const DESATURATION = 0.65
+
 /** Flattened render item — either a solo unit or a cluster rendered as its primary */
 interface RenderUnit {
   id: string
@@ -38,11 +49,19 @@ interface RenderUnit {
   count: number
   health: number
   heading: number
+  visibility: string
+  stale: boolean
 }
 
 function toRenderUnit(item: ViewUnit | UnitCluster): RenderUnit {
   if (isCluster(item)) {
     const avgHealth = Math.round(item.units.reduce((s, u) => s + u.health, 0) / item.units.length)
+    let visibility = 'detected'
+    let stale = true
+    for (const u of item.units) {
+      if ((VISIBILITY_RANK[u.visibility] ?? 0) > (VISIBILITY_RANK[visibility] ?? 0)) visibility = u.visibility
+      if (!u.stale) stale = false
+    }
     return {
       id: item.id,
       position: item.position,
@@ -54,6 +73,8 @@ function toRenderUnit(item: ViewUnit | UnitCluster): RenderUnit {
       count: item.count,
       health: avgHealth,
       heading: item.primary.heading,
+      visibility,
+      stale,
     }
   }
   return {
@@ -67,7 +88,31 @@ function toRenderUnit(item: ViewUnit | UnitCluster): RenderUnit {
     count: 1,
     health: item.health,
     heading: item.heading,
+    visibility: item.visibility,
+    stale: item.stale,
   }
+}
+
+function desaturate([r, g, b]: [number, number, number]): [number, number, number] {
+  const gray = 0.3 * r + 0.59 * g + 0.11 * b
+  return [
+    Math.round(r + (gray - r) * DESATURATION),
+    Math.round(g + (gray - g) * DESATURATION),
+    Math.round(b + (gray - b) * DESATURATION),
+  ]
+}
+
+function fogColor(d: RenderUnit): [number, number, number, number] {
+  const base = NATION_COLORS[d.nation] ?? [200, 200, 200]
+  const alpha = STATUS_ALPHA[d.status] ?? 255
+  if (d.visibility === 'tracked') {
+    return [...base, Math.round(alpha * TRACKED_ALPHA_FACTOR)] as [number, number, number, number]
+  }
+  if (d.visibility === 'detected') {
+    const factor = d.stale ? DETECTED_STALE_ALPHA_FACTOR : DETECTED_ALPHA_FACTOR
+    return [...desaturate(base), Math.round(alpha * factor)] as [number, number, number, number]
+  }
+  return [...base, alpha] as [number, number, number, number]
 }
 
 export function createUnitLayer(
@@ -125,9 +170,7 @@ export function createUnitLayer(
       if (d.id === targetId) {
         return [255, 50, 50, 255] as [number, number, number, number]
       }
-      const base = NATION_COLORS[d.nation] ?? [200, 200, 200]
-      const alpha = STATUS_ALPHA[d.status] ?? 255
-      return [...base, alpha] as [number, number, number, number]
+      return fogColor(d)
     },
     sizeScale: 1,
     sizeUnits: 'pixels',
@@ -149,7 +192,7 @@ export function createUnitLayer(
     },
     updateTriggers: {
       getSize: [selectedId, hoveredId, targetId],
-      getColor: [targetingMode, targetId, units.map(u => `${u.id}:${u.status}`).join(',')],
+      getColor: [targetingMode, targetId, units.map(u => `${u.id}:${u.status}:${u.visibility}:${u.stale}`).join(',')],
       getAngle: [units.map(u => `${u.id}:${u.heading}`).join(',')],
     },
   })
@@ -160,7 +203,7 @@ export function createUnitLayer(
     id: 'unit-labels',
     data: showLabels ? renderItems : [],
     getPosition: (d) => [d.position.lng, d.position.lat],
-    getText: (d) => d.isCluster ? `${d.name} [${d.count}]` : d.name,
+    getText: (d) => d.isCluster ? `${d.name} [${d.visibility === 'detected' ? '?' : d.count}]` : d.name,
     getSize: 11,
     getColor: (d) => {
       const base = NATION_COLORS[d.nation] ?? [200, 200, 200]
@@ -178,13 +221,14 @@ export function createUnitLayer(
     pickable: false,
   })
 
-  // Count badge for clusters — a bright number above the icon
+  // Count badge for clusters — a bright number above the icon ('?' when the
+  // cluster is detected-only contacts: exact strength is not known)
   const clusterItems = renderItems.filter(d => d.isCluster)
   const badgeLayer = new TextLayer<RenderUnit>({
     id: 'cluster-badges',
     data: clusterItems,
     getPosition: (d) => [d.position.lng, d.position.lat],
-    getText: (d) => String(d.count),
+    getText: (d) => d.visibility === 'detected' ? '?' : String(d.count),
     getSize: 12,
     getColor: [255, 255, 255, 240],
     getPixelOffset: [16, -16],
@@ -201,6 +245,46 @@ export function createUnitLayer(
       return [...base, 200] as [number, number, number, number]
     },
     backgroundPadding: [3, 1],
+  })
+
+  // Detected contacts: hollow ring + '?' badge over a desaturated icon stands in
+  // for a dedicated contact glyph (atlas is a prebuilt PNG)
+  const detectedItems = renderItems.filter(d => d.visibility === 'detected')
+  const contactRingLayer = new ScatterplotLayer<RenderUnit>({
+    id: 'contact-rings',
+    data: detectedItems,
+    getPosition: (d) => [d.position.lng, d.position.lat],
+    getRadius: 17,
+    radiusUnits: 'pixels',
+    filled: false,
+    stroked: true,
+    getLineColor: (d) => {
+      const desat = desaturate(NATION_COLORS[d.nation] ?? [200, 200, 200])
+      return [...desat, d.stale ? 110 : 170] as [number, number, number, number]
+    },
+    lineWidthMinPixels: 1.5,
+    pickable: false,
+  })
+
+  const soloContactItems = detectedItems.filter(d => !d.isCluster)
+  const contactBadgeLayer = new TextLayer<RenderUnit>({
+    id: 'contact-badges',
+    data: soloContactItems,
+    getPosition: (d) => [d.position.lng, d.position.lat],
+    getText: () => '?',
+    getSize: 12,
+    getColor: (d) => [230, 230, 230, d.stale ? 180 : 240] as [number, number, number, number],
+    getPixelOffset: [16, -16],
+    fontFamily: 'JetBrains Mono, Fira Code, monospace',
+    fontWeight: 700,
+    outlineWidth: 3,
+    outlineColor: [13, 17, 23, 255],
+    sizeUnits: 'pixels',
+    billboard: true,
+    pickable: false,
+    background: true,
+    getBackgroundColor: [90, 95, 100, 200],
+    backgroundPadding: [4, 1],
   })
 
   // Invisible pick layer — much larger hit area (24px radius) for easy clicking
@@ -229,10 +313,10 @@ export function createUnitLayer(
   })
 
   if (typeof window !== 'undefined' && window.innerWidth < 768) {
-    return [pickLayer, iconLayer, badgeLayer]
+    return [pickLayer, contactRingLayer, iconLayer, badgeLayer, contactBadgeLayer]
   }
 
-  return [pickLayer, iconLayer, labelLayer, badgeLayer]
+  return [pickLayer, contactRingLayer, iconLayer, labelLayer, badgeLayer, contactBadgeLayer]
 }
 
 /** Highlight ring around units recently spotted by satellite passes */

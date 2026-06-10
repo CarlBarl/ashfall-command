@@ -8,7 +8,7 @@ import type { GameState, NationId, UnitId, Position } from '@/types/game'
 const satelliteDetections = new Map<NationId, Map<UnitId, number>>()
 
 /** How many ticks a satellite detection remains visible before fading */
-const DETECTION_FADE_TICKS = 60
+export const DETECTION_FADE_TICKS = 60
 
 /** Reset module-level state (call on save/load) */
 export function resetSatelliteState(): void {
@@ -87,7 +87,7 @@ export function processSatellites(state: GameState): UnitId[] {
  * for the theater scale (~2000 km). For short/medium distances in the
  * Middle East theater this is accurate to within a few percent.
  */
-function pointToLineDistKm(
+export function pointToLineDistKm(
   point: Position,
   lineStart: Position,
   lineEnd: Position,

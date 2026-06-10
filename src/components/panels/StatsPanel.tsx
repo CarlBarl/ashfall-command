@@ -82,7 +82,7 @@ export function computeNationStats(
   }
 }
 
-function ModernNationBlock({ nationId, nationLabel, units, events }: { nationId: NationId; nationLabel: string; units: ViewUnit[]; events: GameEvent[] }) {
+function ModernNationBlock({ nationId, nationLabel, units, events, isPlayer }: { nationId: NationId; nationLabel: string; units: ViewUnit[]; events: GameEvent[]; isPlayer: boolean }) {
   const stats = computeNationStats(units, events, nationId)
   const activeUnits = stats.total - stats.destroyed
   const color = getNationColor(nationId)
@@ -103,26 +103,40 @@ function ModernNationBlock({ nationId, nationLabel, units, events }: { nationId:
       </div>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
-        <Stat label="Active" value={activeUnits} color="var(--text-primary)" />
+        <Stat label={isPlayer ? 'Active' : 'Contacts'} value={activeUnits} color="var(--text-primary)" />
         <Stat label="Damaged" value={stats.damaged} color="var(--status-damaged)" />
         <Stat label="Destroyed" value={stats.destroyed} color="var(--status-destroyed)" />
       </div>
 
-      {stats.offensiveMissilesMax > 0 && (
-        <StatBar
-          label="Offensive Missiles"
-          value={stats.offensiveMissiles}
-          max={stats.offensiveMissilesMax}
-          color={color}
-        />
-      )}
-      {stats.samInterceptorsMax > 0 && (
-        <StatBar
-          label="SAM Interceptors"
-          value={stats.samInterceptors}
-          max={stats.samInterceptorsMax}
-          color="var(--status-ready)"
-        />
+      {isPlayer ? (
+        <>
+          {stats.offensiveMissilesMax > 0 && (
+            <StatBar
+              label="Offensive Missiles"
+              value={stats.offensiveMissiles}
+              max={stats.offensiveMissilesMax}
+              color={color}
+            />
+          )}
+          {stats.samInterceptorsMax > 0 && (
+            <StatBar
+              label="SAM Interceptors"
+              value={stats.samInterceptors}
+              max={stats.samInterceptorsMax}
+              color="var(--status-ready)"
+            />
+          )}
+        </>
+      ) : (
+        // Enemy inventories are not knowable under fog — known contacts only
+        <div style={{
+          color: 'var(--text-muted)',
+          fontSize: 'var(--font-size-xs)',
+          letterSpacing: '0.05em',
+          margin: '2px 0 4px',
+        }}>
+          EST. ORBAT: {activeUnits} {activeUnits === 1 ? 'contact' : 'contacts'}
+        </div>
       )}
 
       <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
@@ -158,6 +172,7 @@ function ExchangeRatio({ incoming, intercepted }: { incoming: number; intercepte
 export default function StatsPanel() {
   const units = useGameStore(s => s.viewState.units)
   const nations = useGameStore(s => s.viewState.nations)
+  const playerNation = useGameStore(s => s.viewState.playerNation)
   const eventLog = useGameStore(s => s.eventLog)
 
   return (
@@ -179,6 +194,7 @@ export default function StatsPanel() {
           nationLabel={nation.name}
           units={units}
           events={eventLog}
+          isPlayer={nation.id === playerNation}
         />
       ))}
     </Panel>

@@ -1,9 +1,10 @@
-import type { GameState, NationId } from '@/types/game'
+import type { GameState, NationId, Position, Unit } from '@/types/game'
 import type { Command } from '@/types/commands'
 import type { SeededRNG } from '../utils/rng'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import { haversine, bearing } from '../utils/geo'
 import { processDroneSwarm, getDroneAmmo } from './drone-ai'
+import { WAR_SUPPORT_CRITICAL_THRESHOLD } from './war-support'
 
 type AIPhase = 'PEACETIME' | 'ALERT' | 'DEFENSIVE' | 'OFFENSIVE' | 'ATTRITION'
 
@@ -11,6 +12,9 @@ type AIPhase = 'PEACETIME' | 'ALERT' | 'DEFENSIVE' | 'OFFENSIVE' | 'ATTRITION'
 const ALERT_DURATION_TICKS = 60
 /** At war this long without escalating via retaliation → initiate OFFENSIVE anyway */
 const OFFENSIVE_AFTER_WAR_TICKS = 1800
+/** Shahed-armed batteries retasked to choke the Hormuz lane while Iran is at war */
+const INTERDICTION_NATION: NationId = 'iran'
+const MAX_INTERDICTION_BATTERIES = 2
 
 interface AIState {
   phase: AIPhase
@@ -22,6 +26,8 @@ interface AIState {
   lastSeenAttackCounter: number
   /** Tick when this nation entered its current war (-1 = at peace) */
   warStartTick: number
+  /** Shipping-interdiction batteries already tasked this war (assign once, don't thrash) */
+  interdictionAssigned: boolean
 }
 
 const aiStates = new Map<NationId, AIState>()
@@ -42,6 +48,7 @@ function getAIState(nation: NationId, state: GameState): AIState {
       // Seed at the current counter so a loaded save doesn't replay its whole attack history
       lastSeenAttackCounter: state.attackCounters?.[nation] ?? 0,
       warStartTick: -1,
+      interdictionAssigned: false,
     }
     aiStates.set(nation, s)
   }
@@ -121,6 +128,20 @@ export function processAI(state: GameState, rng: SeededRNG): Command[] {
     // Phase transitions
     updatePhase(ai, state, nation.id)
 
+    // Collapsing war support: sue for peace and stand down offensive operations
+    const warStatus = state.warStatus?.[nation.id]
+    if (nation.atWar.length > 0 && warStatus && warStatus.warSupport <= WAR_SUPPORT_CRITICAL_THRESHOLD) {
+      if (!warStatus.ceasefireOffered) {
+        warStatus.ceasefireOffered = true
+        const event = { type: 'CEASEFIRE_OFFERED' as const, by: nation.id, tick: state.time.tick }
+        state.events.push(event)
+        state.pendingEvents.push(event)
+      }
+      if (ai.phase === 'OFFENSIVE' || ai.phase === 'ATTRITION') ai.phase = 'DEFENSIVE'
+    }
+
+    updateDroneInterdiction(ai, state, nation.id, commands)
+
     // Generate commands based on phase
     switch (ai.phase) {
       case 'PEACETIME':
@@ -194,7 +215,10 @@ function updatePhase(ai: AIState, state: GameState, nationId: NationId): void {
   if (!atWar) {
     ai.warStartTick = -1
     ai.salvosLaunched = 0
-    ai.phase = ai.attacksReceived > 0 ? 'ALERT' : 'PEACETIME'
+    // Drop unanswered attacks too — a leftover count would re-arm units to
+    // weapons_free right after a ceasefire set everyone to hold_fire
+    ai.attacksReceived = 0
+    ai.phase = 'PEACETIME'
     return
   }
 
@@ -317,4 +341,49 @@ function countDestroyedUnits(state: GameState, nationId: NationId): number {
     if (unit.nation === nationId && unit.status === 'destroyed') count++
   }
   return count
+}
+
+function minDistToLanePath(position: Position, path: [number, number][]): number {
+  let min = Infinity
+  for (const [lng, lat] of path) {
+    const d = haversine(position, { lat, lng })
+    if (d < min) min = d
+  }
+  return min
+}
+
+/** Drone interdiction doctrine: at war, task the shahed batteries nearest Hormuz with
+ * shipping interdiction (once per war); revert them to military strikes at peace. */
+function updateDroneInterdiction(ai: AIState, state: GameState, nationId: NationId, commands: Command[]): void {
+  if (nationId !== INTERDICTION_NATION) return
+
+  if (state.nations[nationId].atWar.length === 0) {
+    ai.interdictionAssigned = false
+    for (const unit of state.units.values()) {
+      if (unit.nation === nationId && unit.droneMission === 'shipping_interdiction') {
+        commands.push({ type: 'SET_DRONE_MISSION', unitId: unit.id, mission: 'military' })
+      }
+    }
+    return
+  }
+
+  if (ai.interdictionAssigned) return
+  const lane = state.shippingLanes.get('hormuz')
+  if (!lane) return
+
+  const candidates: { unit: Unit; dist: number }[] = []
+  for (const unit of state.units.values()) {
+    if (unit.nation !== nationId || unit.status === 'destroyed') continue
+    if (unit.category !== 'missile_battery') continue
+    if (unit.droneMission === 'shipping_interdiction') continue
+    if (!unit.weapons.some(w => w.count > 0 && w.weaponId.includes('shahed'))) continue
+    candidates.push({ unit, dist: minDistToLanePath(unit.position, lane.path) })
+  }
+  if (candidates.length === 0) return
+
+  candidates.sort((a, b) => a.dist - b.dist)
+  for (const { unit } of candidates.slice(0, MAX_INTERDICTION_BATTERIES)) {
+    commands.push({ type: 'SET_DRONE_MISSION', unitId: unit.id, mission: 'shipping_interdiction' })
+  }
+  ai.interdictionAssigned = true
 }

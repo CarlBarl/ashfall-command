@@ -17,6 +17,10 @@ beforeEach(() => {
   if (store.mapMode !== 'dark') store.cycleMapMode()
   // Reset left panel
   store.setLeftPanel(null)
+  useUIStore.setState({
+    mapFocus: null,
+    autoPause: { warDeclared: true, ownUnitDestroyed: true, ceasefireOffered: true },
+  })
 })
 
 // ── Selection tests ───────────────────────────────────────────────
@@ -187,6 +191,47 @@ describe('toggleIntel', () => {
     useUIStore.getState().toggleIntel()
     useUIStore.getState().toggleIntel()
     expect(useUIStore.getState().showIntel).toBe(false)
+  })
+})
+
+// ── Map focus tests ───────────────────────────────────────────────
+
+describe('focusMap', () => {
+  it('stores the requested focus with an incrementing nonce', () => {
+    useUIStore.getState().focusMap(56.3, 26.5, 7)
+    expect(useUIStore.getState().mapFocus).toEqual({ lng: 56.3, lat: 26.5, zoom: 7, nonce: 1 })
+
+    useUIStore.getState().focusMap(56.3, 26.5, 7)
+    expect(useUIStore.getState().mapFocus?.nonce).toBe(2)
+  })
+
+  it('allows omitting zoom', () => {
+    useUIStore.getState().focusMap(55, 25)
+    expect(useUIStore.getState().mapFocus).toMatchObject({ lng: 55, lat: 25, zoom: undefined })
+  })
+})
+
+// ── Auto-pause tests ──────────────────────────────────────────────
+
+describe('toggleAutoPause', () => {
+  it('defaults all triggers on', () => {
+    expect(useUIStore.getState().autoPause).toEqual({
+      warDeclared: true,
+      ownUnitDestroyed: true,
+      ceasefireOffered: true,
+    })
+  })
+
+  it('flips one trigger without touching the others', () => {
+    useUIStore.getState().toggleAutoPause('ownUnitDestroyed')
+    expect(useUIStore.getState().autoPause).toEqual({
+      warDeclared: true,
+      ownUnitDestroyed: false,
+      ceasefireOffered: true,
+    })
+
+    useUIStore.getState().toggleAutoPause('ownUnitDestroyed')
+    expect(useUIStore.getState().autoPause.ownUnitDestroyed).toBe(true)
   })
 })
 
