@@ -57,6 +57,25 @@ function getAIState(nation: NationId, state: GameState): AIState {
   return s
 }
 
+/**
+ * SIGINT hook: best estimate of the nation's next salvo tick, or null when no
+ * salvo is on the clock. Reads the same AI state the salvo logic uses.
+ */
+export function getNextSalvoEstimate(nation: NationId): number | null {
+  const ai = aiStates.get(nation)
+  if (!ai) return null
+  switch (ai.phase) {
+    case 'DEFENSIVE':
+      return ai.attacksReceived > 0 ? ai.lastRetaliationTick + 300 : null
+    case 'OFFENSIVE':
+      return ai.lastRetaliationTick + 900
+    case 'ATTRITION':
+      return ai.lastRetaliationTick + 3600
+    default:
+      return null
+  }
+}
+
 /** Orient sector-limited SAM radars toward the nearest enemy concentration */
 export function orientSAMRadars(state: GameState, excludeNation?: NationId): void {
   for (const unit of state.units.values()) {

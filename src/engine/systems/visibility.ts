@@ -123,7 +123,8 @@ function evaluateSources(state: GameState, espionage: EspionageResult | null, gr
     for (const u of state.units.values()) {
       if (u.nation !== nation.id || u.status === 'destroyed' || u.sensors.length === 0) continue
       ownSensorUnits.push(u)
-      if (u.sensors.some(s => s.type === 'radar' && s.range_km > 0)) ownRadars.push(u)
+      // EMCON units don't radiate — passive ELINT antennas still listen
+      if (!u.emcon && u.sensors.some(s => s.type === 'radar' && s.range_km > 0)) ownRadars.push(u)
     }
 
     const humint = espionage?.humintRevealed.get(nation.id)
@@ -194,7 +195,7 @@ function radarContactLevel(ownRadars: Unit[], target: Unit, grid: ElevationGrid 
  * sector arc relative to the unit's heading, and terrain line-of-sight.
  */
 export function radarSeesUnit(radar: Unit, target: Unit, grid: ElevationGrid | null): VisibilityLevel {
-  if (radar.status === 'destroyed') return 'unseen'
+  if (radar.status === 'destroyed' || radar.emcon) return 'unseen'
   const dist = haversine(radar.position, target.position)
   const targetAltAglM = targetHeightM(target.category)
 
@@ -244,6 +245,7 @@ function satelliteContactLevel(nation: Nation, unit: Unit, tick: number): Visibi
 }
 
 function isElintDetected(ownSensorUnits: Unit[], emitter: Unit, sigintMultiplier: number): boolean {
+  if (emitter.emcon) return false // radar silent — nothing to intercept
   let radarRange = 0
   for (const s of emitter.sensors) {
     if (s.type === 'radar' && s.range_km > radarRange) radarRange = s.range_km
@@ -284,7 +286,8 @@ function applyEventReveals(state: GameState): void {
   }
 }
 
-function revealContact(state: GameState, observer: string, unit: Unit, level: VisibilityLevel): void {
+/** External reveal entry point — used by event reveals and the intel suite (satellites, HUMINT, SIGINT) */
+export function revealContact(state: GameState, observer: string, unit: Unit, level: VisibilityLevel): void {
   const tick = state.time.tick
   state.visibility ??= {}
   const contacts = (state.visibility[observer] ??= {})

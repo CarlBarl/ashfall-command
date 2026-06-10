@@ -150,6 +150,12 @@ export interface Unit {
   damage_per_contact?: number
   /** For drone launcher units — current tactical mission */
   droneMission?: 'military' | 'shipping_interdiction'
+  /** EMCON: radar silent — invisible to ELINT, blind on own radar (network picture still applies) */
+  emcon?: boolean
+  /** Decoy unit (Iranian dummy TELs) — engine truth, scrubbed from snapshots until revealed */
+  isDecoy?: boolean
+  /** Set once the enemy has positively identified this decoy (NIIRS 7+ pass, HUMINT, or BDA) */
+  decoyRevealed?: boolean
 }
 
 export interface WeaponStock {
@@ -301,6 +307,8 @@ export interface Missile {
   interceptTargetMissileId?: string
   /** Detection quality that led to this intercept (for accuracy modifier) */
   networkQuality?: 'own' | 'tracked' | 'detected'
+  /** Strike was leaked to the enemy before launch — heavy miss chance at impact */
+  compromised?: boolean
 }
 
 export interface ShippingLane {
@@ -339,6 +347,8 @@ export interface GameState {
   warStatus?: Record<string, WarStatus>
   /** Set once the war has been resolved — the world keeps ticking but the game is decided */
   gameOver?: GameOverReport
+  /** Intel suite v3: ISR assets, HUMINT sources, products, counterintel meters */
+  intel?: IntelState
 }
 
 export type GameEvent =
@@ -363,6 +373,103 @@ export type GameEvent =
   | { type: 'AUTO_ENGAGEMENT'; unitId: UnitId; targetId: UnitId; weaponName: string; count: number; quality: TrackQuality; tick: number }
   | { type: 'MISSILE_MISSED'; missileId: string; targetId: UnitId; tick: number }
   | { type: 'ORDER_REJECTED'; unitId: UnitId; reason: string; tick: number }
+  | { type: 'SATELLITE_PASS_COMPLETE'; assetId: string; target: Position; found: number; revealedDecoys: number; tick: number }
+  | { type: 'SATELLITE_PASS_FAILED'; assetId: string; target: Position; cloudPct: number; tick: number }
+  | { type: 'INTERCEPT_DECRYPTED'; precedence: InterceptPrecedence; text: string; aboutUnitId?: UnitId; tick: number }
+  | { type: 'AGENT_REPORT'; agentId: string; codename: string; text: string; tick: number }
+  | { type: 'AGENT_ARRESTED'; agentId: string; codename: string; tick: number }
+  | { type: 'AGENT_EXFILTRATED'; agentId: string; codename: string; tick: number }
+  | { type: 'SPY_SWEEP'; arrests: number; tick: number }
+  | { type: 'ENCRYPTION_UPGRADED'; untilTick: number; tick: number }
+  | { type: 'DECOY_REVEALED'; unitId: UnitId; tick: number }
+  | { type: 'STRIKE_LEAKED'; targetId: UnitId; tick: number }
+  | { type: 'OPSEC_SWEEP_COMPLETE'; newLeakLevel: number; tick: number }
 
 /** Fire-control source for a shot: the shooter's own sensors, or a track relayed over datalink */
 export type TrackQuality = 'own' | 'datalink'
+
+// ---------------------------------------------------------------------------
+// Intel suite (v3) — design: docs/plans/intel-suite-v3.md
+// ---------------------------------------------------------------------------
+
+export type IntelAssetKind =
+  | 'optical_sat'      // KH-11 / Noor — taskable imagery passes
+  | 'commercial_sat'   // commercial layer — frequent, lower quality
+  | 'sigint_air'       // RC-135 — drives intercept cadence
+  | 'maritime_patrol'  // MQ-4C Triton — coarse wide-area ship refresh
+  | 'launch_detection' // SBIRS — always-on launch plume FLASH cards
+  | 'recon_drone'      // Mohajer-10 — Iran's carrier watcher
+  | 'fast_boats'       // IRGC shadowing — Iran's coarse carrier track
+
+export interface IntelAsset {
+  id: string
+  nation: NationId
+  name: string
+  kind: IntelAssetKind
+  status: 'active' | 'lost'
+  /** Game-minutes between collections (0 = continuous) */
+  revisit_min: number
+  lastCollectionTick: number
+  /** Imagery quality for products (NIIRS 0-9); >= 7 reveals decoys */
+  niirs?: number
+}
+
+export interface SatTasking {
+  id: string
+  assetId: string
+  target: Position
+  queuedTick: number
+  /** Real-world cloud cover 0-100 captured at tasking time (UI-fetched); undefined = roll it */
+  cloudPct?: number
+}
+
+export type InterceptPrecedence = 'FLASH' | 'IMMEDIATE' | 'PRIORITY' | 'ROUTINE'
+
+export type IntelProductKind = 'imint' | 'sigint' | 'humint'
+
+/** Metadata only — the UI fetches real imagery at view time */
+export interface IntelProduct {
+  id: string
+  kind: IntelProductKind
+  tick: number
+  classification: string
+  caption: string
+  assetId?: string
+  target?: Position
+  niirs?: number
+  precedence?: InterceptPrecedence
+  agentId?: string
+}
+
+export type AgentStatus = 'active' | 'resting' | 'exfiltrating' | 'exfiltrated' | 'arrested'
+
+export interface AgentSource {
+  id: string
+  codename: string
+  placement: string
+  product: string
+  status: AgentStatus
+  /** 0-100 — arrest risk during Iranian spy sweeps */
+  exposure: number
+  lastTaskedTick: number
+  exfilCompleteTick?: number
+}
+
+export interface IntelState {
+  assets: Record<string, IntelAsset>
+  agents: Record<string, AgentSource>
+  /** Newest first, capped at 30 */
+  products: IntelProduct[]
+  taskings: SatTasking[]
+  /** 0-100 Iranian counterintel alert — drives sweeps, encryption upgrades */
+  paranoia: number
+  /** 0-100 how compromised the player's operations are */
+  leakLevel: number
+  encryptionUpgradedUntilTick?: number
+  lastSweepTick?: number
+  lastOpsecSweepTick?: number
+  lastIntInterceptTick?: number
+  lastCarrierOsintTick?: number
+  decoysSpawned?: boolean
+  productCounter?: number
+}

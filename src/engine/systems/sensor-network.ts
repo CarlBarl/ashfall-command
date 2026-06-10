@@ -149,6 +149,7 @@ export function buildSensorNetwork(
     for (const enemy of state.units.values()) {
       if (enemy.status === 'destroyed') continue
       if (enemy.nation === unit.nation) continue // same nation — skip
+      if (enemy.emcon) continue // radar silent — no emissions to intercept
 
       // Check each enemy radar sensor
       for (const sensor of enemy.sensors) {

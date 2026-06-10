@@ -212,6 +212,12 @@ function evaluate(state: GameState): void {
       case 'UNIT_DESTROYED': {
         const unit = state.units.get(e.unitId)
         if (!unit) break
+        if (unit.isDecoy) {
+          // Killing an inflatable costs the victim nothing and hands them a propaganda win
+          const owner = (ws[unit.nation] ??= { warSupport: 100 })
+          owner.warSupport = clampSupport(owner.warSupport + 1)
+          break
+        }
         stats.unitsLost[unit.nation] = (stats.unitsLost[unit.nation] ?? 0) + 1
         const victim = state.nations[unit.nation]
         if (!victim || victim.atWar.length === 0) break

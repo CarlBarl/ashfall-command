@@ -439,6 +439,20 @@ function eventColor(e: GameEvent): string {
     case 'AUTO_ENGAGEMENT': return 'var(--status-engaged)'
     case 'MISSILE_MISSED': return 'var(--text-muted)'
     case 'ORDER_REJECTED': return 'var(--text-muted)'
+    case 'SATELLITE_PASS_COMPLETE': return 'var(--status-ready)'
+    case 'SATELLITE_PASS_FAILED': return 'var(--text-muted)'
+    case 'INTERCEPT_DECRYPTED':
+      return e.precedence === 'FLASH' ? '#ff4444'
+        : e.precedence === 'IMMEDIATE' ? 'var(--status-engaged)'
+          : 'var(--text-secondary)'
+    case 'AGENT_REPORT': return 'var(--status-ready)'
+    case 'AGENT_ARRESTED': return 'var(--status-damaged)'
+    case 'AGENT_EXFILTRATED': return 'var(--status-moving)'
+    case 'SPY_SWEEP': return 'var(--status-engaged)'
+    case 'ENCRYPTION_UPGRADED': return 'var(--status-engaged)'
+    case 'DECOY_REVEALED': return 'var(--status-moving)'
+    case 'STRIKE_LEAKED': return 'var(--status-damaged)'
+    case 'OPSEC_SWEEP_COMPLETE': return 'var(--status-ready)'
     default: return 'var(--text-secondary)'
   }
 }
@@ -483,7 +497,15 @@ function eventPosition(
     case 'AUTO_ENGAGEMENT':
       return unitPositions.get(e.targetId) ?? unitPositions.get(e.unitId) ?? null
     case 'MISSILE_MISSED':
+    case 'STRIKE_LEAKED':
       return unitPositions.get(e.targetId) ?? null
+    case 'SATELLITE_PASS_COMPLETE':
+    case 'SATELLITE_PASS_FAILED':
+      return e.target
+    case 'INTERCEPT_DECRYPTED':
+      return e.aboutUnitId ? (unitPositions.get(e.aboutUnitId) ?? null) : null
+    case 'DECOY_REVEALED':
+      return unitPositions.get(e.unitId) ?? null
     case 'SUPPLY_LINE_INTERDICTED':
       return unitPositions.get(e.threatUnitId) ?? null
     case 'SHIPPING_LANE_STATUS_CHANGE':
@@ -539,6 +561,28 @@ function formatEvent(e: GameEvent, names: Map<string, string>, lanes: Map<string
       return `T+${e.tick} MISS: ${unitName(e.targetId, names)} evaded (stale track)`
     case 'ORDER_REJECTED':
       return `T+${e.tick} ORDER REJECTED: ${unitName(e.unitId, names)} — ${e.reason}`
+    case 'SATELLITE_PASS_COMPLETE':
+      return `T+${e.tick} IMINT: pass complete — ${e.found} object(s) imaged${e.revealedDecoys > 0 ? `, ${e.revealedDecoys} DECOY` : ''}`
+    case 'SATELLITE_PASS_FAILED':
+      return `T+${e.tick} IMINT: pass failed — cloud cover ${e.cloudPct}%`
+    case 'INTERCEPT_DECRYPTED':
+      return `T+${e.tick} ${e.precedence} SIGINT: ${e.text}`
+    case 'AGENT_REPORT':
+      return `T+${e.tick} HUMINT ${e.codename}: ${e.text}`
+    case 'AGENT_ARRESTED':
+      return `T+${e.tick} SOURCE LOST: ${e.codename} arrested by counterintelligence`
+    case 'AGENT_EXFILTRATED':
+      return `T+${e.tick} ${e.codename} exfiltrated safely`
+    case 'SPY_SWEEP':
+      return `T+${e.tick} IRANIAN SPY SWEEP${e.arrests > 0 ? ` — ${e.arrests} source(s) lost` : ' — network intact'}`
+    case 'ENCRYPTION_UPGRADED':
+      return `T+${e.tick} SIGINT BLACKOUT: enemy upgraded encryption`
+    case 'DECOY_REVEALED':
+      return `T+${e.tick} DECOY IDENTIFIED: ${unitName(e.unitId, names)} is a dummy`
+    case 'STRIKE_LEAKED':
+      return `T+${e.tick} STRIKE COMPROMISED: enemy had foreknowledge`
+    case 'OPSEC_SWEEP_COMPLETE':
+      return `T+${e.tick} OPSEC SWEEP COMPLETE: leak level ${e.newLeakLevel}%`
     default:
       return `T+${(e as GameEvent & { tick: number }).tick} ${(e as GameEvent & { type: string }).type}`
   }

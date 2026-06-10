@@ -38,6 +38,7 @@ export function detectThreats(state: GameState, adUnit: Unit, grid?: ElevationGr
   const threats: DetectedThreat[] = []
 
   if (adUnit.sensors.length === 0) return threats
+  if (adUnit.emcon) return threats // radar silent — own detection off, network picture still applies
 
   const radarRange = Math.max(...adUnit.sensors
     .filter(s => s.type === 'radar')

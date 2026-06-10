@@ -841,6 +841,7 @@ export function launchMissile(
   targetId: string,
   waypoints?: Position[],
   trackQuality?: TrackQuality,
+  compromised?: boolean,
 ): GameEvent | null {
   const launcher = state.units.get(launcherId)
   const target = state.units.get(targetId)
@@ -942,6 +943,7 @@ export function launchMissile(
     fuel_remaining_sec: fuelSec,
     is_interceptor: false,
     networkQuality: trackQuality === 'datalink' ? 'tracked' : 'own',
+    compromised: compromised || undefined,
   }
 
   state.missiles.set(id, missile)
@@ -1110,6 +1112,8 @@ function isAlreadyEngagedByUnit(unitId: string, missileId: string): boolean {
 /** Categories that can move between launch and impact — datalink shots may miss them */
 const MOBILE_TARGET_CATEGORIES = new Set(['ship', 'carrier_group', 'submarine', 'aircraft'])
 const DATALINK_MISS_CHANCE = 0.12
+/** Strike leaked before launch — target was warned and displaced/hardened */
+const COMPROMISED_MISS_CHANCE = 0.35
 
 function resolveImpacts(state: GameState, rng: SeededRNG): void {
   const events: GameEvent[] = []
@@ -1125,6 +1129,17 @@ function resolveImpacts(state: GameState, rng: SeededRNG): void {
 
     const target = state.units.get(missile.targetId)
     const spec = weaponSpecs[missile.weaponId]
+
+    if (target && spec && missile.compromised && rng.chance(COMPROMISED_MISS_CHANCE)) {
+      events.push({
+        type: 'MISSILE_MISSED',
+        missileId: missile.id,
+        targetId: missile.targetId,
+        tick: state.time.tick,
+      })
+      state.missiles.delete(missile.id)
+      continue
+    }
 
     // Shots on relayed tracks lack terminal-quality data — moving targets can evade
     if (target && spec && missile.networkQuality === 'tracked' &&

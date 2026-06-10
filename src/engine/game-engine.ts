@@ -26,6 +26,8 @@ import { processShipping, resetShippingState } from './systems/shipping'
 import { shippingLanes as defaultShippingLanes } from '@/data/shipping/shipping-lanes'
 import { processVisibility, resetVisibilityState, seedInitialVisibility, getViewVisibility, contactDisplayName, type ViewVisibility } from './systems/visibility'
 import { processWarSupport, resetWarSupportState, offerCeasefire, acceptCeasefire, resign, getWarSupport, getObjectives } from './systems/war-support'
+import { processIntel, initIntelState, resetIntelState, taskSatellitePass, taskAgent, restAgent, exfiltrateAgent, opsecSweep, maybeLeakStrike, paranoiaBand } from './systems/intel'
+import type { IntelViewState } from '@/types/view'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
 const SCENARIO_START = new Date('2026-06-15T06:00:00Z').getTime()
@@ -132,6 +134,9 @@ export class GameEngine {
     // Fixed installations are public knowledge — both sides start with them on the map
     seedInitialVisibility(this.state)
 
+    // Intel suite: ISR assets, HUMINT roster, counterintel meters
+    initIntelState(this.state)
+
     // Initialize satellite constellations (only for modern scenarios with USA/Iran)
     if (this.state.nations.usa && this.state.nations.iran) {
       this.initSatellites()
@@ -177,6 +182,9 @@ export class GameEngine {
 
     // Fog of war: fold radar/satellite/HUMINT/ELINT pictures into per-nation contacts
     processVisibility(state, this.sensorNetwork, this.lastEspionageResult, this.elevationGrid)
+
+    // Intel suite: satellite taskings, SIGINT intercepts, HUMINT, counterintel
+    processIntel(state, this.rng, this.elevationGrid)
 
     // Political will: war-support drains, ceasefire logic, capitulation, objectives
     processWarSupport(state)
@@ -254,7 +262,8 @@ export class GameEngine {
         break
       }
       case 'LAUNCH_MISSILE': {
-        const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId, cmd.waypoints, cmd.trackQuality)
+        const compromised = this.applyStrikeLeak(cmd.launcherId, cmd.targetId, cmd.trackQuality)
+        const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId, cmd.waypoints, cmd.trackQuality, compromised)
         if (event) {
           const launcher = state.units.get(cmd.launcherId)
           const target = state.units.get(cmd.targetId)
@@ -269,9 +278,10 @@ export class GameEngine {
       case 'LAUNCH_SALVO': {
         if (cmd.count <= 0) break
 
+        const compromised = this.applyStrikeLeak(cmd.launcherId, cmd.targetId, undefined)
         let declaredWar = false
         for (let i = 0; i < cmd.count; i++) {
-          const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId, cmd.waypoints)
+          const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId, cmd.waypoints, undefined, compromised)
           if (!event) break
 
           if (!declaredWar) {
@@ -319,7 +329,48 @@ export class GameEngine {
         if (unit) unit.droneMission = cmd.mission
         break
       }
+      case 'TASK_SATELLITE_PASS': {
+        taskSatellitePass(state, cmd.assetId, cmd.target, cmd.cloudPct)
+        break
+      }
+      case 'TASK_AGENT': {
+        taskAgent(state, this.rng, cmd.agentId)
+        break
+      }
+      case 'REST_AGENT': {
+        restAgent(state, cmd.agentId)
+        break
+      }
+      case 'EXFILTRATE_AGENT': {
+        exfiltrateAgent(state, cmd.agentId)
+        break
+      }
+      case 'OPSEC_SWEEP': {
+        opsecSweep(state)
+        break
+      }
+      case 'SET_EMCON': {
+        const unit = state.units.get(cmd.unitId)
+        if (unit) unit.emcon = cmd.emcon
+        break
+      }
     }
+  }
+
+  /**
+   * Deliberate player strikes (strike panel, no auto-fire trackQuality) feed Iranian
+   * pattern analysis: bump the leak level and possibly compromise this launch.
+   */
+  private applyStrikeLeak(launcherId: UnitId, targetId: UnitId, trackQuality?: import('@/types/game').TrackQuality): boolean {
+    const { state } = this
+    if (trackQuality) return false // reactive auto-engagement, not a planned strike
+    const intel = state.intel
+    const launcher = state.units.get(launcherId)
+    const target = state.units.get(targetId)
+    if (!intel || !launcher || !target) return false
+    if (launcher.nation !== state.playerNation || target.nation === state.playerNation) return false
+    intel.leakLevel = Math.min(100, intel.leakLevel + 5)
+    return maybeLeakStrike(state, this.rng, targetId)
   }
 
   /** Get serializable snapshot for the main thread */
@@ -331,7 +382,7 @@ export class GameEngine {
     const units: ViewUnit[] = []
     for (const u of state.units.values()) {
       const vis = getViewVisibility(state, state.playerNation, u)
-      if (vis) units.push(toViewUnit(u, vis))
+      if (vis) units.push(toViewUnit(u, vis, state.playerNation))
     }
 
     return {
@@ -349,6 +400,27 @@ export class GameEngine {
       warSupport: getWarSupport(state),
       gameOver: state.gameOver ?? null,
       objectives: getObjectives(state),
+      intel: this.getIntelViewState(),
+    }
+  }
+
+  /** Player-nation slice of the intel suite — exact paranoia stays engine-side */
+  private getIntelViewState(): IntelViewState {
+    const intel = this.state.intel
+    if (!intel) {
+      return { assets: [], agents: [], products: [], taskings: [], leakLevel: 0, paranoiaBand: 'LOW', encryptionUpgradedUntilTick: null }
+    }
+    const player = this.state.playerNation
+    return {
+      assets: Object.values(intel.assets).filter(a => a.nation === player).map(a => ({ ...a })),
+      agents: player === 'usa' ? Object.values(intel.agents).map(a => ({ ...a })) : [],
+      products: player === 'usa' ? intel.products.map(p => ({ ...p })) : [],
+      taskings: intel.taskings
+        .filter(t => intel.assets[t.assetId]?.nation === player)
+        .map(t => ({ ...t, target: { ...t.target } })),
+      leakLevel: intel.leakLevel,
+      paranoiaBand: paranoiaBand(intel.paranoia),
+      encryptionUpgradedUntilTick: intel.encryptionUpgradedUntilTick ?? null,
     }
   }
 
@@ -364,6 +436,7 @@ export class GameEngine {
       visibility: s.visibility ?? {},
       warStatus: s.warStatus ?? {},
       gameOver: s.gameOver ?? null,
+      intel: s.intel ?? null,
       units: Array.from(s.units.entries()),
       missiles: Array.from(s.missiles.entries()),
       supplyLines: Array.from(s.supplyLines.entries()),
@@ -406,7 +479,10 @@ export class GameEngine {
       visibility: raw.visibility ?? {},
       warStatus: raw.warStatus ?? {},
       gameOver: raw.gameOver ?? undefined,
+      intel: raw.intel ?? undefined,
     }
+    // Saves from before the intel suite get a fresh roster
+    if (!this.state.intel) initIntelState(this.state)
     // Backfill shipping lanes for old saves that didn't have them
     if (!raw.shippingLanes || raw.shippingLanes.length === 0) {
       for (const lane of defaultShippingLanes) {
@@ -452,6 +528,7 @@ export class GameEngine {
     resetShippingState()
     resetVisibilityState()
     resetWarSupportState()
+    resetIntelState()
   }
 
   /** Set up satellite constellations for each nation */
@@ -548,11 +625,12 @@ export class GameEngine {
   }
 }
 
-function toViewUnit(u: Unit, vis: ViewVisibility): ViewUnit {
+function toViewUnit(u: Unit, vis: ViewVisibility, playerNation: NationId): ViewUnit {
   // Scrub by contact quality: 'detected' hides everything but the contact itself,
   // 'tracked' shows identity and condition but not loadout. Own units are 'identified'.
   const identified = vis.level === 'identified'
   const trackedPlus = identified || vis.level === 'tracked'
+  const isOwn = u.nation === playerNation
   return {
     id: u.id,
     name: trackedPlus ? u.name : contactDisplayName(u.category),
@@ -580,5 +658,8 @@ function toViewUnit(u: Unit, vis: ViewVisibility): ViewUnit {
     droneMission: identified ? u.droneMission : undefined,
     visibility: vis.level,
     stale: vis.stale,
+    emcon: isOwn ? u.emcon : undefined,
+    // isDecoy itself NEVER leaks — only the revealed verdict (own decoys are always known)
+    decoyRevealed: (isOwn ? u.isDecoy : u.decoyRevealed) || undefined,
   }
 }

@@ -14,3 +14,9 @@ export type Command =
   | { type: 'SET_DRONE_MISSION'; unitId: UnitId; mission: 'military' | 'shipping_interdiction' }
   | { type: 'OFFER_CEASEFIRE'; target: NationId }
   | { type: 'RESIGN' }
+  | { type: 'TASK_SATELLITE_PASS'; assetId: string; target: Position; cloudPct?: number }
+  | { type: 'TASK_AGENT'; agentId: string }
+  | { type: 'REST_AGENT'; agentId: string }
+  | { type: 'EXFILTRATE_AGENT'; agentId: string }
+  | { type: 'OPSEC_SWEEP' }
+  | { type: 'SET_EMCON'; unitId: UnitId; emcon: boolean }
