@@ -41,6 +41,13 @@ interface UIState {
   // Right-side panels (independent toggles)
   showIntel: boolean
 
+  // Intel suite v3
+  liveFeedsOpen: boolean
+  /** IMINT product open in the full-screen viewer (null = closed) */
+  viewedProductId: string | null
+  /** Contact the ISR FMV quadrant is staring at */
+  fmvTargetId: UnitId | null
+
   // Camera focus request (consumed by GameMap)
   mapFocus: MapFocus | null
 
@@ -69,6 +76,11 @@ interface UIState {
   // Right-side panels
   toggleIntel: () => void
 
+  // Intel suite v3
+  toggleLiveFeeds: () => void
+  setViewedProduct: (id: string | null) => void
+  setFmvTarget: (id: UnitId | null) => void
+
   // Camera focus
   focusMap: (lng: number, lat: number, zoom?: number) => void
 
@@ -90,6 +102,9 @@ export const useUIStore = create<UIState>((set) => ({
   showStats: false,
   showEconomy: false,
   showIntel: false,
+  liveFeedsOpen: false,
+  viewedProductId: null,
+  fmvTargetId: null,
   mapFocus: null,
   autoPause: { warDeclared: true, ownUnitDestroyed: true, ceasefireOffered: true },
 
@@ -125,6 +140,10 @@ export const useUIStore = create<UIState>((set) => ({
   toggleIntelCoverage: () => set((s) => ({ showIntelCoverage: !s.showIntelCoverage })),
 
   toggleIntel: () => set((s) => ({ showIntel: !s.showIntel })),
+
+  toggleLiveFeeds: () => set((s) => ({ liveFeedsOpen: !s.liveFeedsOpen })),
+  setViewedProduct: (id) => set({ viewedProductId: id }),
+  setFmvTarget: (id) => set({ fmvTargetId: id }),
 
   focusMap: (lng, lat, zoom) => set((s) => ({
     mapFocus: { lng, lat, zoom, nonce: (s.mapFocus?.nonce ?? 0) + 1 },

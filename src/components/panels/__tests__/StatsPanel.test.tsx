@@ -94,6 +94,7 @@ function setStore(units: ViewUnit[], eventLog: GameEvent[] = []) {
     warSupport: {},
     gameOver: null,
     objectives: [],
+    intel: { assets: [], agents: [], products: [], taskings: [], leakLevel: 0, paranoiaBand: 'LOW' as const, encryptionUpgradedUntilTick: null },
   }
   useGameStore.setState({ viewState, eventLog, visualTimestamp: 0, lastUpdateRealMs: 0, visualRate: 0 })
 }

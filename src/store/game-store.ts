@@ -22,6 +22,15 @@ const emptyViewState: GameViewState = {
   warSupport: {},
   gameOver: null,
   objectives: [],
+  intel: {
+    assets: [],
+    agents: [],
+    products: [],
+    taskings: [],
+    leakLevel: 0,
+    paranoiaBand: 'LOW',
+    encryptionUpgradedUntilTick: null,
+  },
 }
 
 interface GameStore {

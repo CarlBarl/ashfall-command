@@ -2,18 +2,27 @@
 
 Curated from the 2026-06-09 full-codebase audit (12-agent sweep, 199 findings) plus live playtest.
 Wave 1+2 fixes covered the gameplay-killing bugs; these are the deliberate deferrals.
+Fog of war + war termination shipped in game-loop v2; the intel suite + combat-on-contacts
+shipped in v3 (docs/plans/intel-suite-v3.md) — v3 deferrals listed below.
+
+## Intel suite v3 deferrals (design doc §7 + build-wave notes)
+
+- Missions/doctrine cascade (patrol boxes, recon orbits, per-zone weapon release authority).
+- HVT person-tracking chains, underground facility model, WAMI rewind, Staff Summary panel.
+- Counter-OSINT levers: shutter control, disinfo plants, Iranian internet blackout.
+- Live-data upgrades: OpenSky via a small Vercel proxy, aisstream AIS relay, Windy webcams,
+  GIBS fires MVT layer, USGS seismic ticker as MASINT flavor.
+- STRIKE_LEAKED currently scoots the target + degrades the contact; the designed Iranian
+  point-defense readiness bump is not implemented.
+- FLASH salvo-warning intercept path (getNextSalvoEstimate) has no test (couples to AI phase).
+- ADS-B polling has no document-visibility pause; LiveFeeds drag is title-bar only.
+- Destroying Iranian ISR assets (Mohajer orbit, picket boats, Noor) has no kill path.
+- OSINT regime-mouthpiece nation detection is a name-regex heuristic; new Iranian names need
+  the patterns extended (osint-feed.ts IRAN_WEAPON_RE/IRAN_UNIT_RE).
 
 ## Big features (design needed before code)
 
-- **Fog of war.** The snapshot ships full enemy state to the UI; detection/espionage/satellite
-  systems compute results that gate nothing. Decide the visibility model (per-unit detected
-  state with decay?), filter the snapshot, and wire HUMINT reveals + SIGINT range multiplier +
-  `satelliteDetectedUnitIds` into it. Until then the whole intel layer is cosmetic
-  (IntelBudgetPanel is a placebo).
-- **Victory / end conditions.** Wars currently never end: no objectives evaluated, no
-  victory/defeat screen, CEASE_FIRE command handled by the engine but has no UI. The war just
-  goes silent. Define win conditions per scenario (e.g. Hormuz kept open N days, % enemy
-  strategic assets destroyed) and an end-of-war screen.
+- **Logistics depth** (see below), **aircraft/sortie system**, **more scenarios**.
 - **Logistics depth.** logistics-v2 (national stockpiles, shipments, production) was deleted as
   dead code in the cleanup; the live v1 ignores `SupplyLine.capacity`/`distance_km`. If supply
   is to matter strategically, re-design from the v1 base (git history has v2 for reference).

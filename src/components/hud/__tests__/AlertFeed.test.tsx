@@ -68,6 +68,7 @@ function makeViewState(events: GameEvent[], opts: ViewOpts = {}): GameViewState 
     warSupport: {},
     gameOver: null,
     objectives: [],
+    intel: { assets: [], agents: [], products: [], taskings: [], leakLevel: 0, paranoiaBand: 'LOW' as const, encryptionUpgradedUntilTick: null },
   }
 }
 

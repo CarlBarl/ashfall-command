@@ -46,6 +46,7 @@ function setup(unit: ViewUnit) {
     warSupport: {},
     gameOver: null,
     objectives: [],
+    intel: { assets: [], agents: [], products: [], taskings: [], leakLevel: 0, paranoiaBand: 'LOW' as const, encryptionUpgradedUntilTick: null },
   } as GameViewState
   useGameStore.setState({ viewState })
   useUIStore.setState({ hoveredUnitId: unit.id })

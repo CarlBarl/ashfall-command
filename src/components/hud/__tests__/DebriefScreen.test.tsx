@@ -75,6 +75,7 @@ function makeViewState(over: Partial<GameViewState>): GameViewState {
     warSupport: { usa: 64, iran: 0 },
     gameOver: victoryReport,
     objectives,
+    intel: { assets: [], agents: [], products: [], taskings: [], leakLevel: 0, paranoiaBand: 'LOW' as const, encryptionUpgradedUntilTick: null },
     ...over,
   }
 }

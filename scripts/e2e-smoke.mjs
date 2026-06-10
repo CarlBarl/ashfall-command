@@ -49,14 +49,49 @@ await step('fog of war: SITREP shows contacts, not full enemy orbat', async () =
   await clickText('SITREP', { exact: true })
 })
 
+await step('intel command center: tabs, assets, agents, opsec', async () => {
+  await clickText('INTEL', { exact: true })
+  await page.getByText('KH-11 CRYSTAL').first().waitFor({ timeout: 8000 })
+  await page.getByText('TASK PASS').first().waitFor({ timeout: 4000 })
+  await clickText('HUMINT', { exact: true })
+  await page.getByText('AMBER').first().waitFor({ timeout: 4000 })
+  await page.getByText('OPAL').first().waitFor({ timeout: 2000 })
+  await clickText('OSINT', { exact: true })
+  await clickText('OPSEC', { exact: true })
+  await page.getByText(/OPSEC SWEEP/i).first().waitFor({ timeout: 4000 })
+  await clickText('SIGINT', { exact: true })
+  await clickText('INTEL', { exact: true })
+})
+
+await step('live feeds window opens with all four quadrants', async () => {
+  await clickText('LIVE', { exact: true })
+  await page.getByText('GEOSAT IODC LIVE').first().waitFor({ timeout: 8000 })
+  await page.getByText(/HORMUZ TRAFFIC CAM/i).first().waitFor({ timeout: 4000 })
+  await page.getByText(/ISR FMV/i).first().waitFor({ timeout: 4000 })
+  await page.getByText(/ADS-B/i).first().waitFor({ timeout: 4000 })
+  await page.getByText(/INTEL SOURCES/i).first().waitFor({ timeout: 4000 })
+  await clickText('LIVE', { exact: true })
+})
+
+await step('time slider present in top bar', async () => {
+  const slider = page.locator('input[type="range"]').first()
+  await slider.waitFor({ timeout: 4000 })
+})
+
 await step('declare war', async () => {
   await clickText('DECLARE WAR')
   await clickText('CONFIRM WAR')
   await page.getByText('WAR: IRAN').first().waitFor({ timeout: 8000 })
 })
 
-await step('run the war at speed', async () => {
-  await clickText('1h', { exact: true })
+await step('run the war at speed via the time slider', async () => {
+  await page.locator('input[type="range"]').first().evaluate(el => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(el, el.max)
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+    el.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await page.getByText('1h/s').first().waitFor({ timeout: 4000 })
   await page.waitForTimeout(8000)
 })
 

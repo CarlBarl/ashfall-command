@@ -294,7 +294,7 @@ function emitLaunchDetectionCards(state: GameState, intel: IntelState): void {
 // HUMINT (design §1.4)
 // ---------------------------------------------------------------------------
 
-export function taskAgent(state: GameState, rng: SeededRNG, agentId: string): void {
+export function taskAgent(state: GameState, _rng: SeededRNG, agentId: string): void {
   const intel = state.intel
   if (!intel) return
   const agent = intel.agents[agentId]

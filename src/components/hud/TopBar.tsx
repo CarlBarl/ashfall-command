@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
@@ -32,15 +32,38 @@ const INLINE_LABELS: Record<number, string> = {
   360: '1h',
 }
 
-const ALL_SPEEDS = [0, 0.1, 1, 6, 60, 360, 3600] as const
-const ALL_SPEED_LABELS: Record<number, string> = {
-  0: '||',
-  0.1: '1s/s',
-  1: '10s/s',
-  6: '1m/s',
-  60: '10m/s',
-  360: '1h/s',
-  3600: '10h/s',
+// Time slider works in game-time multipliers (game-seconds per real second);
+// engine speed (ticks per 100ms) = multiplier / 10
+const SLIDER_MAX_MULT = 3600
+const SLIDER_STEPS = 1000
+const SNAP_PCT = 0.08
+const DETENTS: { mult: number; label: string }[] = [
+  { mult: 0, label: 'PAUSED' },
+  { mult: 1, label: '1×' },
+  { mult: 8, label: '8×' },
+  { mult: 60, label: '60×' },
+  { mult: 600, label: '10m/s' },
+  { mult: 3600, label: '1h/s' },
+]
+
+function multToPos(mult: number): number {
+  if (mult <= 0) return 0
+  return Math.max(1, Math.min(SLIDER_STEPS, Math.round(1 + ((SLIDER_STEPS - 1) * Math.log(mult)) / Math.log(SLIDER_MAX_MULT))))
+}
+
+function posToMult(pos: number): number {
+  if (pos <= 0) return 0
+  const raw = Math.pow(SLIDER_MAX_MULT, (pos - 1) / (SLIDER_STEPS - 1))
+  for (const d of DETENTS) {
+    if (d.mult > 0 && Math.abs(raw - d.mult) <= d.mult * SNAP_PCT) return d.mult
+  }
+  return Math.round(raw)
+}
+
+function multLabel(mult: number): string {
+  const detent = DETENTS.find((d) => Math.abs(d.mult - mult) < 0.001)
+  if (detent) return detent.label
+  return mult >= 1 ? `×${Math.round(mult)}` : `×${mult.toFixed(1)}`
 }
 
 export default function TopBar() {
@@ -55,6 +78,8 @@ export default function TopBar() {
   const showEconomy = useUIStore((s) => s.showEconomy)
   const showIntel = useUIStore((s) => s.showIntel)
   const toggleIntel = useUIStore((s) => s.toggleIntel)
+  const liveFeedsOpen = useUIStore((s) => s.liveFeedsOpen)
+  const toggleLiveFeeds = useUIStore((s) => s.toggleLiveFeeds)
   const placingCatalogId = useIntelStore((s) => s.placingCatalogId)
 
   const units = useGameStore((s) => s.viewState.units)
@@ -79,7 +104,6 @@ export default function TopBar() {
   const [warClickPending, setWarClickPending] = useState(false)
   const [offerClickPending, setOfferClickPending] = useState(false)
   const [roeOpen, setRoeOpen] = useState(false)
-  const [speedDropdownOpen, setSpeedDropdownOpen] = useState(false)
   const [overflowOpen, setOverflowOpen] = useState(false)
   const [objectivesOpen, setObjectivesOpen] = useState(false)
 
@@ -373,114 +397,7 @@ export default function TopBar() {
 
         <Sep />
 
-        {INLINE_SPEEDS.map((s) => (
-          <button
-            key={s}
-            onClick={() => sendCommand({ type: 'SET_SPEED', speed: s })}
-            style={{
-              background: time.speed === s ? 'var(--border-accent)' : 'none',
-              border: `1px solid ${time.speed === s ? 'var(--border-accent)' : 'transparent'}`,
-              borderRadius: 3,
-              color: time.speed === s ? 'var(--text-primary)' : 'var(--text-muted)',
-              cursor: 'pointer',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--font-size-xs)',
-              padding: '2px 4px',
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-              opacity: time.speed === s ? 1 : 0.55,
-            }}
-          >
-            {INLINE_LABELS[s]}
-          </button>
-        ))}
-
-        {/* Speed chevron dropdown */}
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={() => setSpeedDropdownOpen(!speedDropdownOpen)}
-            style={{
-              background: 'none',
-              border: '1px solid transparent',
-              borderRadius: 3,
-              color: 'var(--text-muted)',
-              cursor: 'pointer',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--font-size-xs)',
-              padding: '2px 3px',
-              fontWeight: 600,
-              opacity: 0.55,
-            }}
-          >
-            {'\u203A'}
-          </button>
-
-          {speedDropdownOpen && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              marginTop: 4,
-              background: 'var(--bg-panel)',
-              border: '1px solid var(--border-default)',
-              borderRadius: 'var(--panel-radius)',
-              padding: 4,
-              zIndex: 30,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 2,
-              minWidth: 80,
-            }}>
-
-              {/* Fine speed slider */}
-              <div style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={time.speed <= 0 ? 0 : Math.round(1 + 99 * Math.log(time.speed / 0.1) / Math.log(36000))}
-                  onChange={(e) => {
-                    const val = Number(e.target.value)
-                    const speed = val === 0 ? 0 : 0.1 * Math.pow(36000, (val - 1) / 99)
-                    sendCommand({ type: 'SET_SPEED', speed })
-                  }}
-                  style={{ flex: 1, height: 4, cursor: 'pointer', accentColor: 'var(--text-accent)' }}
-                />
-                <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', minWidth: 35, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                  {time.speed <= 0 ? '||' : time.speed < 6 ? `${Math.round(time.speed * 10)}s/s` : time.speed < 300 ? `${Math.round(time.speed / 6)}m/s` : `${(time.speed / 360).toFixed(1)}h/s`}
-                </span>
-              </div>
-              <div style={{ height: 1, background: 'var(--border-default)', margin: '2px 0' }} />
-
-              {ALL_SPEEDS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => {
-                    sendCommand({ type: 'SET_SPEED', speed: s })
-                    setSpeedDropdownOpen(false)
-                  }}
-                  style={{
-                    background: time.speed === s ? 'var(--border-accent)' : 'var(--bg-hover)',
-                    border: time.speed === s
-                      ? '1px solid var(--border-accent)'
-                      : '1px solid var(--border-default)',
-                    borderRadius: 3,
-                    color: time.speed === s ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 'var(--font-size-xs)',
-                    padding: '4px 8px',
-                    fontWeight: time.speed === s ? 700 : 400,
-                    textAlign: 'left',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {ALL_SPEED_LABELS[s]}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <TimeSlider speed={time.speed} />
 
         <Sep />
 
@@ -506,6 +423,9 @@ export default function TopBar() {
 
         {/* Intel panel toggle */}
         <IntelBtn active={showIntel || !!placingCatalogId} onClick={toggleIntel} compact={false} />
+
+        {/* Live feeds window toggle */}
+        <LiveBtn active={liveFeedsOpen} onClick={toggleLiveFeeds} />
 
         <Sep />
 
@@ -802,9 +722,9 @@ export default function TopBar() {
       </div>
 
       {/* Close dropdowns on outside click */}
-      {(roeOpen || speedDropdownOpen || overflowOpen || objectivesOpen) && (
+      {(roeOpen || overflowOpen || objectivesOpen) && (
         <div
-          onClick={() => { setRoeOpen(false); setSpeedDropdownOpen(false); setOverflowOpen(false); setObjectivesOpen(false) }}
+          onClick={() => { setRoeOpen(false); setOverflowOpen(false); setObjectivesOpen(false) }}
           style={{
             position: 'fixed',
             inset: 0,
@@ -860,6 +780,8 @@ export default function TopBar() {
           <div style={{ color: 'var(--text-accent)', fontWeight: 600, marginBottom: 4, marginTop: 4, textTransform: 'uppercase' }}>
             Top Bar
           </div>
+          <HelpRow keys="TIME SLIDER" desc="Any speed; snaps to 1×/8×/60×/10m/1h" />
+          <HelpRow keys="LIVE" desc="Real-data live feeds window" />
           <HelpRow keys="ROE dropdown" desc="Theater-wide ROE" />
           <HelpRow keys="DECLARE WAR" desc="Initiate hostilities (click twice)" />
           <HelpRow keys="OFFER CEASEFIRE" desc="Propose ending the war (click twice)" />
@@ -1075,6 +997,131 @@ function IntelBtn({ active, onClick, compact }: { active: boolean; onClick: () =
       }}
     >
       {compact ? 'INT' : 'INTEL'}
+    </button>
+  )
+}
+
+function TimeSlider({ speed }: { speed: number }) {
+  const [dragMult, setDragMult] = useState<number | null>(null)
+  const lastSentRef = useRef(0)
+  const pendingRef = useRef<number | null>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastNonzeroRef = useRef(0.1)
+
+  useEffect(() => {
+    if (speed > 0) lastNonzeroRef.current = speed
+  }, [speed])
+
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+  }, [])
+
+  // ~10 sends/s max while dragging; trailing send keeps the final position
+  const sendSpeed = useCallback((s: number) => {
+    const since = performance.now() - lastSentRef.current
+    if (since >= 100) {
+      lastSentRef.current = performance.now()
+      sendCommand({ type: 'SET_SPEED', speed: s })
+    } else {
+      pendingRef.current = s
+      if (!timerRef.current) {
+        timerRef.current = setTimeout(() => {
+          timerRef.current = null
+          lastSentRef.current = performance.now()
+          if (pendingRef.current !== null) {
+            sendCommand({ type: 'SET_SPEED', speed: pendingRef.current })
+            pendingRef.current = null
+          }
+        }, 100 - since)
+      }
+    }
+  }, [])
+
+  const mult = dragMult ?? speed * 10
+  const paused = mult <= 0
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0 2px' }}>
+      <button
+        onClick={() => sendCommand({ type: 'SET_SPEED', speed: speed === 0 ? lastNonzeroRef.current : 0 })}
+        title={paused ? 'Resume' : 'Pause'}
+        aria-label={paused ? 'Resume' : 'Pause'}
+        style={{
+          background: paused ? 'var(--bg-hover)' : 'none',
+          border: `1px solid ${paused ? 'var(--status-engaged)' : 'transparent'}`,
+          borderRadius: 3,
+          color: paused ? 'var(--status-engaged)' : 'var(--text-secondary)',
+          cursor: 'pointer',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 'var(--font-size-xs)',
+          padding: '2px 5px',
+          fontWeight: 700,
+          lineHeight: 1.2,
+        }}
+      >
+        {paused ? '▶' : '||'}
+      </button>
+      <input
+        type="range"
+        min={0}
+        max={SLIDER_STEPS}
+        step={1}
+        value={multToPos(mult)}
+        aria-label="Game speed"
+        title="Game speed (snaps to 1× / 8× / 60× / 10m/s / 1h/s)"
+        onChange={(e) => {
+          const m = posToMult(Number(e.target.value))
+          setDragMult(m)
+          sendSpeed(m / 10)
+        }}
+        onPointerUp={() => setDragMult(null)}
+        onKeyUp={() => setDragMult(null)}
+        onBlur={() => setDragMult(null)}
+        style={{ width: 92, height: 4, cursor: 'pointer', accentColor: 'var(--text-accent)' }}
+      />
+      <span style={{
+        fontSize: 'var(--font-size-xs)',
+        color: paused ? 'var(--status-engaged)' : 'var(--text-secondary)',
+        minWidth: 46,
+        fontWeight: 600,
+        whiteSpace: 'nowrap',
+      }}>
+        {multLabel(mult)}
+      </span>
+    </div>
+  )
+}
+
+function LiveBtn({ active, onClick }: { active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: active ? 'var(--bg-hover)' : 'none',
+        border: `1px solid ${active ? 'var(--border-accent)' : 'transparent'}`,
+        borderRadius: 3,
+        color: active ? 'var(--text-accent)' : 'var(--text-muted)',
+        cursor: 'pointer',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--font-size-xs)',
+        padding: '2px 4px',
+        textTransform: 'uppercase',
+        fontWeight: 600,
+        letterSpacing: '0.03em',
+        whiteSpace: 'nowrap',
+        opacity: active ? 1 : 0.55,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+      }}
+    >
+      {active && (
+        <>
+          <style>{'@keyframes live-pulse{0%,100%{opacity:1}50%{opacity:0.25}}'}</style>
+          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#e84545', animation: 'live-pulse 1.4s ease-in-out infinite', flexShrink: 0 }} />
+        </>
+      )}
+      LIVE
     </button>
   )
 }

@@ -27,7 +27,9 @@ import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
 import { useIntelStore } from '@/store/intel-store'
 import { useMenuStore } from '@/store/menu-store'
+import { useMapIntelStore } from '@/store/map-intel-store'
 import { getMapStyle } from '@/styles/map-providers'
+import { gibsDailyTrueColorTiles, safeGibsDate } from '@/data/feeds'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import { iranCatalog } from '@/data/catalog/iran-catalog'
 import { usaCatalog } from '@/data/catalog/usa-catalog'
@@ -39,6 +41,9 @@ const DEFAULT_VIEW = {
   pitch: 0,
   bearing: 0,
 }
+
+const GIBS_SOURCE_ID = 'gibs-recon-mosaic'
+const GIBS_LAYER_ID = 'gibs-recon-mosaic-layer'
 
 interface CtxMenu {
   x: number
@@ -208,10 +213,74 @@ export default function GameMap() {
       .filter(Boolean) as { poly: NonNullable<ReturnType<typeof getLOSPolygon>>; isEnemy: boolean }[]
   }, [losFilter, gridReady, units])
 
+  const [mapReady, setMapReady] = useState(false)
   const onLoad = useCallback(() => {
     const map = mapRef.current?.getMap()
     map?.resize()
+    setMapReady(true)
   }, [])
+
+  // DAILY RECON MOSAIC — GIBS VIIRS raster, toggled via map-intel-store.
+  // Imperative add/remove: style switches (SAT/MAP) wipe custom sources, so the
+  // styledata handler re-adds and re-anchors it below overlay-anchor.
+  const reconMosaic = useMapIntelStore((s) => s.reconMosaic)
+  useEffect(() => {
+    if (!reconMosaic || !mapReady) return
+    const map = mapRef.current?.getMap()
+    if (!map) return
+
+    const ensureMosaic = () => {
+      try {
+        if (!map.getSource(GIBS_SOURCE_ID)) {
+          const cfg = gibsDailyTrueColorTiles(safeGibsDate())
+          map.addSource(GIBS_SOURCE_ID, {
+            type: 'raster',
+            tiles: cfg.tiles,
+            tileSize: 256,
+            maxzoom: cfg.maxzoom,
+            attribution: cfg.attribution,
+          })
+        }
+        const anchor = map.getLayer('overlay-anchor') ? 'overlay-anchor' : undefined
+        if (!map.getLayer(GIBS_LAYER_ID)) {
+          map.addLayer({
+            id: GIBS_LAYER_ID,
+            type: 'raster',
+            source: GIBS_SOURCE_ID,
+            paint: {
+              'raster-opacity': 0.9,
+              'raster-fade-duration': 0,
+              'raster-saturation': -0.2,
+              'raster-brightness-max': 0.85,
+            },
+          }, anchor)
+        } else if (anchor) {
+          // Layers added later with beforeId=overlay-anchor (country fills) can land
+          // above the mosaic; re-anchor — the position check prevents styledata loops
+          const order = map.getStyle().layers?.map((l) => l.id) ?? []
+          const gibsIdx = order.indexOf(GIBS_LAYER_ID)
+          const anchorIdx = order.indexOf('overlay-anchor')
+          if (gibsIdx !== -1 && anchorIdx !== -1 && gibsIdx !== anchorIdx - 1) {
+            map.moveLayer(GIBS_LAYER_ID, 'overlay-anchor')
+          }
+        }
+      } catch {
+        // style mid-swap — the next styledata event retries
+      }
+    }
+
+    ensureMosaic()
+    map.on('styledata', ensureMosaic)
+    return () => {
+      map.off('styledata', ensureMosaic)
+      try {
+        if (map.getLayer(GIBS_LAYER_ID)) map.removeLayer(GIBS_LAYER_ID)
+        if (map.getSource(GIBS_SOURCE_ID)) map.removeSource(GIBS_SOURCE_ID)
+      } catch {
+        // map already torn down
+      }
+    }
+  }, [reconMosaic, mapReady])
 
   const onContextMenu = useCallback((e: MapLayerMouseEvent) => {
     e.preventDefault()

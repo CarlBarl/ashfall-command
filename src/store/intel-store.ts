@@ -12,15 +12,19 @@ export interface EstimatedUnit {
   confirmed: boolean
 }
 
+export type IntelTab = 'isr' | 'sigint' | 'humint' | 'osint' | 'opsec'
+
 interface IntelState {
   estimatedUnits: EstimatedUnit[]
   placingCatalogId: string | null
+  activeTab: IntelTab
 
   addEstimate: (entry: UnitCatalogEntry, position: Position) => void
   removeEstimate: (id: string) => void
   moveEstimate: (id: string, position: Position) => void
   confirmEstimate: (id: string) => void
   setPlacing: (catalogId: string | null) => void
+  setActiveTab: (tab: IntelTab) => void
   reset: () => void
 }
 
@@ -29,6 +33,7 @@ let counter = 0
 const INITIAL_STATE = {
   estimatedUnits: [] as EstimatedUnit[],
   placingCatalogId: null as string | null,
+  activeTab: 'isr' as IntelTab,
 }
 
 export const useIntelStore = create<IntelState>((set) => ({
@@ -67,6 +72,8 @@ export const useIntelStore = create<IntelState>((set) => ({
   })),
 
   setPlacing: (catalogId) => set({ placingCatalogId: catalogId }),
+
+  setActiveTab: (tab) => set({ activeTab: tab }),
 
   reset: () => { counter = 0; set({ ...INITIAL_STATE }) },
 }))

@@ -9,6 +9,9 @@ import EconomyPanel from '@/components/panels/EconomyPanel'
 import OrbatPanel from '@/components/panels/OrbatPanel'
 import StatsPanel from '@/components/panels/StatsPanel'
 import IntelPanel from '@/components/panels/IntelPanel'
+import ImintViewer from '@/components/intel/ImintViewer'
+import LiveFeeds from '@/components/intel/LiveFeeds'
+import OsintTicker from '@/components/intel/OsintTicker'
 import StartScreen from '@/components/menu/StartScreen'
 import ScenarioSelect from '@/components/menu/ScenarioSelect'
 import FreeModeLobby from '@/components/menu/FreeModeLobby'
@@ -168,6 +171,7 @@ export default function App() {
         {mobilePanel === 'econ' && <EconomyPanel />}
         {mobilePanel === 'events' && <AlertFeed />}
         {mobilePanel === 'intel' && <IntelPanel onClose={() => setMobilePanel(null)} />}
+        <ImintViewer />
         <MobileNav active={mobilePanel} onSelect={setMobilePanel} hasSelection={!!selectedUnitId} />
         {showDebrief && <DebriefScreen onDismiss={dismissDebrief} />}
       </div>
@@ -179,12 +183,15 @@ export default function App() {
       <GameMap />
       <TopBar />
       <AlertFeed />
+      <OsintTicker />
       <UnitInfoPanel units={units} />
       <StrikePanel />
       {showOrbat && <OrbatPanel />}
       {showStats && <StatsPanel />}
       {showEconomy && <EconomyPanel />}
       {showIntel && <IntelPanel />}
+      <LiveFeeds />
+      <ImintViewer />
       {showDebrief && <DebriefScreen onDismiss={dismissDebrief} />}
     </div>
   )

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import TopBar from '../TopBar'
 import { useGameStore } from '@/store/game-store'
+import { useUIStore } from '@/store/ui-store'
 import { sendCommand } from '@/store/bridge'
 import type { GameViewState } from '@/types/view'
 import type { GameEvent, Nation } from '@/types/game'
@@ -50,6 +51,15 @@ function makeViewState(over: Partial<GameViewState> & { atWar?: boolean }): Game
     warSupport: { usa: 72, iran: 41 },
     gameOver: null,
     objectives: [],
+    intel: {
+      assets: [],
+      agents: [],
+      products: [],
+      taskings: [],
+      leakLevel: 0,
+      paranoiaBand: 'LOW',
+      encryptionUpgradedUntilTick: null,
+    },
     ...rest,
   }
 }
@@ -166,5 +176,61 @@ describe('TopBar war controls', () => {
     render(<TopBar />)
     fireEvent.click(screen.getByText('···'))
     expect(screen.queryByText('RESIGN')).toBeNull()
+  })
+})
+
+describe('TopBar time controls', () => {
+  function setSpeed(speed: number) {
+    setStore(makeViewState({ time: { tick: 100, timestamp: 1_000_000, speed, tickIntervalMs: 100 } }))
+  }
+
+  it('slider at max sends 1h/s (engine speed 360)', () => {
+    render(<TopBar />)
+    fireEvent.change(screen.getByRole('slider'), { target: { value: '1000' } })
+    expect(sendCommand).toHaveBeenCalledWith({ type: 'SET_SPEED', speed: 360 })
+  })
+
+  it('slider snaps near-detent positions to the detent', () => {
+    render(<TopBar />)
+    // pos 500 ≈ multiplier 59.8 → snaps to the 60× detent → engine speed 6
+    fireEvent.change(screen.getByRole('slider'), { target: { value: '500' } })
+    expect(sendCommand).toHaveBeenCalledWith({ type: 'SET_SPEED', speed: 6 })
+  })
+
+  it('slider at zero pauses', () => {
+    render(<TopBar />)
+    fireEvent.change(screen.getByRole('slider'), { target: { value: '0' } })
+    expect(sendCommand).toHaveBeenCalledWith({ type: 'SET_SPEED', speed: 0 })
+  })
+
+  it('shows PAUSED when speed is 0 and ×N otherwise', () => {
+    setSpeed(0)
+    const { unmount } = render(<TopBar />)
+    expect(screen.getByText('PAUSED')).toBeTruthy()
+    unmount()
+
+    setSpeed(1) // multiplier 10
+    render(<TopBar />)
+    expect(screen.getByText('×10')).toBeTruthy()
+  })
+
+  it('pause button stops the clock and resumes to the last nonzero speed', () => {
+    setSpeed(1)
+    const { unmount } = render(<TopBar />)
+    fireEvent.click(screen.getByLabelText('Pause'))
+    expect(sendCommand).toHaveBeenCalledWith({ type: 'SET_SPEED', speed: 0 })
+    unmount()
+
+    setSpeed(0)
+    render(<TopBar />)
+    fireEvent.click(screen.getByLabelText('Resume'))
+    expect(sendCommand).toHaveBeenCalledWith({ type: 'SET_SPEED', speed: 0.1 })
+  })
+
+  it('toggles the LIVE feeds window', () => {
+    useUIStore.setState({ liveFeedsOpen: false })
+    render(<TopBar />)
+    fireEvent.click(screen.getByText('LIVE'))
+    expect(useUIStore.getState().liveFeedsOpen).toBe(true)
   })
 })
