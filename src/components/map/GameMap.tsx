@@ -73,6 +73,17 @@ export default function GameMap() {
   const rngFilter = useUIStore((s) => s.rngFilter)
   const showElevation = useUIStore((s) => s.showElevation)
   const mapMode = useUIStore((s) => s.mapMode)
+  const mapFocus = useUIStore((s) => s.mapFocus)
+
+  // Fly-to requests (AlertFeed click-to-zoom) — visual only, keyed by nonce
+  useEffect(() => {
+    if (!mapFocus) return
+    mapRef.current?.flyTo({
+      center: [mapFocus.lng, mapFocus.lat],
+      duration: 1200,
+      ...(mapFocus.zoom !== undefined ? { zoom: mapFocus.zoom } : {}),
+    })
+  }, [mapFocus])
 
   const mapStyle = useMemo(() => getMapStyle(mapMode), [mapMode])
 

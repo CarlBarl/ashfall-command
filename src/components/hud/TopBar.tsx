@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
@@ -6,6 +6,7 @@ import { useIntelStore } from '@/store/intel-store'
 import { sendCommand, getFullState, loadState } from '@/store/bridge'
 import { saveToSlot, loadFromSlot } from '@/store/save-load'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import ObjectivesPanel from './ObjectivesPanel'
 import type { ROE } from '@/types/game'
 
 type PanelKey = 'orbat' | 'stats' | 'economy'
@@ -61,6 +62,9 @@ export default function TopBar() {
   const time = useGameStore((s) => s.viewState.time)
   const playerNation = useGameStore((s) => s.viewState.playerNation)
   const shippingLanes = useGameStore((s) => s.viewState.shippingLanes)
+  const warSupport = useGameStore((s) => s.viewState.warSupport)
+  const objectives = useGameStore((s) => s.viewState.objectives)
+  const eventLog = useGameStore((s) => s.eventLog)
   const hormuzLane = shippingLanes.find((l) => l.id === 'hormuz')
 
   const playerState = nations.find((n) => n.id === playerNation)
@@ -73,9 +77,22 @@ export default function TopBar() {
 
   const [showHelp, setShowHelp] = useState(false)
   const [warClickPending, setWarClickPending] = useState(false)
+  const [offerClickPending, setOfferClickPending] = useState(false)
   const [roeOpen, setRoeOpen] = useState(false)
   const [speedDropdownOpen, setSpeedDropdownOpen] = useState(false)
   const [overflowOpen, setOverflowOpen] = useState(false)
+  const [objectivesOpen, setObjectivesOpen] = useState(false)
+
+  // Standing enemy ceasefire offer, derived from the persistent event log
+  const enemyOffered = useMemo(() => {
+    if (!primaryEnemyNation) return false
+    for (let i = eventLog.length - 1; i >= 0; i--) {
+      const e = eventLog[i]
+      if (e.type === 'WAR_ENDED') return false
+      if (e.type === 'CEASEFIRE_OFFERED' && e.by === primaryEnemyNation.id) return true
+    }
+    return false
+  }, [eventLog, primaryEnemyNation])
 
   const panelStates: Record<PanelKey, boolean> = {
     orbat: showOrbat,
@@ -112,6 +129,16 @@ export default function TopBar() {
     }
     sendCommand({ type: 'DECLARE_WAR', target: primaryEnemyNation.id })
     setWarClickPending(false)
+  }
+
+  const handleOfferCeasefire = () => {
+    if (!primaryEnemyNation) return
+    if (!offerClickPending) {
+      setOfferClickPending(true)
+      return
+    }
+    sendCommand({ type: 'OFFER_CEASEFIRE', target: primaryEnemyNation.id })
+    setOfferClickPending(false)
   }
 
   const gameDate = new Date(time.timestamp)
@@ -503,14 +530,22 @@ export default function TopBar() {
         {/* War status + ROE */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           {atWarWithPrimaryEnemy ? (
-            <span style={{
-              color: 'var(--status-damaged)',
-              fontWeight: 700,
-              fontSize: 'var(--font-size-xs)',
-              whiteSpace: 'nowrap',
-            }}>
-              {`WAR: ${primaryEnemyLabel}`}
-            </span>
+            <>
+              <span style={{
+                color: 'var(--status-damaged)',
+                fontWeight: 700,
+                fontSize: 'var(--font-size-xs)',
+                whiteSpace: 'nowrap',
+              }}>
+                {`WAR: ${primaryEnemyLabel}`}
+              </span>
+              {primaryEnemyNation && (
+                <WarSupportBars
+                  player={{ tag: playerNation.toUpperCase(), support: warSupport[playerNation] ?? 100 }}
+                  enemy={{ tag: primaryEnemyNation.id.toUpperCase(), support: warSupport[primaryEnemyNation.id] ?? 100 }}
+                />
+              )}
+            </>
           ) : (
             <span style={{
               color: 'var(--status-ready)',
@@ -585,6 +620,95 @@ export default function TopBar() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Objectives chip (only at war) */}
+          {atWarWithPrimaryEnemy && objectives.length > 0 && (
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setObjectivesOpen(!objectivesOpen)}
+                style={{
+                  background: objectivesOpen ? 'var(--bg-hover)' : 'none',
+                  border: `1px solid ${objectivesOpen ? 'var(--border-accent)' : 'var(--border-default)'}`,
+                  borderRadius: 3,
+                  color: objectivesOpen ? 'var(--text-accent)' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 'var(--font-size-xs)',
+                  padding: '2px 4px',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {'OBJECTIVES ▾'}
+              </button>
+
+              {objectivesOpen && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: 4,
+                  background: 'var(--bg-panel)',
+                  border: '1px solid var(--border-default)',
+                  borderRadius: 'var(--panel-radius)',
+                  padding: 10,
+                  zIndex: 30,
+                  minWidth: 260,
+                }}>
+                  <ObjectivesPanel objectives={objectives} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Ceasefire controls (only at war) */}
+          {atWarWithPrimaryEnemy && primaryEnemyNation && (
+            enemyOffered ? (
+              <>
+                <style>{'@keyframes cf-pulse{0%,100%{box-shadow:0 0 0 0 rgba(63,185,80,0.5)}50%{box-shadow:0 0 0 6px rgba(63,185,80,0)}}'}</style>
+                <button
+                  onClick={() => sendCommand({ type: 'CEASE_FIRE', target: primaryEnemyNation.id })}
+                  title={`${primaryEnemyLabel} has offered a ceasefire`}
+                  style={{
+                    background: 'var(--bg-hover)',
+                    border: '1px solid var(--status-ready)',
+                    borderRadius: 3,
+                    color: 'var(--status-ready)',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 'var(--font-size-xs)',
+                    padding: '2px 4px',
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                    animation: 'cf-pulse 1.6s ease-in-out infinite',
+                  }}
+                >
+                  ACCEPT CEASEFIRE
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={handleOfferCeasefire}
+                onBlur={() => setOfferClickPending(false)}
+                style={{
+                  background: offerClickPending ? 'var(--border-accent)' : 'var(--bg-hover)',
+                  border: offerClickPending
+                    ? '2px solid var(--border-accent)'
+                    : '1px solid var(--border-default)',
+                  borderRadius: 3,
+                  color: offerClickPending ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 'var(--font-size-xs)',
+                  padding: '2px 4px',
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {offerClickPending ? 'CONFIRM OFFER' : 'OFFER CEASEFIRE'}
+              </button>
+            )
           )}
 
           {/* Declare war button (only at peace) */}
@@ -666,6 +790,10 @@ export default function TopBar() {
                   />
                   {/* Save/Load */}
                   <OverflowSaveLoad onDone={() => setOverflowOpen(false)} />
+                  {/* Resign (only at war) */}
+                  {atWarWithPrimaryEnemy && (
+                    <OverflowResign onDone={() => setOverflowOpen(false)} />
+                  )}
                 </div>
               )}
             </div>
@@ -674,9 +802,9 @@ export default function TopBar() {
       </div>
 
       {/* Close dropdowns on outside click */}
-      {(roeOpen || speedDropdownOpen || overflowOpen) && (
+      {(roeOpen || speedDropdownOpen || overflowOpen || objectivesOpen) && (
         <div
-          onClick={() => { setRoeOpen(false); setSpeedDropdownOpen(false); setOverflowOpen(false) }}
+          onClick={() => { setRoeOpen(false); setSpeedDropdownOpen(false); setOverflowOpen(false); setObjectivesOpen(false) }}
           style={{
             position: 'fixed',
             inset: 0,
@@ -734,6 +862,8 @@ export default function TopBar() {
           </div>
           <HelpRow keys="ROE dropdown" desc="Theater-wide ROE" />
           <HelpRow keys="DECLARE WAR" desc="Initiate hostilities (click twice)" />
+          <HelpRow keys="OFFER CEASEFIRE" desc="Propose ending the war (click twice)" />
+          <HelpRow keys="OBJECTIVES" desc="War objectives progress" />
           <div style={{ height: 6 }} />
           <div style={{ color: 'var(--text-accent)', fontWeight: 600, marginBottom: 4, marginTop: 4, textTransform: 'uppercase' }}>
             Targeting
@@ -803,6 +933,73 @@ function OverflowItem({ label, active, onClick }: { label: string; active: boole
       }}
     >
       {label}
+    </button>
+  )
+}
+
+function WarSupportBars({
+  player,
+  enemy,
+}: {
+  player: { tag: string; support: number }
+  enemy: { tag: string; support: number }
+}) {
+  return (
+    <div title="War support" style={{ display: 'flex', flexDirection: 'column', gap: 2, justifyContent: 'center', padding: '0 2px' }}>
+      <SupportBar tag={player.tag} support={player.support} color="var(--text-accent)" />
+      <SupportBar tag={enemy.tag} support={enemy.support} color="var(--status-damaged)" />
+    </div>
+  )
+}
+
+function SupportBar({ tag, support, color }: { tag: string; support: number; color: string }) {
+  const pct = Math.round(Math.max(0, Math.min(100, support)))
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 3, lineHeight: 1 }}>
+      <span style={{ fontSize: '0.5rem', color: 'var(--text-muted)', fontWeight: 600, width: 26, textAlign: 'right', whiteSpace: 'nowrap' }}>
+        {tag}
+      </span>
+      <div style={{ width: 44, height: 4, background: 'var(--bg-hover)', borderRadius: 2, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2, transition: 'width 0.3s ease' }} />
+      </div>
+      <span style={{ fontSize: '0.5rem', color, fontWeight: 700, width: 20, whiteSpace: 'nowrap' }}>
+        {pct}%
+      </span>
+    </div>
+  )
+}
+
+function OverflowResign({ onDone }: { onDone: () => void }) {
+  const [pending, setPending] = useState(false)
+  return (
+    <button
+      onClick={() => {
+        if (!pending) {
+          setPending(true)
+          return
+        }
+        sendCommand({ type: 'RESIGN' })
+        setPending(false)
+        onDone()
+      }}
+      onBlur={() => setPending(false)}
+      style={{
+        background: pending ? 'var(--status-damaged)' : 'var(--bg-hover)',
+        border: pending
+          ? '1px solid var(--status-damaged)'
+          : '1px solid var(--border-default)',
+        borderRadius: 3,
+        color: pending ? 'var(--bg-primary)' : 'var(--status-damaged)',
+        cursor: 'pointer',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--font-size-xs)',
+        padding: '4px 8px',
+        fontWeight: pending ? 700 : 400,
+        textAlign: 'left',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {pending ? 'CONFIRM RESIGN' : 'RESIGN'}
     </button>
   )
 }

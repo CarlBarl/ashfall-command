@@ -54,16 +54,23 @@ function MissileTooltipView({ missile, x, y }: { missile: Missile; x: number; y:
 }
 
 function UnitTooltip({ unit, x, y }: { unit: ViewUnit; x: number; y: number }) {
+  const detected = unit.visibility === 'detected'
+  const identified = unit.visibility === 'identified'
   return (
     <div style={tooltipStyle(x, y)}>
       <div style={headerStyle}>{unit.name}</div>
+      {unit.stale && <div style={staleBannerStyle}>TRACK LOST — LAST KNOWN POSITION</div>}
       <Row label="Nation" value={unit.nation.toUpperCase()} />
       <Row label="Type" value={unit.category.replace(/_/g, ' ')} />
-      <Row label="Status" value={unit.status} highlight />
-      <Row label="Health" value={`${unit.health}%`} highlight />
-      <Row label="ROE" value={unit.roe.replace(/_/g, ' ')} />
-      {unit.speed_kts > 0 && <Row label="Speed" value={`${unit.speed_kts} kts`} />}
-      {unit.weapons.length > 0 && (
+      {!detected && (
+        <>
+          <Row label="Status" value={unit.status} highlight />
+          <Row label="Health" value={`${unit.health}%`} highlight />
+          {identified && <Row label="ROE" value={unit.roe.replace(/_/g, ' ')} />}
+          {unit.speed_kts > 0 && <Row label="Speed" value={`${unit.speed_kts} kts`} />}
+        </>
+      )}
+      {identified && unit.weapons.length > 0 && (
         <>
           <div style={{ borderTop: '1px solid var(--border-default)', margin: '4px 0' }} />
           {unit.weapons.map(w => {
@@ -76,6 +83,12 @@ function UnitTooltip({ unit, x, y }: { unit: ViewUnit; x: number; y: number }) {
               />
             )
           })}
+        </>
+      )}
+      {unit.visibility === 'tracked' && (
+        <>
+          <div style={{ borderTop: '1px solid var(--border-default)', margin: '4px 0' }} />
+          <div style={{ color: 'var(--text-muted)' }}>NO LOADOUT DATA</div>
         </>
       )}
     </div>
@@ -118,4 +131,11 @@ const headerStyle: React.CSSProperties = {
   marginBottom: 4,
   paddingBottom: 3,
   borderBottom: '1px solid var(--border-default)',
+}
+
+const staleBannerStyle: React.CSSProperties = {
+  color: 'var(--status-damaged)',
+  fontWeight: 600,
+  letterSpacing: '0.04em',
+  padding: '1px 0 3px',
 }

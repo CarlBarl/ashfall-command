@@ -44,6 +44,8 @@ export default function UnitInfoPanel({ units }: UnitInfoPanelProps) {
   if (!unit) return null
 
   const isFriendly = unit.nation === playerNation
+  const detected = unit.visibility === 'detected'
+  const identified = unit.visibility === 'identified'
   // Same gate shipping.ts uses for drone interdiction
   const isDroneCapable = unit.weapons.some((w) => w.weaponId.includes('shahed'))
   const droneMission: DroneMission = unit.droneMission ?? 'military'
@@ -54,33 +56,47 @@ export default function UnitInfoPanel({ units }: UnitInfoPanelProps) {
       onClose={() => selectUnit(null)}
       style={{ position: 'absolute', top: 60, right: 12 }}
     >
-      {/* Status + Health */}
+      {/* Status + Health — scrubbed to placeholders below 'tracked', so don't show them */}
       <div style={{ marginBottom: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{
-            color: STATUS_COLORS[unit.status] ?? 'var(--text-secondary)',
+            color: detected ? 'var(--text-muted)' : STATUS_COLORS[unit.status] ?? 'var(--text-secondary)',
             textTransform: 'uppercase',
             fontSize: 'var(--font-size-xs)',
             fontWeight: 600,
           }}>
-            {unit.status}
+            {detected ? 'contact' : unit.status}
           </span>
           <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)' }}>
             {unit.nation.toUpperCase()} / {unit.category.replace(/_/g, ' ')}
           </span>
         </div>
-        <StatBar label="HEALTH" value={unit.health} max={100} color={healthColor(unit.health)} />
+        {!detected && (
+          <StatBar label="HEALTH" value={unit.health} max={100} color={healthColor(unit.health)} />
+        )}
       </div>
+
+      {unit.stale && (
+        <div style={{
+          color: 'var(--status-damaged)',
+          fontSize: 'var(--font-size-xs)',
+          fontWeight: 600,
+          letterSpacing: '0.05em',
+          marginBottom: 6,
+        }}>
+          TRACK LOST — LAST KNOWN POSITION
+        </div>
+      )}
 
       {/* Position */}
       <Row label="POSITION" value={`${unit.position.lat.toFixed(2)}N, ${unit.position.lng.toFixed(2)}E`} />
       {unit.speed_kts > 0 && <Row label="SPEED" value={`${unit.speed_kts} kts`} />}
-      <Row label="ROE" value={unit.roe.replace(/_/g, ' ').toUpperCase()} />
+      {identified && <Row label="ROE" value={unit.roe.replace(/_/g, ' ').toUpperCase()} />}
       {unit.mine_count != null && <Row label="MINES" value={`${unit.mine_count}`} />}
       {unit.radius_km != null && <Row label="RADIUS" value={`${unit.radius_km} km`} />}
 
       {/* Weapons */}
-      {unit.weapons.length > 0 && (
+      {identified && unit.weapons.length > 0 && (
         <div style={{ marginTop: 8 }}>
           <div style={{
             fontSize: 'var(--font-size-xs)',
@@ -104,6 +120,21 @@ export default function UnitInfoPanel({ units }: UnitInfoPanelProps) {
               />
             )
           })}
+        </div>
+      )}
+      {unit.visibility === 'tracked' && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{
+            fontSize: 'var(--font-size-xs)',
+            color: 'var(--text-muted)',
+            textTransform: 'uppercase',
+            marginBottom: 4,
+          }}>
+            Armament
+          </div>
+          <div style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)' }}>
+            NO LOADOUT DATA
+          </div>
         </div>
       )}
 

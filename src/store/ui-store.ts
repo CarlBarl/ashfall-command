@@ -4,6 +4,20 @@ import type { MapMode } from '@/styles/map-providers'
 
 export type LeftPanel = 'orbat' | 'stats' | 'economy' | null
 
+export interface MapFocus {
+  lng: number
+  lat: number
+  zoom?: number
+  /** Increments per request so refocusing the same spot still triggers consumers */
+  nonce: number
+}
+
+export interface AutoPauseSettings {
+  warDeclared: boolean
+  ownUnitDestroyed: boolean
+  ceasefireOffered: boolean
+}
+
 interface UIState {
   // Selection
   selectedUnitIds: Set<UnitId>
@@ -27,6 +41,12 @@ interface UIState {
   // Right-side panels (independent toggles)
   showIntel: boolean
 
+  // Camera focus request (consumed by GameMap)
+  mapFocus: MapFocus | null
+
+  // Auto-pause triggers (session-only, applied by AlertFeed)
+  autoPause: AutoPauseSettings
+
   // Actions — selection
   selectUnit: (id: UnitId | null) => void
   toggleUnitSelection: (id: UnitId) => void
@@ -48,6 +68,12 @@ interface UIState {
 
   // Right-side panels
   toggleIntel: () => void
+
+  // Camera focus
+  focusMap: (lng: number, lat: number, zoom?: number) => void
+
+  // Auto-pause
+  toggleAutoPause: (key: keyof AutoPauseSettings) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -64,6 +90,8 @@ export const useUIStore = create<UIState>((set) => ({
   showStats: false,
   showEconomy: false,
   showIntel: false,
+  mapFocus: null,
+  autoPause: { warDeclared: true, ownUnitDestroyed: true, ceasefireOffered: true },
 
   // Selection
   selectUnit: (id) => set({
@@ -97,6 +125,14 @@ export const useUIStore = create<UIState>((set) => ({
   toggleIntelCoverage: () => set((s) => ({ showIntelCoverage: !s.showIntelCoverage })),
 
   toggleIntel: () => set((s) => ({ showIntel: !s.showIntel })),
+
+  focusMap: (lng, lat, zoom) => set((s) => ({
+    mapFocus: { lng, lat, zoom, nonce: (s.mapFocus?.nonce ?? 0) + 1 },
+  })),
+
+  toggleAutoPause: (key) => set((s) => ({
+    autoPause: { ...s.autoPause, [key]: !s.autoPause[key] },
+  })),
 
   // Panels — radio group
   setLeftPanel: (panel) => set({

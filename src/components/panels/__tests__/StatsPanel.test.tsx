@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { computeNationStats } from '../StatsPanel'
-import type { GameEvent } from '@/types/game'
-import type { ViewUnit } from '@/types/view'
+import { render, screen } from '@testing-library/react'
+import StatsPanel, { computeNationStats } from '../StatsPanel'
+import { useGameStore } from '@/store/game-store'
+import type { GameEvent, Nation } from '@/types/game'
+import type { GameViewState, ViewUnit } from '@/types/view'
 
-function makeUnit(id: string, nation: string): ViewUnit {
+function makeUnit(id: string, nation: string, overrides: Partial<ViewUnit> = {}): ViewUnit {
   return {
     id,
     name: id,
@@ -25,6 +27,7 @@ function makeUnit(id: string, nation: string): ViewUnit {
     subordinateIds: [],
     visibility: 'identified',
     stale: false,
+    ...overrides,
   } as ViewUnit
 }
 
@@ -69,5 +72,66 @@ describe('computeNationStats interception rate', () => {
     expect(iran.missilesLaunched).toBe(4)
     expect(iran.missilesIncoming).toBe(2)
     expect(iran.missilesIntercepted).toBe(0)
+  })
+})
+
+function setStore(units: ViewUnit[], eventLog: GameEvent[] = []) {
+  const viewState: GameViewState = {
+    playerNation: 'usa',
+    initialized: true,
+    time: { tick: 0, timestamp: 0, speed: 0, tickIntervalMs: 100 },
+    nations: [
+      { id: 'usa', name: 'United States' } as Nation,
+      { id: 'iran', name: 'Iran' } as Nation,
+    ],
+    units,
+    missiles: [],
+    supplyLines: [],
+    shippingLanes: [],
+    events: [],
+    pendingEventCount: 0,
+    satelliteDetectedUnitIds: [],
+    warSupport: {},
+    gameOver: null,
+    objectives: [],
+  }
+  useGameStore.setState({ viewState, eventLog, visualTimestamp: 0, lastUpdateRealMs: 0, visualRate: 0 })
+}
+
+describe('StatsPanel under fog of war', () => {
+  const offensive = { weaponId: 'tomahawk', count: 5, maxCount: 10, reloadTimeSec: 60 }
+  const sam = { weaponId: 'pac3_mse', count: 8, maxCount: 16, reloadTimeSec: 60 }
+
+  it('labels the enemy unit count as Contacts, own side stays Active', () => {
+    setStore([
+      makeUnit('usa_base', 'usa'),
+      makeUnit('iran_c1', 'iran', { visibility: 'detected', stale: true }),
+      makeUnit('iran_c2', 'iran', { visibility: 'tracked' }),
+    ])
+    render(<StatsPanel />)
+    expect(screen.getByText('Active')).toBeTruthy()
+    expect(screen.getByText('Contacts')).toBeTruthy()
+    expect(screen.getByText(/EST\. ORBAT: 2 contacts/)).toBeTruthy()
+  })
+
+  it('replaces enemy inventory bars with the contact summary even when loadout data exists', () => {
+    setStore([
+      makeUnit('usa_base', 'usa', { weapons: [offensive, sam] }),
+      makeUnit('iran_id', 'iran', { weapons: [offensive, sam] }),
+    ])
+    render(<StatsPanel />)
+    expect(screen.getAllByText('Offensive Missiles')).toHaveLength(1)
+    expect(screen.getAllByText('SAM Interceptors')).toHaveLength(1)
+    expect(screen.getByText(/EST\. ORBAT: 1 contact/)).toBeTruthy()
+  })
+
+  it('keeps observed fired / shot-down counters for both sides', () => {
+    setStore(
+      [makeUnit('usa_base', 'usa'), makeUnit('iran_tel', 'iran', { visibility: 'tracked' })],
+      [launched('iran_tel', 'usa_base', 1)],
+    )
+    render(<StatsPanel />)
+    expect(screen.getAllByText('Fired (offensive)')).toHaveLength(2)
+    expect(screen.getAllByText('Shot down (AD)')).toHaveLength(2)
   })
 })

@@ -15,7 +15,7 @@ function radarHorizon(antennaHeightM: number, targetHeightM: number): number {
 }
 
 /** Check line-of-sight between two points using elevation grid */
-function hasLineOfSight(
+export function hasLineOfSight(
   radarPos: Position, radarAltM: number,
   targetLat: number, targetLng: number, targetAltM: number,
   grid: ElevationGrid,
