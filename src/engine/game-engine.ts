@@ -29,6 +29,7 @@ import { shippingLanes as defaultShippingLanes } from '@/data/shipping/shipping-
 import { processVisibility, resetVisibilityState, seedInitialVisibility, getViewVisibility, contactDisplayName, type ViewVisibility } from './systems/visibility'
 import { processWarSupport, resetWarSupportState, offerCeasefire, acceptCeasefire, resign, getWarSupport, getObjectives } from './systems/war-support'
 import { processIntel, initIntelState, resetIntelState, taskSatellitePass, taskAgent, restAgent, exfiltrateAgent, opsecSweep, maybeLeakStrike, paranoiaBand } from './systems/intel'
+import { processAirOps, initAirWings, resetAirOpsState, setAirMissionCounter, launchAirMission, cancelAirMission, setSurgeOps, surgeActive, getAirMissionsView } from './systems/air-ops'
 import type { IntelViewState } from '@/types/view'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
@@ -139,6 +140,9 @@ export class GameEngine {
     // Intel suite: ISR assets, HUMINT roster, counterintel meters
     initIntelState(this.state)
 
+    // Air war: squadron pools on carriers/airbases
+    initAirWings(this.state)
+
     // Initialize satellite constellations (only for modern scenarios with USA/Iran)
     if (this.state.nations.usa && this.state.nations.iran) {
       this.initSatellites()
@@ -190,6 +194,9 @@ export class GameEngine {
 
     // Intel suite: satellite taskings, SIGINT intercepts, HUMINT, counterintel
     processIntel(state, this.rng, this.elevationGrid)
+
+    // Air operations: mission lifecycle, CAP intercepts, strikes, RTB
+    processAirOps(state, this.rng, this.elevationGrid)
 
     // Political will: war-support drains, ceasefire logic, capitulation, objectives
     processWarSupport(state)
@@ -394,6 +401,18 @@ export class GameEngine {
         if (unit) unit.emcon = cmd.emcon
         break
       }
+      case 'LAUNCH_AIR_MISSION': {
+        launchAirMission(state, this.rng, cmd)
+        break
+      }
+      case 'CANCEL_AIR_MISSION': {
+        cancelAirMission(state, cmd.missionId)
+        break
+      }
+      case 'SET_SURGE_OPS': {
+        setSurgeOps(state, cmd.enabled)
+        break
+      }
     }
   }
 
@@ -463,6 +482,8 @@ export class GameEngine {
       gameOver: state.gameOver ?? null,
       objectives: getObjectives(state),
       intel: this.getIntelViewState(),
+      airMissions: getAirMissionsView(state, state.playerNation),
+      surgeOps: surgeActive(state),
     }
   }
 
@@ -500,6 +521,8 @@ export class GameEngine {
       gameOver: s.gameOver ?? null,
       intel: s.intel ?? null,
       scheduledLaunches: s.scheduledLaunches ?? [],
+      airMissions: s.airMissions ?? [],
+      surgeOps: s.surgeOps ?? null,
       units: Array.from(s.units.entries()),
       missiles: Array.from(s.missiles.entries()),
       supplyLines: Array.from(s.supplyLines.entries()),
@@ -544,9 +567,14 @@ export class GameEngine {
       gameOver: raw.gameOver ?? undefined,
       intel: raw.intel ?? undefined,
       scheduledLaunches: raw.scheduledLaunches ?? undefined,
+      airMissions: raw.airMissions ?? undefined,
+      surgeOps: raw.surgeOps ?? undefined,
     }
     // Saves from before the intel suite get a fresh roster
     if (!this.state.intel) initIntelState(this.state)
+    // Saves from before the air war get wings stood up fresh
+    if (!this.state.airMissions) initAirWings(this.state)
+    setAirMissionCounter(this.state)
     // Backfill shipping lanes for old saves that didn't have them
     if (!raw.shippingLanes || raw.shippingLanes.length === 0) {
       for (const lane of defaultShippingLanes) {
@@ -594,6 +622,7 @@ export class GameEngine {
     resetWarSupportState()
     resetIntelState()
     resetDetectionCache()
+    resetAirOpsState()
   }
 
   /** Set up satellite constellations for each nation */
@@ -726,5 +755,7 @@ function toViewUnit(u: Unit, vis: ViewVisibility, playerNation: NationId): ViewU
     emcon: isOwn ? u.emcon : undefined,
     // isDecoy itself NEVER leaks — only the revealed verdict (own decoys are always known)
     decoyRevealed: (isOwn ? u.isDecoy : u.decoyRevealed) || undefined,
+    // Squadron pools are own-side knowledge; enemy strength estimates come from BDA only
+    airWing: isOwn && u.airWing ? u.airWing.map(s => ({ ...s, readyAt: [...s.readyAt] })) : undefined,
   }
 }

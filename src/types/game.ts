@@ -156,6 +156,10 @@ export interface Unit {
   isDecoy?: boolean
   /** Set once the enemy has positively identified this decoy (NIIRS 7+ pass, HUMINT, or BDA) */
   decoyRevealed?: boolean
+  /** Carrier groups + airbases: squadron pools (air war v5) */
+  airWing?: SquadronState[]
+  /** Flight units only — mission bookkeeping */
+  flightMeta?: { missionId: string; bingoTick: number; rtbTo: UnitId; a2aShots: number }
 }
 
 export interface WeaponStock {
@@ -363,6 +367,10 @@ export interface GameState {
   intel?: IntelState
   /** Salvo rounds awaiting their dueTick — drained by processScheduledLaunches each tick */
   scheduledLaunches?: ScheduledLaunch[]
+  /** Air war v5: live + planned air missions */
+  airMissions?: AirMission[]
+  /** Air war v5: SURGE OPS lever — 96 h halved ready times, then ×1.5 sustained */
+  surgeOps?: { enabled: boolean; activatedTick?: number }
 }
 
 export type GameEvent =
@@ -384,6 +392,11 @@ export type GameEvent =
   | { type: 'CEASEFIRE_OFFERED'; by: NationId; tick: number }
   | { type: 'CEASEFIRE_REJECTED'; by: NationId; tick: number }
   | { type: 'WAR_ENDED'; outcome: 'ceasefire' | 'capitulation'; loser?: NationId; tick: number }
+  | { type: 'AIR_MISSION_LAUNCHED'; missionId: string; kind: AirMissionKind; flightName: string; tick: number }
+  | { type: 'FLIGHT_ON_STATION'; missionId: string; flightName: string; tick: number }
+  | { type: 'FLIGHT_RTB'; missionId: string; flightName: string; reason: string; tick: number }
+  | { type: 'FLIGHT_LOST'; missionId?: string; flightName: string; airframesLost: number; pilotFate: PilotFate; tick: number }
+  | { type: 'AIR_INTERCEPT'; attackerName: string; defenderName: string; kills: number; tick: number }
   | { type: 'AUTO_ENGAGEMENT'; unitId: UnitId; targetId: UnitId; weaponName: string; count: number; quality: TrackQuality; tick: number }
   | { type: 'MISSILE_MISSED'; missileId: string; targetId: UnitId; tick: number }
   | { type: 'MISSILE_CRASHED'; missileId: string; position?: Position; tick: number }
@@ -468,6 +481,48 @@ export interface AgentSource {
   exposure: number
   lastTaskedTick: number
   exfilCompleteTick?: number
+}
+
+// ---------------------------------------------------------------------------
+// Air war v5 — design: docs/plans/air-war-v5.md
+// ---------------------------------------------------------------------------
+
+export type AirframeId = 'fa18e' | 'f35c' | 'ea18g' | 'e2d' | 'f14' | 'mig29' | 'su24' | 'su35'
+
+export interface SquadronState {
+  id: string
+  name: string
+  airframe: AirframeId
+  /** Airframes on the books (parked ones are strikeable via airbase damage) */
+  total: number
+  /** Ready to launch right now */
+  available: number
+  /** Ticks when turning-around airframes rejoin `available` */
+  readyAt: number[]
+}
+
+export type AirMissionKind = 'cap' | 'strike' | 'aew'
+export type AirMissionStatus = 'planning' | 'active' | 'complete' | 'aborted'
+export type PilotFate = 'kia' | 'rescued' | 'pow'
+
+export interface AirMission {
+  id: string
+  kind: AirMissionKind
+  nation: NationId
+  squadronId: string
+  fromUnitId: UnitId
+  flightSize: number
+  station?: Position
+  targetId?: UnitId
+  /** EA-18G pair attached (USA): SAM detect/pk ×0.6 near the flight, emitting SAMs become contacts */
+  escortSead?: boolean
+  /** Buddy tanking: +35% radius, costs 2 extra fa18e sorties */
+  extendedRange?: boolean
+  status: AirMissionStatus
+  createdTick: number
+  /** Strike missions only — launch window opens here (2-6 h planning) */
+  planningCompleteTick?: number
+  flightUnitId?: UnitId
 }
 
 export interface IntelState {

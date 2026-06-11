@@ -1,4 +1,4 @@
-import type { GameTime, IntelBudget, NationId, Position, ROE, TrackQuality, UnitId, WeaponId } from './game'
+import type { AirMissionKind, GameTime, IntelBudget, NationId, Position, ROE, TrackQuality, UnitId, WeaponId } from './game'
 
 export type Command =
   | { type: 'MOVE_UNIT'; unitId: UnitId; waypoints: Position[] }
@@ -20,3 +20,6 @@ export type Command =
   | { type: 'EXFILTRATE_AGENT'; agentId: string }
   | { type: 'OPSEC_SWEEP' }
   | { type: 'SET_EMCON'; unitId: UnitId; emcon: boolean }
+  | { type: 'LAUNCH_AIR_MISSION'; kind: AirMissionKind; squadronId: string; fromUnitId: UnitId; flightSize: number; station?: Position; targetId?: UnitId; escortSead?: boolean; extendedRange?: boolean }
+  | { type: 'CANCEL_AIR_MISSION'; missionId: string }
+  | { type: 'SET_SURGE_OPS'; enabled: boolean }

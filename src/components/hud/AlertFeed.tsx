@@ -436,6 +436,11 @@ function eventColor(e: GameEvent): string {
     case 'CEASEFIRE_OFFERED': return 'var(--status-ready)'
     case 'CEASEFIRE_REJECTED': return 'var(--text-muted)'
     case 'WAR_ENDED': return 'var(--status-ready)'
+    case 'AIR_MISSION_LAUNCHED': return 'var(--status-moving)'
+    case 'FLIGHT_ON_STATION': return 'var(--status-ready)'
+    case 'FLIGHT_RTB': return 'var(--text-secondary)'
+    case 'FLIGHT_LOST': return 'var(--status-damaged)'
+    case 'AIR_INTERCEPT': return 'var(--status-engaged)'
     case 'AUTO_ENGAGEMENT': return 'var(--status-engaged)'
     case 'MISSILE_MISSED': return 'var(--text-muted)'
     case 'MISSILE_CRASHED': return 'var(--text-muted)'
@@ -570,6 +575,16 @@ function formatEvent(e: GameEvent, names: Map<string, string>, lanes: Map<string
       return e.outcome === 'capitulation'
         ? `T+${e.tick} WAR ENDED: ${(e.loser ?? '').toUpperCase()} CAPITULATED`
         : `T+${e.tick} WAR ENDED: CEASEFIRE`
+    case 'AIR_MISSION_LAUNCHED':
+      return `T+${e.tick} ${e.kind.toUpperCase()} AIRBORNE: ${e.flightName}`
+    case 'FLIGHT_ON_STATION':
+      return `T+${e.tick} ON STATION: ${e.flightName}`
+    case 'FLIGHT_RTB':
+      return `T+${e.tick} RTB: ${e.flightName} (${e.reason})`
+    case 'FLIGHT_LOST':
+      return `T+${e.tick} FLIGHT LOST: ${e.flightName} — ${e.airframesLost} airframe(s), pilot ${e.pilotFate.toUpperCase()}`
+    case 'AIR_INTERCEPT':
+      return `T+${e.tick} AIR ENGAGEMENT: ${e.attackerName} vs ${e.defenderName}${e.kills > 0 ? ` — ${e.kills} kill(s)` : ' — no kill'}`
     case 'AUTO_ENGAGEMENT':
       return `T+${e.tick} ENGAGING ${unitName(e.targetId, names)}: ${e.weaponName} x${e.count}${e.quality === 'datalink' ? ' [LINK]' : ''}`
     case 'MISSILE_MISSED':

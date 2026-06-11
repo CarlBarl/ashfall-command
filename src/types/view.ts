@@ -1,5 +1,6 @@
 import type {
   AgentSource,
+  AirMission,
   GameEvent,
   GameOverReport,
   GameTime,
@@ -14,6 +15,7 @@ import type {
   SatTasking,
   Sensor,
   ShippingLane,
+  SquadronState,
   SupplyLine,
   UnitCategory,
   UnitId,
@@ -68,6 +70,10 @@ export interface GameViewState {
   objectives: ObjectiveStatus[]
   /** Intel suite: assets, sources, products, counterintel meters (player nation only) */
   intel: IntelViewState
+  /** Air war: the player's missions (engine always supplies; optional to spare fixtures) */
+  airMissions?: AirMission[]
+  /** SURGE OPS lever state */
+  surgeOps?: boolean
 }
 
 export interface ViewUnit {
@@ -101,6 +107,8 @@ export interface ViewUnit {
   stale: boolean
   /** Own units: radar silent (EMCON) */
   emcon?: boolean
+  /** Own carriers/airbases: squadron pools (never exposed for enemy units) */
+  airWing?: SquadronState[]
   /** Enemy contacts: positively identified as a decoy */
   decoyRevealed?: boolean
 }
