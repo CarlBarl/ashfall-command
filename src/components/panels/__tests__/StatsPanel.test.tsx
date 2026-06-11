@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import StatsPanel, { computeNationStats } from '../StatsPanel'
+import StatsPanel, { computeNationStats, computeArsenal } from '../StatsPanel'
 import { useGameStore } from '@/store/game-store'
 import type { GameEvent, Nation } from '@/types/game'
 import type { GameViewState, ViewUnit } from '@/types/view'
@@ -72,6 +72,57 @@ describe('computeNationStats interception rate', () => {
     expect(iran.missilesLaunched).toBe(4)
     expect(iran.missilesIncoming).toBe(2)
     expect(iran.missilesIntercepted).toBe(0)
+  })
+})
+
+describe('computeArsenal', () => {
+  it('sums loaded weapons, base reserves and industry rate per weapon type', () => {
+    const ship = makeUnit('usa_ship', 'usa', {
+      weapons: [
+        { weaponId: 'tomahawk', count: 40, maxCount: 60, reloadTimeSec: 0 },
+        { weaponId: 'sm6', count: 80, maxCount: 96, reloadTimeSec: 0 },
+      ],
+    })
+    const base = makeUnit('usa_base', 'usa', {
+      category: 'airbase',
+      supplyStocks: [
+        { weaponId: 'tomahawk', count: 96, maxCount: 96, productionRate: 1 },
+        { weaponId: 'jassm_er', count: 32, maxCount: 32, productionRate: 0.5 },
+      ],
+    })
+    const destroyedBase = makeUnit('usa_dead', 'usa', {
+      status: 'destroyed',
+      supplyStocks: [{ weaponId: 'tomahawk', count: 50, maxCount: 50, productionRate: 5 }],
+    })
+    const enemy = makeUnit('iran_tel', 'iran', {
+      weapons: [{ weaponId: 'fateh110', count: 12, maxCount: 12, reloadTimeSec: 0 }],
+    })
+
+    const rows = computeArsenal([ship, base, destroyedBase, enemy], 'usa')
+
+    const tomahawk = rows.find(r => r.weaponId === 'tomahawk')
+    expect(tomahawk).toMatchObject({ deployed: 40, deployedMax: 60, reserve: 96, prodPerHour: 1 })
+    const jassm = rows.find(r => r.weaponId === 'jassm_er')
+    expect(jassm).toMatchObject({ deployed: 0, reserve: 32, prodPerHour: 0.5 })
+    // Destroyed bases produce nothing; enemy weapons never appear
+    expect(rows.find(r => r.weaponId === 'fateh110')).toBeUndefined()
+    // Sorted by total stock descending
+    expect(rows[0].weaponId).toBe('tomahawk')
+  })
+
+  it('renders the arsenal table with industry total for the player nation', () => {
+    setStore([
+      makeUnit('usa_base', 'usa', {
+        category: 'airbase',
+        weapons: [{ weaponId: 'tomahawk', count: 10, maxCount: 20, reloadTimeSec: 0 }],
+        supplyStocks: [{ weaponId: 'tomahawk', count: 96, maxCount: 96, productionRate: 1 }],
+      }),
+    ])
+    render(<StatsPanel />)
+    expect(screen.getByText('ARSENAL')).toBeTruthy()
+    expect(screen.getByText('INDUSTRY +1/h')).toBeTruthy()
+    expect(screen.getAllByText('10/20').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('96')).toBeTruthy()
   })
 })
 

@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import Panel from '@/components/common/Panel'
 import StatBar from '@/components/common/StatBar'
 import { useGameStore } from '@/store/game-store'
@@ -82,6 +83,137 @@ export function computeNationStats(
   }
 }
 
+export interface ArsenalRow {
+  weaponId: string
+  name: string
+  deployed: number
+  deployedMax: number
+  reserve: number
+  prodPerHour: number
+}
+
+/** Per-weapon national arsenal: loaded on units + reserve at bases + industry rate */
+export function computeArsenal(units: ViewUnit[], nationId: NationId): ArsenalRow[] {
+  const rows = new Map<string, ArsenalRow>()
+  const row = (weaponId: string): ArsenalRow => {
+    let r = rows.get(weaponId)
+    if (!r) {
+      r = {
+        weaponId,
+        name: weaponSpecs[weaponId]?.name ?? weaponId,
+        deployed: 0,
+        deployedMax: 0,
+        reserve: 0,
+        prodPerHour: 0,
+      }
+      rows.set(weaponId, r)
+    }
+    return r
+  }
+
+  for (const unit of units) {
+    if (unit.nation !== nationId || unit.status === 'destroyed') continue
+    for (const w of unit.weapons) {
+      const r = row(w.weaponId)
+      r.deployed += w.count
+      r.deployedMax += w.maxCount
+    }
+    for (const s of unit.supplyStocks) {
+      const r = row(s.weaponId)
+      r.reserve += s.count
+      r.prodPerHour += s.productionRate
+    }
+  }
+
+  return Array.from(rows.values()).sort(
+    (a, b) => (b.deployed + b.reserve) - (a.deployed + a.reserve),
+  )
+}
+
+function ArsenalTable({ units, nationId }: { units: ViewUnit[]; nationId: NationId }) {
+  const rows = computeArsenal(units, nationId)
+  if (rows.length === 0) return null
+  const totalProd = rows.reduce((sum, r) => sum + r.prodPerHour, 0)
+
+  const cell: CSSProperties = {
+    fontSize: 'var(--font-size-xs)',
+    fontFamily: 'var(--font-mono)',
+    padding: '1px 4px',
+    textAlign: 'right',
+    whiteSpace: 'nowrap',
+  }
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: 6,
+        borderBottom: '1px solid var(--border-default)',
+        marginBottom: 2,
+        paddingBottom: 2,
+      }}>
+        <span style={{
+          color: 'var(--text-secondary)',
+          fontWeight: 700,
+          fontSize: 'var(--font-size-xs)',
+          letterSpacing: '0.06em',
+        }}>
+          ARSENAL
+        </span>
+        <span style={{ flex: 1 }} />
+        <span style={{ color: totalProd > 0 ? 'var(--status-ready)' : 'var(--text-muted)', fontSize: 'var(--font-size-xs)' }}>
+          INDUSTRY {totalProd > 0 ? `+${formatRate(totalProd)}/h` : 'IDLE'}
+        </span>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th style={{ ...cell, textAlign: 'left', color: 'var(--text-muted)', fontWeight: 400 }}>TYPE</th>
+            <th style={{ ...cell, color: 'var(--text-muted)', fontWeight: 400 }}>LOADED</th>
+            <th style={{ ...cell, color: 'var(--text-muted)', fontWeight: 400 }}>RESERVE</th>
+            <th style={{ ...cell, color: 'var(--text-muted)', fontWeight: 400 }}>IND.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.weaponId}>
+              <td style={{
+                ...cell,
+                textAlign: 'left',
+                color: 'var(--text-primary)',
+                maxWidth: 110,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}>
+                {r.name}
+              </td>
+              <td style={{
+                ...cell,
+                color: r.deployed === 0 ? 'var(--status-damaged)'
+                  : r.deployed < r.deployedMax * 0.25 ? 'var(--status-engaged)'
+                    : 'var(--text-primary)',
+              }}>
+                {r.deployed}/{r.deployedMax}
+              </td>
+              <td style={{ ...cell, color: r.reserve > 0 ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
+                {r.reserve}
+              </td>
+              <td style={{ ...cell, color: r.prodPerHour > 0 ? 'var(--status-ready)' : 'var(--text-muted)' }}>
+                {r.prodPerHour > 0 ? `+${formatRate(r.prodPerHour)}` : '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function formatRate(rate: number): string {
+  return Number.isInteger(rate) ? String(rate) : rate.toFixed(1)
+}
+
 function ModernNationBlock({ nationId, nationLabel, units, events, isPlayer }: { nationId: NationId; nationLabel: string; units: ViewUnit[]; events: GameEvent[]; isPlayer: boolean }) {
   const stats = computeNationStats(units, events, nationId)
   const activeUnits = stats.total - stats.destroyed
@@ -126,6 +258,7 @@ function ModernNationBlock({ nationId, nationLabel, units, events, isPlayer }: {
               color="var(--status-ready)"
             />
           )}
+          <ArsenalTable units={units} nationId={nationId} />
         </>
       ) : (
         // Enemy inventories are not knowable under fog — known contacts only
