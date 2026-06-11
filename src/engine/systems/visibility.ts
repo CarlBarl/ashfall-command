@@ -13,7 +13,7 @@ import type {
 import type { ElevationGrid } from './elevation'
 import type { SensorNetwork } from './sensor-network'
 import type { EspionageResult } from './espionage'
-import { hasLineOfSight, radarHorizon } from './detection'
+import { hasLineOfSight, elevationRangeBonus, targetProminenceBonus } from './detection'
 import { isDatalinkConnected } from './sensor-network'
 import { getSatelliteDetections, pointToLineDistKm, DETECTION_FADE_TICKS } from './satellites'
 import { haversine, bearing } from '../utils/geo'
@@ -150,7 +150,7 @@ function evaluateSources(state: GameState, espionage: EspionageResult | null, gr
         if ((meta.get(unit.id)?.humintUntil ?? 0) > tick) {
           best = 'identified'
         }
-        if (best === 'unseen' && isElintDetected(ownSensorUnits, unit, sigintMultiplier)) {
+        if (best === 'unseen' && isElintDetected(ownSensorUnits, unit, sigintMultiplier, grid)) {
           best = 'detected'
         }
       }
@@ -191,25 +191,27 @@ function radarContactLevel(ownRadars: Unit[], target: Unit, grid: ElevationGrid 
 
 /**
  * Can a single unit's radar see a target unit right now?
- * Models nominal range, the radar horizon (earth curvature), the antenna's
- * sector arc relative to the unit's heading, and terrain line-of-sight.
+ * Radar coverage is its nominal radius, stretched by height: a high-sited
+ * radar reaches further (elevation bonus) and a high-sitting target stands
+ * out and is spotted further away (prominence). Sector arcs and terrain
+ * line-of-sight still apply.
  */
 export function radarSeesUnit(radar: Unit, target: Unit, grid: ElevationGrid | null): VisibilityLevel {
   if (radar.status === 'destroyed' || radar.emcon) return 'unseen'
   const dist = haversine(radar.position, target.position)
   const targetAltAglM = targetHeightM(target.category)
 
+  const radarSiteElev = grid?.getElevation(radar.position.lat, radar.position.lng) ?? 0
+  const targetSiteElev = grid?.getElevation(target.position.lat, target.position.lng) ?? 0
+  const prominence = targetProminenceBonus(targetSiteElev + targetAltAglM)
+
   let best: VisibilityLevel = 'unseen'
   for (const s of radar.sensors) {
     if (s.type !== 'radar' || s.range_km <= 0) continue
-    if (dist > s.range_km) continue
 
     const antennaHeight = s.antenna_height_m ?? DEFAULT_ANTENNA_HEIGHT_M
-
-    // Earth curvature: low antennas can't see surface targets far away no matter
-    // the radar's nominal range. This is what makes AWACS the long-range eyes.
-    const horizonKm = radarHorizon(antennaHeight, targetAltAglM)
-    if (dist > horizonKm) continue
+    const effRange = s.range_km * elevationRangeBonus(radarSiteElev + antennaHeight) * prominence
+    if (dist > effRange) continue
 
     // Sector arc relative to the unit's heading
     const sectorDeg = s.sector_deg ?? 360
@@ -220,14 +222,14 @@ export function radarSeesUnit(radar: Unit, target: Unit, grid: ElevationGrid | n
     }
 
     if (grid) {
-      const radarAltM = grid.getElevation(radar.position.lat, radar.position.lng) + antennaHeight
-      const targetAltM = grid.getElevation(target.position.lat, target.position.lng) + targetAltAglM
+      const radarAltM = radarSiteElev + antennaHeight
+      const targetAltM = targetSiteElev + targetAltAglM
       if (!hasLineOfSight(radar.position, radarAltM, target.position.lat, target.position.lng, targetAltM, grid)) {
         continue
       }
     }
 
-    if (dist <= s.range_km * RADAR_IDENTIFY_FRACTION) return 'identified'
+    if (dist <= effRange * RADAR_IDENTIFY_FRACTION) return 'identified'
     best = 'tracked'
   }
   return best
@@ -244,14 +246,20 @@ function satelliteContactLevel(nation: Nation, unit: Unit, tick: number): Visibi
   return 'detected'
 }
 
-function isElintDetected(ownSensorUnits: Unit[], emitter: Unit, sigintMultiplier: number): boolean {
+function isElintDetected(ownSensorUnits: Unit[], emitter: Unit, sigintMultiplier: number, grid: ElevationGrid | null): boolean {
   if (emitter.emcon) return false // radar silent — nothing to intercept
   let radarRange = 0
+  let antennaHeight = DEFAULT_ANTENNA_HEIGHT_M
   for (const s of emitter.sensors) {
-    if (s.type === 'radar' && s.range_km > radarRange) radarRange = s.range_km
+    if (s.type === 'radar' && s.range_km > radarRange) {
+      radarRange = s.range_km
+      antennaHeight = s.antenna_height_m ?? DEFAULT_ANTENNA_HEIGHT_M
+    }
   }
   if (radarRange <= 0) return false
-  const elintRange = radarRange * sigintMultiplier
+  // The flip side of height: an elevated emitter shines further — easier to intercept
+  const emitterElev = grid?.getElevation(emitter.position.lat, emitter.position.lng) ?? 0
+  const elintRange = radarRange * sigintMultiplier * elevationRangeBonus(emitterElev + antennaHeight)
   for (const own of ownSensorUnits) {
     if (haversine(own.position, emitter.position) <= elintRange) return true
   }

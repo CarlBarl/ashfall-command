@@ -1,6 +1,6 @@
 import type { GameState, Missile, NationId, UnitId, Unit } from '@/types/game'
 import type { ElevationGrid } from './elevation'
-import { detectThreats, type DetectedThreat } from './detection'
+import { detectThreats, elevationRangeBonus, type DetectedThreat } from './detection'
 import { haversine } from '../utils/geo'
 
 // ---------------------------------------------------------------------------
@@ -154,7 +154,10 @@ export function buildSensorNetwork(
       // Check each enemy radar sensor
       for (const sensor of enemy.sensors) {
         if (sensor.type !== 'radar') continue
-        const elintRange = sensor.range_km * 1.5 // emissions detectable at 1.5x radar range
+        // Emissions detectable at 1.5x radar range; elevated emitters shine further
+        const emitterElev = grid?.getElevation(enemy.position.lat, enemy.position.lng) ?? 0
+        const elintRange = sensor.range_km * 1.5 *
+          elevationRangeBonus(emitterElev + (sensor.antenna_height_m ?? 15))
         const dist = haversine(unit.position, enemy.position)
         if (dist <= elintRange) {
           // Add enemy unit to ELINT detections for detecting unit's nation

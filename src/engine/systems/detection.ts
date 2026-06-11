@@ -9,9 +9,18 @@ export interface DetectedThreat {
   timeToImpactMs: number
 }
 
-/** Radar horizon distance in km using 4/3 earth refraction model */
-export function radarHorizon(antennaHeightM: number, targetHeightM: number): number {
-  return 4.12 * (Math.sqrt(Math.max(0, antennaHeightM)) + Math.sqrt(Math.max(0, targetHeightM)))
+/**
+ * Height pays: a radar sited high (terrain + antenna/airframe) reaches further.
+ * +50% range at 10 km of total height. Replaces the old hard radar-horizon cap —
+ * radar coverage is otherwise its nominal radius (design decision 2026-06-11).
+ */
+export function elevationRangeBonus(heightM: number): number {
+  return 1 + 0.5 * Math.min(1, Math.max(0, heightM) / 10000)
+}
+
+/** High targets stand out against the sky: spotted at up to +30% range at 8 km height */
+export function targetProminenceBonus(heightM: number): number {
+  return 1 + 0.3 * Math.min(1, Math.max(0, heightM) / 8000)
 }
 
 /** Check line-of-sight between two points using elevation grid */
@@ -66,25 +75,24 @@ export function detectThreats(state: GameState, adUnit: Unit, grid?: ElevationGr
       if (rcs < 1.0) effectiveRange *= Math.min(1.0, Math.sqrt(rcs))
     }
 
-    // Radar horizon caps detection range for low-altitude targets
-    // (replaces the old flat altitude modifier — horizon is physics-based)
+    // Low flyers hide in surface clutter — harder to pick up, but no hard horizon cap
+    if (spec) {
+      if (spec.flight_altitude_ft < 500) effectiveRange *= 0.4
+      else if (spec.flight_altitude_ft < 5000) effectiveRange *= 0.7
+    }
+
     if (grid) {
       const radarElevation = grid.getElevation(adUnit.position.lat, adUnit.position.lng)
       const antennaHeight = adUnit.sensors.find(s => s.type === 'radar')?.antenna_height_m ?? 15
       const radarAltM = radarElevation + antennaHeight
       const targetAltM = missile.altitude_m ?? 50
 
-      const horizonKm = radarHorizon(radarAltM, targetAltM)
-      // Horizon caps effective range — not a hard cutoff on distance
-      effectiveRange = Math.min(effectiveRange, horizonKm)
+      // High-sited radars reach further
+      effectiveRange *= elevationRangeBonus(radarAltM)
 
       // Terrain masking is a hard check — mountains physically block radar
       if (dist <= effectiveRange &&
           !hasLineOfSight(adUnit.position, radarAltM, currentPos[1], currentPos[0], targetAltM, grid)) continue
-    } else if (spec) {
-      // Fallback: old altitude modifiers when no elevation grid
-      if (spec.flight_altitude_ft < 500) effectiveRange *= 0.4
-      else if (spec.flight_altitude_ft < 5000) effectiveRange *= 0.7
     }
 
     // Sector check — skip targets outside radar's coverage arc

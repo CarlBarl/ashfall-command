@@ -10,8 +10,6 @@ const TEXT_OUTLINE: [number, number, number, number] = [13, 17, 23, 220]
 const TICKS_PER_GAME_MINUTE = 60
 const AOU_MAX_RADIUS_KM = 60
 const TASKING_SWATH_KM = 60
-const RADAR_HORIZON_COEF = 4.12
-const SURFACE_TARGET_HEIGHT_M = 20
 const ADSB_HEADING_TICK_KM = 3.5
 
 const AOU_AMBER: [number, number, number, number] = [212, 168, 84, 128]
@@ -60,8 +58,9 @@ export function aouRadiusKm(minutesStale: number): number {
   return Math.min(AOU_MAX_RADIUS_KM, 4 + minutesStale * 0.5)
 }
 
-export function radarHorizonKm(antennaHeightM: number): number {
-  return RADAR_HORIZON_COEF * (Math.sqrt(antennaHeightM) + Math.sqrt(SURFACE_TARGET_HEIGHT_M))
+/** Mirrors the engine's elevationRangeBonus: +50% radar range at 10 km of antenna height */
+export function effectiveRadarRangeKm(rangeKm: number, antennaHeightM: number): number {
+  return rangeKm * (1 + 0.5 * Math.min(1, Math.max(0, antennaHeightM) / 10000))
 }
 
 interface AouDatum {
@@ -107,7 +106,7 @@ export function createAouLayers(
   ]
 }
 
-/** Radar rings for the selected own unit: solid at the surface horizon, dashed at nominal range */
+/** Radar rings for the selected own unit: solid at effective range, dashed at nominal when boosted */
 export function createSensorRingLayers(selected: ViewUnit | undefined): Layer[] {
   if (!selected || selected.emcon === true || selected.status === 'destroyed') return []
   const radars = (selected.sensors ?? []).filter((s) => s.type === 'radar')
@@ -117,9 +116,10 @@ export function createSensorRingLayers(selected: ViewUnit | undefined): Layer[] 
   const solid: { path: LngLat[] }[] = []
   const dashed: { path: LngLat[] }[] = []
   for (const radar of radars) {
-    const horizon = radarHorizonKm(radar.antenna_height_m ?? 15)
-    solid.push({ path: circlePath(lng, lat, Math.min(radar.range_km, horizon)) })
-    if (radar.range_km > horizon) {
+    const effective = effectiveRadarRangeKm(radar.range_km, radar.antenna_height_m ?? 15)
+    solid.push({ path: circlePath(lng, lat, effective) })
+    // High-sited radars overshoot their nominal radius — show the baseline dashed
+    if (effective > radar.range_km * 1.02) {
       for (const path of dashedCirclePaths(lng, lat, radar.range_km, 48)) dashed.push({ path })
     }
   }
