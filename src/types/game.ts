@@ -372,6 +372,7 @@ export type GameEvent =
   | { type: 'WAR_ENDED'; outcome: 'ceasefire' | 'capitulation'; loser?: NationId; tick: number }
   | { type: 'AUTO_ENGAGEMENT'; unitId: UnitId; targetId: UnitId; weaponName: string; count: number; quality: TrackQuality; tick: number }
   | { type: 'MISSILE_MISSED'; missileId: string; targetId: UnitId; tick: number }
+  | { type: 'MISSILE_CRASHED'; missileId: string; position?: Position; tick: number }
   | { type: 'ORDER_REJECTED'; unitId: UnitId; reason: string; tick: number }
   | { type: 'SATELLITE_PASS_COMPLETE'; assetId: string; target: Position; found: number; revealedDecoys: number; tick: number }
   | { type: 'SATELLITE_PASS_FAILED'; assetId: string; target: Position; cloudPct: number; tick: number }

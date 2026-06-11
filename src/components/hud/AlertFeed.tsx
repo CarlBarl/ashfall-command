@@ -438,6 +438,7 @@ function eventColor(e: GameEvent): string {
     case 'WAR_ENDED': return 'var(--status-ready)'
     case 'AUTO_ENGAGEMENT': return 'var(--status-engaged)'
     case 'MISSILE_MISSED': return 'var(--text-muted)'
+    case 'MISSILE_CRASHED': return 'var(--text-muted)'
     case 'ORDER_REJECTED': return 'var(--text-muted)'
     case 'SATELLITE_PASS_COMPLETE': return 'var(--status-ready)'
     case 'SATELLITE_PASS_FAILED': return 'var(--text-muted)'
@@ -502,6 +503,8 @@ function eventPosition(
     case 'SATELLITE_PASS_COMPLETE':
     case 'SATELLITE_PASS_FAILED':
       return e.target
+    case 'MISSILE_CRASHED':
+      return e.position ?? null
     case 'INTERCEPT_DECRYPTED':
       return e.aboutUnitId ? (unitPositions.get(e.aboutUnitId) ?? null) : null
     case 'DECOY_REVEALED':
@@ -559,6 +562,8 @@ function formatEvent(e: GameEvent, names: Map<string, string>, lanes: Map<string
       return `T+${e.tick} ENGAGING ${unitName(e.targetId, names)}: ${e.weaponName} x${e.count}${e.quality === 'datalink' ? ' [LINK]' : ''}`
     case 'MISSILE_MISSED':
       return `T+${e.tick} MISS: ${unitName(e.targetId, names)} evaded (stale track)`
+    case 'MISSILE_CRASHED':
+      return `T+${e.tick} MISSILE DOWN: fuel exhausted en route`
     case 'ORDER_REJECTED':
       return `T+${e.tick} ORDER REJECTED: ${unitName(e.unitId, names)} — ${e.reason}`
     case 'SATELLITE_PASS_COMPLETE':

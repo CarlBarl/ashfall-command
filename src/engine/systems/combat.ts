@@ -141,6 +141,7 @@ export function processCombat(state: GameState, rng: SeededRNG, elevationGrid?: 
 
 function updateMissileFuel(state: GameState): void {
   const toRemove: string[] = []
+  const events: GameEvent[] = []
 
   for (const missile of state.missiles.values()) {
     if (missile.status !== 'inflight') continue
@@ -161,9 +162,16 @@ function updateMissileFuel(state: GameState): void {
         toRemove.push(missile.id)
       } else if (spec.type === 'cruise_missile' || spec.type === 'ashm' || spec.type === 'loitering_munition') {
         // Cruise missiles: speed decays and altitude drops (handled in speed/altitude updates)
-        // If altitude has reached 0 or below, crash
+        // If altitude has reached 0 or below, crash — loudly, a vanished missile reads as a bug
         if (missile.altitude_m <= 0) {
           toRemove.push(missile.id)
+          const pos = getCurrentMissilePosition(missile, state.time.timestamp)
+          events.push({
+            type: 'MISSILE_CRASHED',
+            missileId: missile.id,
+            position: pos ? { lng: pos[0], lat: pos[1] } : undefined,
+            tick: state.time.tick,
+          })
         }
       }
       // Ballistic missiles: fuel only matters in boost phase, midcourse/terminal are unpowered
@@ -173,6 +181,8 @@ function updateMissileFuel(state: GameState): void {
   for (const id of toRemove) {
     state.missiles.delete(id)
   }
+
+  emitEvents(state, events)
 }
 
 // ===============================================
@@ -296,13 +306,22 @@ function updateMissileAltitudes(state: GameState, elevationGrid?: ElevationGrid 
         missile.altitude_m = (progress / 0.15) * peakAltM * 0.5
       } else if (progress < 0.7) {
         missile.phase = 'midcourse'
-        // Parabolic arc peaking at midpoint
+        // Arc from boost burnout (0.5×peak) through apogee and back — must match the
+        // boost/terminal endpoints, or altitude snaps to ground level at the phase
+        // seams (rendered as the missile crashing into terrain mid-flight)
         const midProgress = (progress - 0.15) / 0.55
-        missile.altitude_m = peakAltM * (1 - 4 * (midProgress - 0.5) ** 2)
+        missile.altitude_m = peakAltM * (0.5 + 0.5 * (1 - 4 * (midProgress - 0.5) ** 2))
       } else {
         missile.phase = 'terminal'
         const termProgress = (progress - 0.7) / 0.3
-        missile.altitude_m = peakAltM * (1 - termProgress) * 0.5
+        // The dive ends at the TARGET's ground elevation, not sea level — targets on
+        // high plateaus had the last seconds of the dive underground
+        let groundM = 0
+        if (elevationGrid) {
+          const tgt = state.units.get(missile.targetId)
+          if (tgt) groundM = Math.max(0, elevationGrid.getElevation(tgt.position.lat, tgt.position.lng))
+        }
+        missile.altitude_m = groundM + Math.max(0, peakAltM * 0.5 - groundM) * (1 - termProgress)
       }
     } else {
       // Cruise missiles fly at constant low altitude while fueled
@@ -921,9 +940,10 @@ export function launchMissile(
     timestamps = generateTimestamps(state.time.timestamp, flightTimeMs, numSegments)
   }
 
-  // Fuel duration: range_km / (speed_kmh / 3600) = seconds of burn
+  // Fuel duration: range_km / (speed_kmh / 3600) = seconds of burn, with a 15%
+  // reserve so terrain detours and waypoint legs don't starve max-range shots
   const speedKmPerSec = machToKmh(spec.speed_mach) / 3600
-  const fuelSec = spec.range_km / speedKmPerSec
+  const fuelSec = (spec.range_km / speedKmPerSec) * 1.15
 
   const id = `m_${++missileCounter}`
   const missile: Missile = {
