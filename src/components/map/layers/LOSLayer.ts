@@ -58,8 +58,33 @@ const NUM_RAYS = 360
 /** Step size along each ray in km */
 const STEP_KM = 2
 
-/** Coverage is shown against a low-flying air target this far above ground */
-const TARGET_AGL_M = 100
+/** Coverage is shown against an air target this far above ground — high enough
+ *  that desert dunes and coastal berms don't shadow rays, only real mountains */
+const TARGET_AGL_M = 500
+
+/** Median window (± rays) — kills single-ray needles from elevation-grid aliasing */
+const SMOOTH_WINDOW = 2
+
+function medianOf(values: number[]): number {
+  const s = [...values].sort((a, b) => a - b)
+  return s[Math.floor(s.length / 2)]
+}
+
+/** Median-smooth ray distances; circular wrap for full rings, clamped for sectors */
+function smoothDistances(dists: number[], circular: boolean): number[] {
+  const n = dists.length
+  if (n < SMOOTH_WINDOW * 2 + 1) return dists
+  const out = new Array<number>(n)
+  for (let i = 0; i < n; i++) {
+    const window: number[] = []
+    for (let o = -SMOOTH_WINDOW; o <= SMOOTH_WINDOW; o++) {
+      const j = circular ? (i + o + n) % n : Math.min(n - 1, Math.max(0, i + o))
+      window.push(dists[j])
+    }
+    out[i] = medianOf(window)
+  }
+  return out
+}
 
 /**
  * Compute the radar coverage polygon by raycasting from the radar position.
@@ -88,11 +113,11 @@ export function computeLOSPolygon(input: LOSInput): Feature<Polygon> {
   const latPerKm = 1 / 110.574
   const lngPerKm = 1 / (111.32 * Math.cos((position.lat * Math.PI) / 180))
 
-  /** Raycast a single bearing: farthest distance where a 100 m AGL target is
-   *  still visible over all terrain passed so far. Bare-ground visibility was
-   *  the old criterion — it let every 30 m coastal berm shadow the whole ray
-   *  and drew spiky fans instead of coverage arcs. */
-  const castRay = (bearing: number): [number, number] => {
+  /** Raycast a single bearing: farthest distance (km) where a TARGET_AGL_M
+   *  target is still visible over all terrain passed so far. Bare-ground
+   *  visibility was the old criterion — it let every 30 m coastal berm shadow
+   *  the whole ray and drew spiky fans instead of coverage arcs. */
+  const castRayDistance = (bearing: number): number => {
     const rad = (bearing * Math.PI) / 180
     const northPerKm = Math.cos(rad)
     const eastPerKm = Math.sin(rad)
@@ -121,23 +146,25 @@ export function computeLOSPolygon(input: LOSInput): Feature<Polygon> {
       }
     }
 
-    if (maxVisibleDist_km <= 0) {
-      return origin
-    }
+    return maxVisibleDist_km
+  }
+
+  const pointAt = (bearing: number, dist_km: number): [number, number] => {
+    if (dist_km <= 0) return origin
+    const rad = (bearing * Math.PI) / 180
     return [
-      position.lng + maxVisibleDist_km * eastPerKm * lngPerKm,
-      position.lat + maxVisibleDist_km * northPerKm * latPerKm,
+      position.lng + dist_km * Math.sin(rad) * lngPerKm,
+      position.lat + dist_km * Math.cos(rad) * latPerKm,
     ]
   }
 
   const ring: [number, number][] = []
 
   if (sectorDeg >= 360) {
-    // Full circle — existing 360° behavior
-    for (let ray = 0; ray < NUM_RAYS; ray++) {
-      const bearing = (ray * 360) / NUM_RAYS
-      ring.push(castRay(bearing))
-    }
+    // Full circle
+    const bearings = Array.from({ length: NUM_RAYS }, (_, ray) => (ray * 360) / NUM_RAYS)
+    const dists = smoothDistances(bearings.map(castRayDistance), true)
+    for (let i = 0; i < bearings.length; i++) ring.push(pointAt(bearings[i], dists[i]))
     // Close the polygon ring
     ring.push(ring[0])
   } else {
@@ -146,14 +173,12 @@ export function computeLOSPolygon(input: LOSInput): Feature<Polygon> {
     const endAngle = heading + sectorDeg / 2
     const numRays = Math.max(3, Math.round(sectorDeg)) // ~1 ray per degree within sector
 
+    const bearings = Array.from({ length: numRays + 1 }, (_, i) => startAngle + (i / numRays) * (endAngle - startAngle))
+    const dists = smoothDistances(bearings.map(castRayDistance), false)
+
     // Start at radar position (center of wedge)
     ring.push(origin)
-
-    for (let i = 0; i <= numRays; i++) {
-      const azimuth = startAngle + (i / numRays) * (endAngle - startAngle)
-      ring.push(castRay(azimuth))
-    }
-
+    for (let i = 0; i < bearings.length; i++) ring.push(pointAt(bearings[i], dists[i]))
     // Close back to radar position
     ring.push(origin)
   }
