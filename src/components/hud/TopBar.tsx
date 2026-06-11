@@ -3,6 +3,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
 import { useIntelStore } from '@/store/intel-store'
+import { useMenuStore } from '@/store/menu-store'
 import { sendCommand, getFullState, loadState } from '@/store/bridge'
 import { saveToSlot, loadFromSlot } from '@/store/save-load'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -66,6 +67,38 @@ function multLabel(mult: number): string {
   return mult >= 1 ? `×${Math.round(mult)}` : `×${mult.toFixed(1)}`
 }
 
+const WAR_CONFIRM_MS = 5_000
+const EXIT_CONFIRM_MS = 4_000
+
+// Two-step confirm state with a wall-clock auto-disarm (UI-side only, never engine time)
+function useArmedCountdown(durationMs: number) {
+  const [remainingMs, setRemainingMs] = useState<number | null>(null)
+  const deadlineRef = useRef(0)
+  const armed = remainingMs !== null
+
+  useEffect(() => {
+    if (!armed) return
+    const id = setInterval(() => {
+      const left = deadlineRef.current - Date.now()
+      setRemainingMs(left > 0 ? left : null)
+    }, 100)
+    return () => clearInterval(id)
+  }, [armed])
+
+  const arm = useCallback(() => {
+    deadlineRef.current = Date.now() + durationMs
+    setRemainingMs(durationMs)
+  }, [durationMs])
+  const disarm = useCallback(() => setRemainingMs(null), [])
+
+  return {
+    armed,
+    secondsLeft: remainingMs === null ? 0 : Math.ceil(remainingMs / 1000),
+    arm,
+    disarm,
+  }
+}
+
 export default function TopBar() {
   const isMobile = useIsMobile()
   const rngFilter = useUIStore((s) => s.rngFilter)
@@ -101,7 +134,7 @@ export default function TopBar() {
   const hasUnits = units.length > 0
 
   const [showHelp, setShowHelp] = useState(false)
-  const [warClickPending, setWarClickPending] = useState(false)
+  const warConfirm = useArmedCountdown(WAR_CONFIRM_MS)
   const [offerClickPending, setOfferClickPending] = useState(false)
   const [roeOpen, setRoeOpen] = useState(false)
   const [overflowOpen, setOverflowOpen] = useState(false)
@@ -147,12 +180,12 @@ export default function TopBar() {
 
   const handleDeclareWar = () => {
     if (!primaryEnemyNation) return
-    if (!warClickPending) {
-      setWarClickPending(true)
+    if (!warConfirm.armed) {
+      warConfirm.arm()
       return
     }
+    warConfirm.disarm()
     sendCommand({ type: 'DECLARE_WAR', target: primaryEnemyNation.id })
-    setWarClickPending(false)
   }
 
   const handleOfferCeasefire = () => {
@@ -248,7 +281,7 @@ export default function TopBar() {
               }}>
                 WAR
               </span>
-            ) : !warClickPending ? (
+            ) : !warConfirm.armed ? (
               <button
                 onClick={handleDeclareWar}
                 style={{
@@ -269,7 +302,7 @@ export default function TopBar() {
             ) : (
               <button
                 onClick={handleDeclareWar}
-                onBlur={() => setWarClickPending(false)}
+                onBlur={warConfirm.disarm}
                 style={{
                   background: 'var(--status-damaged)',
                   border: '2px solid var(--status-damaged)',
@@ -283,7 +316,7 @@ export default function TopBar() {
                   whiteSpace: 'nowrap',
                 }}
               >
-                CONFIRM
+                {`CONFIRM ${warConfirm.secondsLeft}`}
               </button>
             )}
 
@@ -635,10 +668,10 @@ export default function TopBar() {
           {!atWarWithPrimaryEnemy && primaryEnemyNation && (
             <button
               onClick={handleDeclareWar}
-              onBlur={() => setWarClickPending(false)}
+              onBlur={warConfirm.disarm}
               style={{
-                background: warClickPending ? 'var(--status-damaged)' : 'var(--iran-secondary)',
-                border: warClickPending
+                background: warConfirm.armed ? 'var(--status-damaged)' : 'var(--iran-secondary)',
+                border: warConfirm.armed
                   ? '2px solid var(--status-damaged)'
                   : '1px solid var(--iran-primary)',
                 borderRadius: 3,
@@ -651,7 +684,7 @@ export default function TopBar() {
                 whiteSpace: 'nowrap',
               }}
             >
-              {warClickPending ? 'CONFIRM WAR' : 'DECLARE WAR'}
+              {warConfirm.armed ? `CONFIRM WAR ${warConfirm.secondsLeft}` : 'DECLARE WAR'}
             </button>
           )}
         </div>
@@ -714,6 +747,7 @@ export default function TopBar() {
                   {atWarWithPrimaryEnemy && (
                     <OverflowResign onDone={() => setOverflowOpen(false)} />
                   )}
+                  <OverflowMainMenu onDone={() => setOverflowOpen(false)} />
                 </div>
               )}
             </div>
@@ -922,6 +956,51 @@ function OverflowResign({ onDone }: { onDone: () => void }) {
       }}
     >
       {pending ? 'CONFIRM RESIGN' : 'RESIGN'}
+    </button>
+  )
+}
+
+// Same return-to-menu flow as DebriefScreen's MAIN MENU button
+function exitToMainMenu() {
+  useStrikeStore.getState().reset()
+  useIntelStore.getState().reset()
+  const ui = useUIStore.getState()
+  ui.clearSelection()
+  ui.setLeftPanel(null)
+  useUIStore.setState({ showIntel: false })
+  useMenuStore.getState().setScreen('start')
+}
+
+function OverflowMainMenu({ onDone }: { onDone: () => void }) {
+  const confirm = useArmedCountdown(EXIT_CONFIRM_MS)
+  return (
+    <button
+      onClick={() => {
+        if (!confirm.armed) {
+          confirm.arm()
+          return
+        }
+        confirm.disarm()
+        onDone()
+        exitToMainMenu()
+      }}
+      style={{
+        background: confirm.armed ? 'var(--status-engaged)' : 'var(--bg-hover)',
+        border: confirm.armed
+          ? '1px solid var(--status-engaged)'
+          : '1px solid var(--border-default)',
+        borderRadius: 3,
+        color: confirm.armed ? 'var(--bg-primary)' : 'var(--text-secondary)',
+        cursor: 'pointer',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--font-size-xs)',
+        padding: '4px 8px',
+        fontWeight: confirm.armed ? 700 : 400,
+        textAlign: 'left',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {confirm.armed ? 'CONFIRM EXIT?' : 'MAIN MENU'}
     </button>
   )
 }

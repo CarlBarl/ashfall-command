@@ -23,6 +23,8 @@ export interface SensorNetwork {
   sharedDetections: Map<NationId, Map<string, NetworkDetection>>
   /** nation → set of enemy unit IDs detected via ELINT (radar emission interception) */
   elintDetections: Map<NationId, Set<UnitId>>
+  /** unit → its own local detections from step 3 (only units that detected something) */
+  localDetections: Map<UnitId, DetectedThreat[]>
 }
 
 // ---------------------------------------------------------------------------
@@ -34,7 +36,8 @@ export interface SensorNetwork {
  *
  * 1. Find all hubs (units with datalink_range_km > 0, not destroyed)
  * 2. Connect each sensor-capable unit to hubs within datalink range (same nation)
- * 3. Run detectThreats() for each radar unit → local detections
+ * 3. Run detectThreats() for each radar unit → local detections, stashed on the
+ *    network so detectThreatsNetworked doesn't recompute them
  * 4. Propagate detections to the hubs each detector is connected to, then union
  *    every hub's picture into a per-nation common picture. Quality is resolved
  *    per receiving unit at query time (detectThreatsNetworked).
@@ -173,7 +176,7 @@ export function buildSensorNetwork(
     }
   }
 
-  return { connections, hubDetections, sharedDetections, elintDetections }
+  return { connections, hubDetections, sharedDetections, elintDetections, localDetections }
 }
 
 // ---------------------------------------------------------------------------
@@ -201,8 +204,12 @@ export function detectThreatsNetworked(
   const resultMap = new Map<string, NetworkedThreat>()
 
   // --- Own local detections (highest priority) ---
-  const ownThreats = detectThreats(state, adUnit, grid)
+  // Reuse the picture computed in buildSensorNetwork; absent (nothing detected,
+  // or EMCON flipped mid-tick) → fresh call
+  const ownThreats = network.localDetections.get(adUnit.id) ?? detectThreats(state, adUnit, grid)
   for (const threat of ownThreats) {
+    // The stash is a tick-start snapshot — drop missiles resolved since (fuel expiry)
+    if (threat.missile.status !== 'inflight') continue
     resultMap.set(threat.missile.id, {
       ...threat,
       networkQuality: 'own',

@@ -1,9 +1,11 @@
-import type { GameState, GameEvent, NationId, Unit, UnitId } from '@/types/game'
+import type { GameState, GameEvent, NationId, ScheduledLaunch, Unit, UnitId } from '@/types/game'
 import type { GameViewState, ViewUnit } from '@/types/view'
 import type { Command } from '@/types/commands'
 import { SeededRNG } from './utils/rng'
 import { processMovement } from './systems/movement'
+import { resetDetectionCache } from './systems/detection'
 import { processCombat, launchMissile, launchSAM, resetCombatState, setCombatCounters } from './systems/combat'
+import { processScheduledLaunches } from './systems/strike-scheduler'
 import { processAI, resetAIState, orientSAMRadars } from './systems/ai'
 import { processEconomy } from './systems/economy'
 import { processOrders, resetOrdersState } from './systems/orders'
@@ -159,6 +161,9 @@ export class GameEngine {
     // ROE enforcement before combat
     processOrders(state, this.elevationGrid)
 
+    // Engine-side salvo spacing — runs before combat so due rounds join this tick's air picture
+    processScheduledLaunches(state, (entry) => this.fireScheduledLaunch(entry))
+
     processCombat(state, this.rng, this.elevationGrid, this.sensorNetwork)
     processPointDefense(state, this.rng)
     processShipping(state, this.rng)
@@ -279,6 +284,35 @@ export class GameEngine {
         if (cmd.count <= 0) break
 
         const compromised = this.applyStrikeLeak(cmd.launcherId, cmd.targetId, undefined)
+
+        const spacing = cmd.spacingTicks ?? 0
+        if (spacing > 0) {
+          // First round fires now (war declaration + the salvo's single leak roll just
+          // happened); the rest are scheduled on GameState and reuse the same roll.
+          const fired = this.fireScheduledLaunch({
+            dueTick: state.time.tick,
+            launcherId: cmd.launcherId,
+            weaponId: cmd.weaponId,
+            targetId: cmd.targetId,
+            waypoints: cmd.waypoints,
+            compromised,
+          })
+          if (!fired) break // whole salvo would have failed today — don't queue duds
+
+          state.scheduledLaunches ??= []
+          for (let i = 1; i < cmd.count; i++) {
+            state.scheduledLaunches.push({
+              dueTick: state.time.tick + i * spacing,
+              launcherId: cmd.launcherId,
+              weaponId: cmd.weaponId,
+              targetId: cmd.targetId,
+              waypoints: cmd.waypoints,
+              compromised,
+            })
+          }
+          break
+        }
+
         let declaredWar = false
         for (let i = 0; i < cmd.count; i++) {
           const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId, cmd.waypoints, undefined, compromised)
@@ -373,6 +407,28 @@ export class GameEngine {
     return maybeLeakStrike(state, this.rng, targetId)
   }
 
+  /**
+   * Same side effects as the LAUNCH_MISSILE command minus the leak roll — that
+   * happened once when the salvo was commanded and the entry carries the result.
+   */
+  private fireScheduledLaunch(entry: ScheduledLaunch): boolean {
+    const { state } = this
+    // launchMissile doesn't check status — destroyed units keep their loadout
+    const launcher = state.units.get(entry.launcherId)
+    const target = state.units.get(entry.targetId)
+    if (!launcher || launcher.status === 'destroyed') return false
+    if (!target || target.status === 'destroyed') return false
+
+    const event = launchMissile(state, entry.launcherId, entry.weaponId, entry.targetId, entry.waypoints, entry.trackQuality, entry.compromised)
+    if (!event) return false
+
+    if (launcher.nation !== target.nation) {
+      this.declareWar(launcher.nation, target.nation)
+    }
+    this.emitEvent(event)
+    return true
+  }
+
   /** Get serializable snapshot for the main thread */
   getViewState(): GameViewState {
     const { state } = this
@@ -437,6 +493,7 @@ export class GameEngine {
       warStatus: s.warStatus ?? {},
       gameOver: s.gameOver ?? null,
       intel: s.intel ?? null,
+      scheduledLaunches: s.scheduledLaunches ?? [],
       units: Array.from(s.units.entries()),
       missiles: Array.from(s.missiles.entries()),
       supplyLines: Array.from(s.supplyLines.entries()),
@@ -480,6 +537,7 @@ export class GameEngine {
       warStatus: raw.warStatus ?? {},
       gameOver: raw.gameOver ?? undefined,
       intel: raw.intel ?? undefined,
+      scheduledLaunches: raw.scheduledLaunches ?? undefined,
     }
     // Saves from before the intel suite get a fresh roster
     if (!this.state.intel) initIntelState(this.state)
@@ -529,6 +587,7 @@ export class GameEngine {
     resetVisibilityState()
     resetWarSupportState()
     resetIntelState()
+    resetDetectionCache()
   }
 
   /** Set up satellite constellations for each nation */

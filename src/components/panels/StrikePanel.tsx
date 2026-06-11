@@ -26,9 +26,16 @@ const SEVERITY_OPTIONS: { value: Severity; label: string; desc: string }[] = [
 
 const TIMING_OPTIONS: { value: TimingMode; label: string; desc: string }[] = [
   { value: 'simultaneous', label: 'SIMULTANEOUS', desc: 'All at T+0' },
-  { value: 'staggered', label: 'STAGGERED', desc: '30s between tiers' },
-  { value: 'sequential', label: 'SEQUENTIAL', desc: '10min between tiers' },
+  { value: 'staggered', label: 'STAGGERED', desc: '2s between launches' },
+  { value: 'sequential', label: 'SEQUENTIAL', desc: '8s between launches' },
 ]
+
+// Game-seconds between rounds of each salvo — scheduled engine-side, so it respects pause
+const TIMING_SPACING_TICKS: Record<TimingMode, number> = {
+  simultaneous: 0,
+  staggered: 2,
+  sequential: 8,
+}
 
 const TARGET_CATEGORIES: { value: UnitCategory; label: string }[] = [
   { value: 'sam_site', label: 'SAM Sites' },
@@ -825,38 +832,26 @@ function PlanAttackTab() {
     if (!computedPlan || executing) return
     startExecution()
 
-    const strikes = computedPlan.strikes.filter((s) => s.inRange)
-    const tierGroups = new Map<number, PlannedStrike[]>()
-    for (const s of strikes) {
-      const group = tierGroups.get(s.priorityTier) ?? []
-      group.push(s)
-      tierGroups.set(s.priorityTier, group)
-    }
+    // One burst of commands in tier order — spacing happens engine-side in game time
+    const strikes = computedPlan.strikes
+      .filter((s) => s.inRange)
+      .sort((a, b) => a.priorityTier - b.priorityTier)
+    const spacingTicks = TIMING_SPACING_TICKS[planTiming]
 
-    const tiers = Array.from(tierGroups.entries()).sort(([a], [b]) => a - b)
     let fired = 0
     const total = strikes.reduce((s, st) => s + st.count, 0)
 
-    for (let ti = 0; ti < tiers.length; ti++) {
-      const [, tierStrikes] = tiers[ti]
-      if (ti > 0) {
-        const delayMs = planTiming === 'staggered' ? 30_000 :
-                        planTiming === 'sequential' ? 600_000 : 0
-        if (delayMs > 0) {
-          await new Promise((r) => setTimeout(r, Math.min(delayMs / 100, 3000)))
-        }
-      }
-      for (const stk of tierStrikes) {
-        await sendCommand({
-          type: 'LAUNCH_SALVO',
-          launcherId: stk.launcherId,
-          weaponId: stk.weaponId,
-          targetId: stk.targetId,
-          count: stk.count,
-        })
-        fired += stk.count
-        updateProgress(fired / total)
-      }
+    for (const stk of strikes) {
+      await sendCommand({
+        type: 'LAUNCH_SALVO',
+        launcherId: stk.launcherId,
+        weaponId: stk.weaponId,
+        targetId: stk.targetId,
+        count: stk.count,
+        spacingTicks,
+      })
+      fired += stk.count
+      updateProgress(fired / total)
     }
 
     finishExecution()

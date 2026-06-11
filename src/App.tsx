@@ -136,6 +136,8 @@ export default function App() {
           break
         }
         const ui = useUIStore.getState()
+        // Close the topmost registered panel first (ImintViewer capture-stops its own Escape before this runs)
+        if (ui.closeTopPanel()) break
         if (ui.leftPanel !== null || ui.showIntel || strike.open) {
           ui.setLeftPanel(null)
           useUIStore.setState({ showIntel: false })

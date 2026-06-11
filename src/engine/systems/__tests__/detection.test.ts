@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { detectThreats } from '../detection'
+import { detectThreats, resetDetectionCache } from '../detection'
 import type { GameState, Unit, Missile, NationId } from '@/types/game'
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -266,5 +266,135 @@ describe('detectThreats', () => {
     const state = makeState([sam], [missile])
     const threats = detectThreats(state, sam)
     expect(threats.length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('multi-radar units', () => {
+  it('a second omni radar is not constrained by the first radar sector (max+first pairing regression)', () => {
+    // Old code took max(range) across radars but the FIRST radar's sector:
+    // 500km range paired with the short radar's north-facing 90° arc missed this.
+    const sam = makeUnit({
+      id: 'dual_radar',
+      nation: 'usa',
+      position: { lat: 25, lng: 51 },
+      heading: 0, // sectored radar faces north
+      sensors: [
+        { type: 'radar', range_km: 30, detection_prob: 0.95, sector_deg: 90 }, // short, north arc
+        { type: 'radar', range_km: 500, detection_prob: 0.9 },                 // long, omni
+      ],
+    })
+    // ~111km due south: outside the first radar's arc AND beyond its range,
+    // but well inside the second (omni) radar's range
+    const missile = makeMissile({
+      id: 'south_runner',
+      nation: 'iran',
+      path: [[51, 24], [51, 24.1]],
+      timestamps: [1000, 2000],
+    })
+    const state = makeState([sam], [missile])
+    const threats = detectThreats(state, sam)
+    expect(threats).toHaveLength(1)
+    expect(threats[0].missile.id).toBe('south_runner')
+  })
+
+  it('each radar contributes independently (short omni close-in, long sectored at range)', () => {
+    const sam = makeUnit({
+      id: 'dual_radar',
+      nation: 'usa',
+      position: { lat: 25, lng: 51 },
+      heading: 0,
+      sensors: [
+        { type: 'radar', range_km: 30, detection_prob: 0.95 },                 // short, omni
+        { type: 'radar', range_km: 500, detection_prob: 0.9, sector_deg: 90 }, // long, north arc
+      ],
+    })
+    // ~22km south — only the short omni radar covers it (long one looks north)
+    const closeSouth = makeMissile({
+      id: 'close_south',
+      nation: 'iran',
+      path: [[51, 24.8], [51, 24.81]],
+      timestamps: [1000, 2000],
+    })
+    // ~111km north — only the long sectored radar reaches it
+    const farNorth = makeMissile({
+      id: 'far_north',
+      nation: 'iran',
+      path: [[51, 26], [51, 26.1]],
+      timestamps: [1000, 2000],
+      eta: 3000,
+    })
+    const state = makeState([sam], [closeSouth, farNorth])
+    const threats = detectThreats(state, sam)
+    expect(threats.map(t => t.missile.id).sort()).toEqual(['close_south', 'far_north'])
+  })
+})
+
+describe('per-tick memoization', () => {
+  function dualSetup() {
+    const sam = makeUnit({
+      id: 'patriot',
+      nation: 'usa',
+      position: { lat: 25, lng: 51 },
+      sensors: [{ type: 'radar', range_km: 500, detection_prob: 0.95 }],
+    })
+    const missile = makeMissile({
+      id: 'm1',
+      nation: 'iran',
+      path: [[51, 25.2], [51, 25.3]],
+      timestamps: [1000, 2000],
+    })
+    const state = makeState([sam], [missile])
+    return { sam, state }
+  }
+
+  it('returns the identical result within a tick and recomputes next tick', () => {
+    const { sam, state } = dualSetup()
+
+    const first = detectThreats(state, sam)
+    expect(first).toHaveLength(1)
+    // Same tick → same array instance (memoized)
+    expect(detectThreats(state, sam)).toBe(first)
+
+    // A missile added mid-tick is invisible to the memoized snapshot
+    state.missiles.set('m2', makeMissile({
+      id: 'm2',
+      nation: 'iran',
+      path: [[51, 25.2], [51, 25.3]],
+      timestamps: [1000, 2000],
+    }))
+    expect(detectThreats(state, sam)).toBe(first)
+
+    // Next tick recomputes and sees both missiles
+    state.time.tick++
+    const next = detectThreats(state, sam)
+    expect(next).not.toBe(first)
+    expect(next).toHaveLength(2)
+  })
+
+  it('resetDetectionCache forces recomputation within the same tick', () => {
+    const { sam, state } = dualSetup()
+
+    expect(detectThreats(state, sam)).toHaveLength(1)
+    state.missiles.set('m2', makeMissile({
+      id: 'm2',
+      nation: 'iran',
+      path: [[51, 25.2], [51, 25.3]],
+      timestamps: [1000, 2000],
+    }))
+    resetDetectionCache()
+    expect(detectThreats(state, sam)).toHaveLength(2)
+  })
+
+  it('honors a mid-tick EMCON flip despite the memo', () => {
+    const { sam, state } = dualSetup()
+
+    const first = detectThreats(state, sam)
+    expect(first).toHaveLength(1)
+
+    sam.emcon = true
+    expect(detectThreats(state, sam)).toHaveLength(0)
+
+    sam.emcon = false
+    expect(detectThreats(state, sam)).toBe(first)
   })
 })

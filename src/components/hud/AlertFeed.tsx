@@ -466,12 +466,24 @@ function weaponName(id: string): string {
   return weaponSpecs[id]?.name ?? id
 }
 
+const NAME_PARTICLES = new Set(['of', 'the', 'el', 'al'])
+
+// 'bab_el_mandeb' → 'Bab el-Mandeb', 'strait_of_hormuz' → 'Strait of Hormuz'
 function lineName(id: string): string {
-  return id.toUpperCase().replace(/_/g, ' ')
+  return id
+    .split('_')
+    .filter(Boolean)
+    .map((word, i) => {
+      const lower = word.toLowerCase()
+      if (i > 0 && NAME_PARTICLES.has(lower)) return lower
+      return lower.charAt(0).toUpperCase() + lower.slice(1)
+    })
+    .join(' ')
+    .replace(/ (el|al) /g, ' $1-')
 }
 
 function laneName(id: string, lanes: Map<string, string>): string {
-  return (lanes.get(id) ?? lineName(id)).toUpperCase()
+  return lanes.get(id) ?? lineName(id)
 }
 
 function eventPosition(

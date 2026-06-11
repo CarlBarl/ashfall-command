@@ -325,6 +325,18 @@ export interface ShippingLane {
   status: 'open' | 'reduced' | 'blocked'
 }
 
+/** One salvo round queued for a future tick (LAUNCH_SALVO with spacingTicks) */
+export interface ScheduledLaunch {
+  dueTick: number
+  launcherId: UnitId
+  weaponId: WeaponId
+  targetId: UnitId
+  waypoints?: Position[]
+  trackQuality?: TrackQuality
+  /** Result of the salvo command's single leak roll — scheduled rounds never re-roll */
+  compromised?: boolean
+}
+
 export interface GameState {
   /** Which nation the player controls (enemy runs on AI) */
   playerNation: NationId
@@ -349,6 +361,8 @@ export interface GameState {
   gameOver?: GameOverReport
   /** Intel suite v3: ISR assets, HUMINT sources, products, counterintel meters */
   intel?: IntelState
+  /** Salvo rounds awaiting their dueTick — drained by processScheduledLaunches each tick */
+  scheduledLaunches?: ScheduledLaunch[]
 }
 
 export type GameEvent =

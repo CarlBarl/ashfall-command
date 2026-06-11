@@ -1,4 +1,4 @@
-import type { GameState, Missile, Unit, Position } from '@/types/game'
+import type { GameState, Missile, Unit, UnitId, Position } from '@/types/game'
 import type { ElevationGrid } from './elevation'
 import { haversine, bearing } from '../utils/geo'
 import { weaponSpecs } from '@/data/weapons/missiles'
@@ -7,6 +7,23 @@ export interface DetectedThreat {
   missile: Missile
   distKm: number
   timeToImpactMs: number
+}
+
+const DEFAULT_ANTENNA_HEIGHT_M = 15
+
+interface TickMemo {
+  tick: number
+  results: Map<UnitId, DetectedThreat[]>
+}
+
+// detectThreats runs for the same unit up to 3× per tick (sensor network, ROE
+// enforcement, combat); within a tick the inputs are identical, so memoize per
+// (state, tick, unit). Keyed by state object so parallel states (tests) never collide.
+let detectionMemo = new WeakMap<GameState, TickMemo>()
+
+/** Reset module-level state — must be called on save/load (game-engine resetAllSystems) */
+export function resetDetectionCache(): void {
+  detectionMemo = new WeakMap()
 }
 
 /**
@@ -44,16 +61,31 @@ export function hasLineOfSight(
 
 /** For each AD unit, find incoming missiles within detection range */
 export function detectThreats(state: GameState, adUnit: Unit, grid?: ElevationGrid | null): DetectedThreat[] {
+  if (adUnit.sensors.length === 0) return []
+  // EMCON checked before the memo so a mid-tick flip never serves a stale picture
+  if (adUnit.emcon) return []
+
+  let memo = detectionMemo.get(state)
+  if (!memo || memo.tick !== state.time.tick) {
+    memo = { tick: state.time.tick, results: new Map() }
+    detectionMemo.set(state, memo)
+  }
+  const cached = memo.results.get(adUnit.id)
+  if (cached) return cached
+
+  const threats = computeThreats(state, adUnit, grid)
+  memo.results.set(adUnit.id, threats)
+  return threats
+}
+
+function computeThreats(state: GameState, adUnit: Unit, grid?: ElevationGrid | null): DetectedThreat[] {
   const threats: DetectedThreat[] = []
 
-  if (adUnit.sensors.length === 0) return threats
-  if (adUnit.emcon) return threats // radar silent — own detection off, network picture still applies
+  // Sensor.detection_prob is data-only today — no probability roll (see BACKLOG)
+  const radars = adUnit.sensors.filter(s => s.type === 'radar' && s.range_km > 0)
+  if (radars.length === 0) return threats
 
-  const radarRange = Math.max(...adUnit.sensors
-    .filter(s => s.type === 'radar')
-    .map(s => s.range_km))
-
-  if (radarRange <= 0) return threats
+  const siteElevM = grid ? grid.getElevation(adUnit.position.lat, adUnit.position.lng) : 0
 
   for (const missile of state.missiles.values()) {
     if (missile.status !== 'inflight') continue
@@ -63,49 +95,54 @@ export function detectThreats(state: GameState, adUnit: Unit, grid?: ElevationGr
     const currentPos = interpolateMissilePosition(missile, state.time.timestamp)
     if (!currentPos) continue
 
-    const dist = haversine(adUnit.position, { lat: currentPos[1], lng: currentPos[0] })
+    const targetPos = { lat: currentPos[1], lng: currentPos[0] }
+    const dist = haversine(adUnit.position, targetPos)
 
-    // Detection range modified by missile profile
+    // Per-missile range modifiers, shared by every sensor
     const spec = weaponSpecs[missile.weaponId]
-    let effectiveRange = radarRange
-
+    let profileModifier = 1.0
     if (spec) {
       // RCS factor: small targets (drones ~0.1 m²) are harder to detect
       const rcs = spec.rcs_m2 ?? 1.0
-      if (rcs < 1.0) effectiveRange *= Math.min(1.0, Math.sqrt(rcs))
+      if (rcs < 1.0) profileModifier *= Math.min(1.0, Math.sqrt(rcs))
+
+      // Low flyers hide in surface clutter — harder to pick up, but no hard horizon cap
+      if (spec.flight_altitude_ft < 500) profileModifier *= 0.4
+      else if (spec.flight_altitude_ft < 5000) profileModifier *= 0.7
     }
 
-    // Low flyers hide in surface clutter — harder to pick up, but no hard horizon cap
-    if (spec) {
-      if (spec.flight_altitude_ft < 500) effectiveRange *= 0.4
-      else if (spec.flight_altitude_ft < 5000) effectiveRange *= 0.7
-    }
+    const targetAltM = missile.altitude_m ?? 50
 
-    if (grid) {
-      const radarElevation = grid.getElevation(adUnit.position.lat, adUnit.position.lng)
-      const antennaHeight = adUnit.sensors.find(s => s.type === 'radar')?.antenna_height_m ?? 15
-      const radarAltM = radarElevation + antennaHeight
-      const targetAltM = missile.altitude_m ?? 50
+    // The missile is detected if ANY radar sees it — each sensor evaluated with its
+    // own range, antenna height and sector arc (mirrors visibility.ts radarSeesUnit)
+    let seen = false
+    for (const sensor of radars) {
+      let effectiveRange = sensor.range_km * profileModifier
+      const radarAltM = siteElevM + (sensor.antenna_height_m ?? DEFAULT_ANTENNA_HEIGHT_M)
 
       // High-sited radars reach further
-      effectiveRange *= elevationRangeBonus(radarAltM)
+      if (grid) effectiveRange *= elevationRangeBonus(radarAltM)
+
+      if (dist > effectiveRange) continue
+
+      // Sector check — skip targets outside this radar's coverage arc
+      const sectorDeg = sensor.sector_deg ?? 360
+      if (sectorDeg < 360) {
+        const bearingToTarget = bearing(adUnit.position, targetPos)
+        // Normalize difference to [-180, 180]
+        const headingDiff = ((bearingToTarget - adUnit.heading) % 360 + 540) % 360 - 180
+        if (Math.abs(headingDiff) > sectorDeg / 2) continue
+      }
 
       // Terrain masking is a hard check — mountains physically block radar
-      if (dist <= effectiveRange &&
+      if (grid &&
           !hasLineOfSight(adUnit.position, radarAltM, currentPos[1], currentPos[0], targetAltM, grid)) continue
+
+      seen = true
+      break
     }
 
-    // Sector check — skip targets outside radar's coverage arc
-    const sensor = adUnit.sensors.find(s => s.type === 'radar')
-    const sectorDeg = sensor?.sector_deg ?? 360
-    if (sectorDeg < 360) {
-      const bearingToTarget = bearing(adUnit.position, { lat: currentPos[1], lng: currentPos[0] })
-      // Normalize difference to [-180, 180]
-      const headingDiff = ((bearingToTarget - adUnit.heading) % 360 + 540) % 360 - 180
-      if (Math.abs(headingDiff) > sectorDeg / 2) continue
-    }
-
-    if (dist <= effectiveRange) {
+    if (seen) {
       threats.push({
         missile,
         distKm: dist,

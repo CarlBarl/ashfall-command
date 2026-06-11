@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import TopBar from '../TopBar'
 import { useGameStore } from '@/store/game-store'
 import { useUIStore } from '@/store/ui-store'
+import { useMenuStore } from '@/store/menu-store'
 import { sendCommand } from '@/store/bridge'
 import type { GameViewState } from '@/types/view'
 import type { GameEvent, Nation } from '@/types/game'
@@ -96,6 +97,34 @@ describe('TopBar war controls', () => {
     expect(screen.getByText('41%')).toBeTruthy()
   })
 
+  it('sends DECLARE_WAR when confirmed inside the countdown window', () => {
+    render(<TopBar />)
+
+    fireEvent.click(screen.getByText('DECLARE WAR'))
+    expect(sendCommand).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByText(/CONFIRM WAR/))
+    expect(sendCommand).toHaveBeenCalledWith({ type: 'DECLARE_WAR', target: 'iran' })
+  })
+
+  it('shows a live countdown on CONFIRM WAR and disarms when it expires', () => {
+    vi.useFakeTimers()
+    try {
+      render(<TopBar />)
+      fireEvent.click(screen.getByText('DECLARE WAR'))
+      expect(screen.getByText('CONFIRM WAR 5')).toBeTruthy()
+
+      act(() => { vi.advanceTimersByTime(1100) })
+      expect(screen.getByText('CONFIRM WAR 4')).toBeTruthy()
+
+      act(() => { vi.advanceTimersByTime(4000) })
+      expect(screen.getByText('DECLARE WAR')).toBeTruthy()
+      expect(sendCommand).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('sends OFFER_CEASEFIRE only after the two-step confirm', () => {
     setStore(makeViewState({ atWar: true }))
     render(<TopBar />)
@@ -176,6 +205,41 @@ describe('TopBar war controls', () => {
     render(<TopBar />)
     fireEvent.click(screen.getByText('···'))
     expect(screen.queryByText('RESIGN')).toBeNull()
+  })
+})
+
+describe('TopBar main menu exit', () => {
+  beforeEach(() => {
+    useMenuStore.getState().setScreen('playing')
+  })
+
+  it('returns to the main menu only after the two-step confirm', () => {
+    useUIStore.setState({ showIntel: true })
+    render(<TopBar />)
+
+    fireEvent.click(screen.getByText('···'))
+    fireEvent.click(screen.getByText('MAIN MENU'))
+    expect(useMenuStore.getState().screen).toBe('playing')
+
+    fireEvent.click(screen.getByText('CONFIRM EXIT?'))
+    expect(useMenuStore.getState().screen).toBe('start')
+    expect(useUIStore.getState().showIntel).toBe(false)
+  })
+
+  it('disarms CONFIRM EXIT? after 4 seconds without confirming', () => {
+    vi.useFakeTimers()
+    try {
+      render(<TopBar />)
+      fireEvent.click(screen.getByText('···'))
+      fireEvent.click(screen.getByText('MAIN MENU'))
+      expect(screen.getByText('CONFIRM EXIT?')).toBeTruthy()
+
+      act(() => { vi.advanceTimersByTime(4100) })
+      expect(screen.getByText('MAIN MENU')).toBeTruthy()
+      expect(useMenuStore.getState().screen).toBe('playing')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

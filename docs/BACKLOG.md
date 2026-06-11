@@ -35,26 +35,31 @@ shipped in v3 (docs/plans/intel-suite-v3.md) — v3 deferrals listed below.
 
 ## UX debt
 
-- Panels overlap each other (SITREP opens on top of the strike dialog) and have no
-  drag/z-order management; Escape does not close panels.
 - Mobile: LOG tab empty, IntelPanel X needs two taps, direct-fire flow yanks to UNIT panel.
-- Strike timing modes (staggered/sequential) run on wall-clock setTimeout (0.3s/3s) instead of
-  game time, and fire while paused. Honest fix = engine-side scheduled salvos.
 - Shipping lane name/throughput labels are built but never rendered; lanes/minefields have no
   hover/click interactivity.
-- Intel estimate markers are pickable but `moveEstimate`/`confirmEstimate` have no UI path.
-- "BAB EL_MANDEB" event copy; review event vocabulary for raw enum leakage generally.
-- No path back to the main menu from a running game.
-- StartScreen shows a hardcoded stale version/date banner; project naming is split between
-  REALPOLITIK (UI/package/IndexedDB) and Ashfall Command (repo/Vercel).
+- OFFER CEASEFIRE two-step confirm still uses silent blur-disarm — reuse TopBar's
+  useArmedCountdown for consistency with CONFIRM WAR.
+- exitToMainMenu() in TopBar duplicates DebriefScreen's handleMainMenu — extract a shared
+  helper; consider SET_SPEED 0 on exit (worker keeps ticking behind the start screen).
+- Package/IndexedDB internals still named realpolitik (package.json name, save-load DB_NAME,
+  map style ids) — cosmetic, renaming the DB key breaks saves.
 
 ## Smaller deferred fixes
 
 - DIRECT FIRE cluster popup z-order vs strike panel (replaces it on screen).
-- DECLARE WAR confirm silently times out (by design?) — consider a visible countdown.
 - visualTimestamp interpolation assumes nominal worker speed; visual clock can snap back.
-- Multiple radars on one unit: max range paired with first radar's antenna/sector.
-- detectThreats runs twice per radar unit per tick (perf, harmless at current scale).
-- Sensor types sonar/irst/ew have no mechanics; `Sensor.detection_prob` unread.
+- Sensor types sonar/irst/ew have no mechanics; `Sensor.detection_prob` data-only (noted in code).
 - `GameTime.tickIntervalMs` set everywhere, read nowhere (visual interpolation hardcodes 100).
-- Cursor elevation readout tracks mousemove even with ELV overlay off.
+
+## Done 2026-06-11 (backlog wave 1)
+
+- Panels: drag by title bar, click-to-raise z-order, Escape closes topmost, per-title
+  position memory (Panel.tsx + ui-store panels slice).
+- Strike timing engine-side: LAUNCH_SALVO spacingTicks + state.scheduledLaunches queue —
+  pause-safe, save/load-safe, one leak roll per salvo. Staggered/sequential now space
+  rounds within the salvo (2 s/8 s); old 30 s/10 min between-tier delays removed.
+- MAIN MENU in the ··· menu (two-step confirm), CONFIRM WAR visible 5 s countdown,
+  lane/supply-line names prettified (Bab el-Mandeb).
+- Multi-radar pairing fixed (per-sensor range/antenna/sector evaluation), detectThreats
+  per-tick memo (3× → 1× per unit), ELV cursor listener gated on the toggle.

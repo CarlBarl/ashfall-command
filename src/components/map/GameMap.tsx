@@ -518,7 +518,7 @@ export default function GameMap() {
         mapStyle={mapStyle}
         onLoad={onLoad}
         onMove={onMove}
-        onMouseMove={onMouseMove}
+        onMouseMove={showElevation ? onMouseMove : undefined}
         onContextMenu={onContextMenu}
         onClick={onMapClick}
         attributionControl={false}

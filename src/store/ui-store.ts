@@ -18,6 +18,21 @@ export interface AutoPauseSettings {
   ceasefireOffered: boolean
 }
 
+export interface PanelOffset {
+  dx: number
+  dy: number
+}
+
+/** Mutable ref so Panel can swap its close callback without re-registering (which would reset focus order) */
+export interface PanelCloseRef {
+  current: (() => void) | undefined
+}
+
+interface PanelRegistration {
+  closeRef: PanelCloseRef
+  lastFocus: number
+}
+
 interface UIState {
   // Selection
   selectedUnitIds: Set<UnitId>
@@ -54,6 +69,11 @@ interface UIState {
   // Auto-pause triggers (session-only, applied by AlertFeed)
   autoPause: AutoPauseSettings
 
+  // Panel window management (session-only, keyed by panel title)
+  panelOffsets: Record<string, PanelOffset>
+  panelRegistry: Record<string, PanelRegistration>
+  panelFocusCounter: number
+
   // Actions — selection
   selectUnit: (id: UnitId | null) => void
   toggleUnitSelection: (id: UnitId) => void
@@ -86,9 +106,17 @@ interface UIState {
 
   // Auto-pause
   toggleAutoPause: (key: keyof AutoPauseSettings) => void
+
+  // Panel window management
+  setPanelOffset: (title: string, offset: PanelOffset) => void
+  registerPanel: (title: string, closeRef: PanelCloseRef) => void
+  unregisterPanel: (title: string) => void
+  focusPanel: (title: string) => void
+  /** Closes the topmost registered panel that has a close callback; false if none */
+  closeTopPanel: () => boolean
 }
 
-export const useUIStore = create<UIState>((set) => ({
+export const useUIStore = create<UIState>((set, get) => ({
   selectedUnitIds: new Set(),
   selectedUnitId: null,
   hoveredUnitId: null,
@@ -107,6 +135,9 @@ export const useUIStore = create<UIState>((set) => ({
   fmvTargetId: null,
   mapFocus: null,
   autoPause: { warDeclared: true, ownUnitDestroyed: true, ceasefireOffered: true },
+  panelOffsets: {},
+  panelRegistry: {},
+  panelFocusCounter: 0,
 
   // Selection
   selectUnit: (id) => set({
@@ -152,6 +183,48 @@ export const useUIStore = create<UIState>((set) => ({
   toggleAutoPause: (key) => set((s) => ({
     autoPause: { ...s.autoPause, [key]: !s.autoPause[key] },
   })),
+
+  // Panel window management
+  setPanelOffset: (title, offset) => set((s) => ({
+    panelOffsets: { ...s.panelOffsets, [title]: offset },
+  })),
+
+  registerPanel: (title, closeRef) => set((s) => {
+    const counter = s.panelFocusCounter + 1
+    return {
+      panelFocusCounter: counter,
+      panelRegistry: { ...s.panelRegistry, [title]: { closeRef, lastFocus: counter } },
+    }
+  }),
+
+  unregisterPanel: (title) => set((s) => {
+    if (!(title in s.panelRegistry)) return {}
+    const next = { ...s.panelRegistry }
+    delete next[title]
+    return { panelRegistry: next }
+  }),
+
+  focusPanel: (title) => set((s) => {
+    const reg = s.panelRegistry[title]
+    if (!reg) return {}
+    const isTop = Object.values(s.panelRegistry).every((r) => r.lastFocus <= reg.lastFocus)
+    if (isTop) return {}
+    const counter = s.panelFocusCounter + 1
+    return {
+      panelFocusCounter: counter,
+      panelRegistry: { ...s.panelRegistry, [title]: { ...reg, lastFocus: counter } },
+    }
+  }),
+
+  closeTopPanel: () => {
+    let top: PanelRegistration | undefined
+    for (const reg of Object.values(get().panelRegistry)) {
+      if (reg.closeRef.current && (!top || reg.lastFocus > top.lastFocus)) top = reg
+    }
+    if (!top) return false
+    top.closeRef.current?.()
+    return true
+  },
 
   // Panels — radio group
   setLeftPanel: (panel) => set({

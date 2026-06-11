@@ -285,6 +285,40 @@ describe('low-altitude clutter', () => {
   })
 })
 
+describe('multi-radar elevation pairing', () => {
+  it('long-range radar uses its OWN antenna height for the elevation bonus (max+first pairing regression)', () => {
+    const elevations = Array.from({ length: 10 }, () => Array(10).fill(0))
+    const grid = makeGrid(20, 30, 45, 55, 1.0, elevations)
+
+    const sam = makeUnit({
+      id: 'dual_radar',
+      nation: 'usa',
+      position: { lat: 25, lng: 51 },
+      sensors: [
+        { type: 'radar', range_km: 60, detection_prob: 0.95, antenna_height_m: 0 },     // first: short, ground-level
+        { type: 'radar', range_km: 100, detection_prob: 0.9, antenna_height_m: 10000 }, // second: long, elevated
+      ],
+    })
+
+    // ~120km north: beyond the long radar's 100km nominal range, inside
+    // 100 × 1.5 = 150km once ITS 10km antenna earns the full elevation bonus.
+    // Old pairing applied the FIRST radar's 0m antenna (no bonus) → missed.
+    const missile = makeMissile({
+      id: 'edge_runner',
+      nation: 'iran',
+      weaponId: 'test_no_spec', // no weaponSpec → no RCS/clutter modifiers
+      altitude_m: 8000,
+      path: [[51, 26.08], [51, 26.09]],
+      timestamps: [1000, 2000],
+    })
+
+    const state = makeState([sam], [missile])
+    const threats = detectThreats(state, sam, grid)
+    expect(threats).toHaveLength(1)
+    expect(threats[0].missile.id).toBe('edge_runner')
+  })
+})
+
 describe('networked detection', () => {
   it('SAM connected to AWACS can see AWACS-detected threats', () => {
     // AWACS detects a missile far away. SAM within datalink range of AWACS
