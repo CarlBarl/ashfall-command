@@ -44,13 +44,8 @@ function adSystemForInterceptor(interceptorId: WeaponId) {
   return Object.values(adSystems).find((s) => s.interceptorId === interceptorId)
 }
 
-/**
- * AD multiplier: how many missiles we need per target given nearby SAM coverage.
- *
- * Looks at all alive enemy SAM sites within 200 km of the target, sums their
- * fire channels, and returns a saturation factor capped at 4.
- */
-function adMultiplier(target: ViewUnit, enemyUnits: ViewUnit[]): number {
+/** Total SAM fire channels from alive enemy SAM sites within 200 km of the target */
+function fireChannelsCovering(target: ViewUnit, enemyUnits: ViewUnit[]): number {
   let totalFireChannels = 0
 
   for (const eu of enemyUnits) {
@@ -69,6 +64,15 @@ function adMultiplier(target: ViewUnit, enemyUnits: ViewUnit[]): number {
     }
   }
 
+  return totalFireChannels
+}
+
+/**
+ * AD multiplier: how many missiles we need per target given nearby SAM coverage.
+ * Returns a saturation factor capped at 4.
+ */
+function adMultiplier(target: ViewUnit, enemyUnits: ViewUnit[]): number {
+  const totalFireChannels = fireChannelsCovering(target, enemyUnits)
   if (totalFireChannels === 0) return 1.0
   const saturationFactor = 1.0 + totalFireChannels * 0.15
   return Math.min(4.0, saturationFactor)
@@ -463,4 +467,105 @@ function buildSummary(
     estimatedKills,
     warnings,
   }
+}
+
+// ────────────────────────────────────────────────
+//  TOT (time-on-target) scheduling
+// ────────────────────────────────────────────────
+
+/** Scheduling slack so even the longest-flight weapon launches in the future */
+export const TOT_PAD_TICKS = 60
+/** Per-round launch ripple within one launcher/weapon row (1 tick = 1 game-sec) */
+export const TOT_RIPPLE_TICKS = 1
+/** Warn when the earliest launch precedes impact by more than 15 game-min */
+export const TOT_DETECTION_WARNING_TICKS = 900
+/** One intercept attempt per fire channel per this many seconds of impact window */
+export const AD_ENGAGEMENT_CYCLE_SEC = 30
+
+export interface TotScheduleEntry {
+  launcherId: string
+  launcherName: string
+  weaponId: WeaponId
+  weaponName: string
+  targetId: string
+  targetName: string
+  count: number
+  /** First round's launch tick; rounds 1..count-1 follow at +TOT_RIPPLE_TICKS each */
+  dueTick: number
+  flightTimeSec: number
+}
+
+export interface TotSchedule {
+  /** Tick every row's last round impacts on (earlier rounds ripple in just before) */
+  totTick: number
+  /** Sorted by dueTick ascending — longest flight launches first */
+  entries: TotScheduleEntry[]
+  earliestLaunchTick: number
+}
+
+/**
+ * Derive per-row launch ticks so every in-range strike impacts together:
+ * totTick = nowTick + max(flightTime) + TOT_PAD_TICKS, and each row launches at
+ * totTick − ceil(flightTime) − (count−1)·ripple. Sent as LAUNCH_SALVO with
+ * spacingTicks = TOT_RIPPLE_TICKS and delayTicks = dueTick − nowTick.
+ */
+export function computeTotSchedule(plan: AttackPlan, nowTick: number): TotSchedule {
+  const rows = plan.strikes.filter((s) => s.inRange && Number.isFinite(s.flightTimeSec))
+  if (rows.length === 0) {
+    const totTick = nowTick + TOT_PAD_TICKS
+    return { totTick, entries: [], earliestLaunchTick: totTick }
+  }
+
+  const maxFlight = Math.max(...rows.map((s) => Math.ceil(s.flightTimeSec)))
+  const totTick = nowTick + maxFlight + TOT_PAD_TICKS
+
+  const entries: TotScheduleEntry[] = rows.map((s) => ({
+    launcherId: s.launcherId,
+    launcherName: s.launcherName,
+    weaponId: s.weaponId,
+    weaponName: s.weaponName,
+    targetId: s.targetId,
+    targetName: s.targetName,
+    count: s.count,
+    dueTick: Math.max(
+      nowTick + 1,
+      totTick - Math.ceil(s.flightTimeSec) - (s.count - 1) * TOT_RIPPLE_TICKS,
+    ),
+    flightTimeSec: s.flightTimeSec,
+  }))
+
+  entries.sort((a, b) => a.dueTick - b.dueTick)
+  return { totTick, entries, earliestLaunchTick: entries[0].dueTick }
+}
+
+/**
+ * Closed-form leaker estimate (EST): each covering SAM fire channel kills one
+ * inbound missile per AD_ENGAGEMENT_CYCLE_SEC of impact window. A compressed
+ * window means fewer engagement cycles, so more missiles leak through.
+ * Returns the number of missiles expected to penetrate across all targets.
+ */
+export function estimateLeakers(
+  strikes: PlannedStrike[],
+  enemyUnits: ViewUnit[],
+  impactWindowSec: number,
+): number {
+  const cycles = 1 + Math.floor(Math.max(0, impactWindowSec) / AD_ENGAGEMENT_CYCLE_SEC)
+
+  const missilesByTarget = new Map<string, number>()
+  for (const s of strikes) {
+    if (!s.inRange) continue
+    missilesByTarget.set(s.targetId, (missilesByTarget.get(s.targetId) ?? 0) + s.count)
+  }
+
+  let leakers = 0
+  for (const [targetId, missiles] of missilesByTarget) {
+    const target = enemyUnits.find((eu) => eu.id === targetId)
+    if (!target) {
+      leakers += missiles
+      continue
+    }
+    const channels = fireChannelsCovering(target, enemyUnits)
+    leakers += Math.max(0, missiles - channels * cycles)
+  }
+  return leakers
 }

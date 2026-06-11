@@ -22,6 +22,7 @@ import { useMenuStore } from '@/store/menu-store'
 import { useDeploymentStore } from '@/store/deployment-store'
 import { useStrikeStore } from '@/store/strike-store'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { useSoundEffects } from '@/audio/useSoundEffects'
 import { initBridge, initFromData, sendCommand } from '@/store/bridge'
 import { getScenario } from '@/data/scenarios/index'
 
@@ -31,6 +32,8 @@ export default function App() {
   const isMobile = useIsMobile()
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>(null)
   const screen = useMenuStore(s => s.screen)
+
+  useSoundEffects()
 
   useEffect(() => {
     initBridge()

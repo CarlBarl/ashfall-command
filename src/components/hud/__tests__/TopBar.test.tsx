@@ -5,6 +5,7 @@ import { useGameStore } from '@/store/game-store'
 import { useUIStore } from '@/store/ui-store'
 import { useMenuStore } from '@/store/menu-store'
 import { sendCommand } from '@/store/bridge'
+import { audioManager, AUDIO_STORAGE_KEYS } from '@/audio/audio-manager'
 import type { GameViewState } from '@/types/view'
 import type { GameEvent, Nation } from '@/types/game'
 
@@ -240,6 +241,28 @@ describe('TopBar main menu exit', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('TopBar sound toggle', () => {
+  beforeEach(() => {
+    audioManager.setMuted(false)
+    useUIStore.setState({ audioMuted: false })
+  })
+
+  it('toggles mute in the ui-store and persists it', () => {
+    render(<TopBar />)
+    const btn = screen.getByLabelText('Sound on/off')
+    expect(btn.getAttribute('title')).toBe('Sound on/off')
+
+    fireEvent.click(btn)
+    expect(useUIStore.getState().audioMuted).toBe(true)
+    expect(localStorage.getItem(AUDIO_STORAGE_KEYS.muted)).toBe('1')
+    expect(audioManager.isMuted()).toBe(true)
+
+    fireEvent.click(btn)
+    expect(useUIStore.getState().audioMuted).toBe(false)
+    expect(localStorage.getItem(AUDIO_STORAGE_KEYS.muted)).toBe('0')
   })
 })
 

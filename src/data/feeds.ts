@@ -114,4 +114,6 @@ export const INTEL_SOURCES: { name: string; role: string }[] = [
   { name: 'airplanes.live', role: 'Live ADS-B air traffic' },
   { name: 'Open-Meteo', role: 'Real-time weather (collection gating)' },
   { name: 'Reuters', role: 'Strait of Hormuz live vessel traffic' },
+  { name: 'Unit imagery: U.S. DoD (public domain) · Wikimedia Commons contributors (CC)', role: 'Recognition photos — no DoD endorsement implied' },
+  { name: 'Mapterhorn · Mapzen/Tilezen · NASA SRTM', role: 'Terrain relief (hillshade DEM tiles)' },
 ]

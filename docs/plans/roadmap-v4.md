@@ -44,7 +44,18 @@ Waves are ordered by recommendation. Effort is calendar-honest for this codebase
    ~10 game-min trail, fadeTrail), 200-300 ms opacity transitions on range rings,
    300 ms tooltip hover delay + click-to-pin.
 
-## Wave B — TILT 3D (opt-in, ~2-3 days)
+## Wave A addendum
+
+6. **Engine scale stress test.** Synthetic scenario (~500 units, missiles in
+   flight) driven 1000+ ticks in a vitest perf guard: assert average tick stays
+   inside budget, log p95. Answers "do we need a faster engine" with numbers
+   instead of vibes (decision 2026-06-11: stay TS, harden, WASM only if a
+   measured hot path ever demands it).
+
+## Wave B — TILT 3D — CUT (player decision 2026-06-11: no 3D)
+
+Kept for the record only. Hillshade (Wave A.1) is 2D shading and stays.
+Do not add pitch/terrain/sky features.
 
 Everything needed ships in installed maplibre-gl 4.7.1 (terrain + sky + hillshade;
 v5/globe explicitly unnecessary). Add `terrain {source, exaggeration ~1.1}` + `sky`

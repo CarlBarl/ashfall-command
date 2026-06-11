@@ -105,7 +105,7 @@ export default function MapToggle() {
         <button onClick={cycleMapMode} style={{ ...btnFirst, ...(isSat ? active : {}) }} title="Toggle map style">
           {isSat ? 'SAT' : 'MAP'}
         </button>
-        <button onClick={toggleElevation} style={{ ...btn, ...(showElevation ? active : {}) }} title="Elevation overlay">
+        <button onClick={toggleElevation} style={{ ...btn, ...(showElevation ? active : {}) }} title="Terrain relief — hillshade + cursor elevation (on by default)">
           ELV
         </button>
         <button onClick={() => toggleSub('rng')} style={{ ...btn, ...(rngOn ? active : {}), ...(openSub === 'rng' ? { background: 'var(--bg-hover)' } : {}) }} title="Range circles">

@@ -1,8 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import { GameEngine } from '../../game-engine'
 import { GameLoop } from '../../game-loop'
-import { processScheduledLaunches } from '../strike-scheduler'
+import { processScheduledLaunches, scheduleSalvo } from '../strike-scheduler'
+import { computeTotSchedule, TOT_RIPPLE_TICKS } from '../../attack-planner'
+import { haversine } from '../../utils/geo'
+import { weaponSpecs } from '@/data/weapons/missiles'
 import type { Nation, NationId, ScheduledLaunch, Unit } from '@/types/game'
+import type { PlannedStrike } from '@/types/attack-plan'
 
 // ── Scenario helpers ────────────────────────────────────────────
 
@@ -222,5 +226,198 @@ describe('LAUNCH_SALVO spacingTicks', () => {
     expect(engine.state.scheduledLaunches ?? []).toEqual([])
     engine.tick()
     expect(engine.state.missiles.size).toBe(0)
+  })
+})
+
+// ── scheduleSalvo (delayTicks — the TOT path) ───────────────────
+
+function delayedSalvoCmd(count: number, delayTicks: number, spacingTicks = 1) {
+  return {
+    type: 'LAUNCH_SALVO',
+    launcherId: 'us_tlam',
+    weaponId: 'tomahawk',
+    targetId: 'ir_base',
+    count,
+    spacingTicks,
+    delayTicks,
+  } as const
+}
+
+describe('scheduleSalvo', () => {
+  it('queues every round in the future — nothing fires and no ammo spends at command time', () => {
+    const engine = initEngine()
+    scheduleSalvo(engine.state, delayedSalvoCmd(3, 5), false)
+
+    expect(engine.state.missiles.size).toBe(0)
+    expect(ammo(engine)).toBe(20)
+    expect(engine.state.scheduledLaunches?.map((e) => e.dueTick)).toEqual([5, 6, 7])
+
+    for (let i = 0; i < 4; i++) engine.tick() // ticks 1..4
+    expect(engine.state.missiles.size).toBe(0)
+    engine.tick() // tick 5
+    expect(engine.state.missiles.size).toBe(1)
+    engine.tick() // tick 6
+    expect(engine.state.missiles.size).toBe(2)
+    engine.tick() // tick 7
+    expect(engine.state.missiles.size).toBe(3)
+    expect(engine.state.scheduledLaunches).toEqual([])
+    expect(ammo(engine)).toBe(17)
+  })
+
+  it('declares war when the first scheduled round fires, not at command time', () => {
+    const engine = initEngine()
+    scheduleSalvo(engine.state, delayedSalvoCmd(2, 3), false)
+
+    expect(engine.state.nations.usa.atWar).toEqual([])
+    expect(engine.state.events.filter((e) => e.type === 'WAR_DECLARED')).toEqual([])
+
+    for (let i = 0; i < 6; i++) engine.tick()
+    expect(engine.state.nations.usa.atWar).toContain('iran')
+    const declarations = engine.state.events.filter((e) => e.type === 'WAR_DECLARED')
+    expect(declarations.length).toBe(1)
+    expect(declarations[0].tick).toBe(3)
+  })
+
+  it('carries the salvo leak result onto every scheduled round', () => {
+    const engine = initEngine()
+    scheduleSalvo(engine.state, delayedSalvoCmd(3, 2), true)
+    expect(engine.state.scheduledLaunches?.every((e) => e.compromised === true)).toBe(true)
+  })
+})
+
+// ── TOT integration: scheduled entries → near-simultaneous impacts ──
+
+function totStrike(over: Partial<PlannedStrike> & { launcherId: string; weaponId: string; flightTimeSec: number }): PlannedStrike {
+  return {
+    launcherName: over.launcherId,
+    weaponName: over.weaponId,
+    targetId: 'ir_base',
+    targetName: 'ir_base',
+    targetCategory: 'airbase',
+    count: 1,
+    inRange: true,
+    distanceKm: 0,
+    priorityTier: 0,
+    ...over,
+  } as PlannedStrike
+}
+
+describe('TOT schedule driven through the engine', () => {
+  it('mixed cruise/ballistic package impacts within ±2 ticks of totTick', () => {
+    const engine = new GameEngine()
+    const nations = { usa: makeNation('usa', 'USA'), iran: makeNation('iran', 'Iran') }
+    const launcherPos = { lat: 26, lng: 52 }
+    const targetPos = { lat: 27.6, lng: 52.3 }
+    engine.initFromData('usa', nations, [
+      makeUnit({
+        id: 'us_tlam', nation: 'usa', category: 'missile_battery', position: { ...launcherPos },
+        weapons: [{ weaponId: 'tomahawk', count: 20, maxCount: 20, reloadTimeSec: 0 }],
+      }),
+      makeUnit({
+        id: 'us_bm', nation: 'usa', category: 'missile_battery', position: { ...launcherPos },
+        weapons: [{ weaponId: 'fateh110', count: 10, maxCount: 10, reloadTimeSec: 0 }],
+      }),
+      // Tough enough that the first impact can't destroy it before the second lands
+      makeUnit({
+        id: 'ir_base', nation: 'iran', category: 'airbase', position: { ...targetPos },
+        health: 100000, maxHealth: 100000, hardness: 5000,
+      }),
+    ], [], {})
+
+    // Same flight-time math the attack planner uses (mach × 1235 km/h)
+    const dist = haversine(launcherPos, targetPos)
+    const ftCruise = dist / (0.75 * 1235 / 3600) // tomahawk
+    const ftBallistic = dist / (3.5 * 1235 / 3600) // fateh110
+
+    const schedule = computeTotSchedule({
+      name: 'tot', priorities: [], timing: 'simultaneous',
+      strikes: [
+        totStrike({ launcherId: 'us_tlam', weaponId: 'tomahawk', flightTimeSec: ftCruise }),
+        totStrike({ launcherId: 'us_bm', weaponId: 'fateh110', flightTimeSec: ftBallistic }),
+      ],
+      summary: {
+        totalMissiles: 2, totalTargets: 1, weaponBudget: {}, targetCoverage: {},
+        estimatedPenetration: 1, estimatedKills: 0, warnings: [],
+      },
+    }, engine.state.time.tick)
+
+    const nowTick = engine.state.time.tick
+    for (const e of schedule.entries) {
+      scheduleSalvo(engine.state, {
+        type: 'LAUNCH_SALVO',
+        launcherId: e.launcherId,
+        weaponId: e.weaponId,
+        targetId: e.targetId,
+        count: e.count,
+        spacingTicks: TOT_RIPPLE_TICKS,
+        delayTicks: e.dueTick - nowTick,
+      }, false)
+    }
+
+    // Cruise leg launches first (longest flight); nothing flies before its dueTick
+    while (engine.state.time.tick < schedule.earliestLaunchTick - 1) engine.tick()
+    expect(engine.state.missiles.size).toBe(0)
+
+    while (engine.state.time.tick < schedule.totTick + 5) engine.tick()
+
+    const launches = engine.state.events.filter((e) => e.type === 'MISSILE_LAUNCHED')
+    expect(launches.map((l) => l.tick).sort((a, b) => a - b))
+      .toEqual(schedule.entries.map((e) => e.dueTick).sort((a, b) => a - b))
+
+    const impacts = engine.state.events.filter((e) => e.type === 'MISSILE_IMPACT')
+    expect(impacts.length).toBe(2)
+    for (const impact of impacts) {
+      expect(Math.abs(impact.tick - schedule.totTick)).toBeLessThanOrEqual(2)
+    }
+  })
+})
+
+// ── Iran AI ATTRITION saturation builds a TOT package ───────────
+
+describe('AI saturation TOT package', () => {
+  it('schedules a TOT-compressed ballistic package on the densest-AD target instead of dumping at T0', () => {
+    const engine = new GameEngine()
+    const nations = { usa: makeNation('usa', 'USA'), iran: makeNation('iran', 'Iran') }
+    const basePos = { lat: 26, lng: 52 }
+    engine.initFromData('usa', nations, [
+      makeUnit({ id: 'us_base', nation: 'usa', category: 'airbase', position: { ...basePos } }),
+      // Patriot umbrella over the airbase makes it the densest-AD target
+      makeUnit({
+        id: 'us_patriot', nation: 'usa', category: 'sam_site', position: { lat: 26.1, lng: 52.1 },
+        weapons: [{ weaponId: 'pac3_mse', count: 16, maxCount: 16, reloadTimeSec: 600 }],
+      }),
+      makeUnit({ id: 'us_ship', nation: 'usa', category: 'ship', position: { lat: 22, lng: 60 } }),
+      makeUnit({
+        id: 'ir_fateh', nation: 'iran', category: 'missile_battery', position: { lat: 27.8, lng: 52 },
+        weapons: [{ weaponId: 'fateh110', count: 4, maxCount: 4, reloadTimeSec: 0 }],
+      }),
+      makeUnit({
+        id: 'ir_shahab', nation: 'iran', category: 'missile_battery', position: { lat: 26, lng: 58 },
+        weapons: [{ weaponId: 'shahab3', count: 4, maxCount: 4, reloadTimeSec: 0 }],
+      }),
+    ], [], {})
+
+    // At war with ≤20 offensive rounds → ATTRITION on the first AI pass;
+    // -999 lastRetaliationTick watermark makes the saturation salvo due now
+    engine.state.nations.iran.atWar = ['usa']
+    engine.state.nations.usa.atWar = ['iran']
+    engine.state.time.tick = 2700
+    engine.tick()
+
+    const entries = engine.state.scheduledLaunches ?? []
+    expect(entries.length).toBeGreaterThan(0)
+    expect(engine.state.missiles.size).toBe(0)
+    expect(entries.every((e) => e.targetId === 'us_base')).toBe(true)
+    expect(entries.every((e) => e.trackQuality === 'datalink')).toBe(true)
+    expect(entries.every((e) => e.dueTick > engine.state.time.tick)).toBe(true)
+
+    // Every round's implied impact lands inside one tight window (count ripple ≤ 2)
+    const impliedImpacts = entries.map((e) => {
+      const launcher = engine.state.units.get(e.launcherId)!
+      const spec = weaponSpecs[e.weaponId]
+      const flightSec = haversine(launcher.position, basePos) / (spec.speed_mach * 1235 / 3600)
+      return e.dueTick + Math.ceil(flightSec)
+    })
+    expect(Math.max(...impliedImpacts) - Math.min(...impliedImpacts)).toBeLessThanOrEqual(2)
   })
 })

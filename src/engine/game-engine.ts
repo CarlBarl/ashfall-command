@@ -5,7 +5,7 @@ import { SeededRNG } from './utils/rng'
 import { processMovement } from './systems/movement'
 import { resetDetectionCache } from './systems/detection'
 import { processCombat, launchMissile, launchSAM, resetCombatState, setCombatCounters } from './systems/combat'
-import { processScheduledLaunches } from './systems/strike-scheduler'
+import { processScheduledLaunches, scheduleSalvo } from './systems/strike-scheduler'
 import { processAI, resetAIState, orientSAMRadars } from './systems/ai'
 import { processEconomy } from './systems/economy'
 import { processOrders, resetOrdersState } from './systems/orders'
@@ -284,6 +284,12 @@ export class GameEngine {
         if (cmd.count <= 0) break
 
         const compromised = this.applyStrikeLeak(cmd.launcherId, cmd.targetId, undefined)
+
+        // TOT path: a delayed first round can't fire "now" — queue the whole salvo
+        if ((cmd.delayTicks ?? 0) > 0) {
+          scheduleSalvo(state, cmd, compromised)
+          break
+        }
 
         const spacing = cmd.spacingTicks ?? 0
         if (spacing > 0) {

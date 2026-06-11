@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { UnitId } from '@/types/game'
 import type { MapMode } from '@/styles/map-providers'
+import { audioManager } from '@/audio/audio-manager'
 
 export type LeftPanel = 'orbat' | 'stats' | 'economy' | null
 
@@ -69,6 +70,10 @@ interface UIState {
   // Auto-pause triggers (session-only, applied by AlertFeed)
   autoPause: AutoPauseSettings
 
+  // Audio prefs — persisted by the AudioManager (localStorage); the store mirrors it
+  audioMuted: boolean
+  audioVolume: number
+
   // Panel window management (session-only, keyed by panel title)
   panelOffsets: Record<string, PanelOffset>
   panelRegistry: Record<string, PanelRegistration>
@@ -107,6 +112,11 @@ interface UIState {
   // Auto-pause
   toggleAutoPause: (key: keyof AutoPauseSettings) => void
 
+  // Audio
+  setAudioMuted: (muted: boolean) => void
+  toggleAudioMuted: () => void
+  setAudioVolume: (volume: number) => void
+
   // Panel window management
   setPanelOffset: (title: string, offset: PanelOffset) => void
   registerPanel: (title: string, closeRef: PanelCloseRef) => void
@@ -135,6 +145,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   fmvTargetId: null,
   mapFocus: null,
   autoPause: { warDeclared: true, ownUnitDestroyed: true, ceasefireOffered: true },
+  audioMuted: audioManager.isMuted(),
+  audioVolume: audioManager.getVolume(),
   panelOffsets: {},
   panelRegistry: {},
   panelFocusCounter: 0,
@@ -183,6 +195,23 @@ export const useUIStore = create<UIState>((set, get) => ({
   toggleAutoPause: (key) => set((s) => ({
     autoPause: { ...s.autoPause, [key]: !s.autoPause[key] },
   })),
+
+  // Audio
+  setAudioMuted: (muted) => {
+    audioManager.setMuted(muted)
+    set({ audioMuted: muted })
+  },
+
+  toggleAudioMuted: () => {
+    const muted = !get().audioMuted
+    audioManager.setMuted(muted)
+    set({ audioMuted: muted })
+  },
+
+  setAudioVolume: (volume) => {
+    audioManager.setVolume(volume)
+    set({ audioVolume: audioManager.getVolume() })
+  },
 
   // Panel window management
   setPanelOffset: (title, offset) => set((s) => ({

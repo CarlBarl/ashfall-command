@@ -3,6 +3,7 @@ import { useControl, useMap } from 'react-map-gl/maplibre'
 import { MapboxOverlay } from '@deck.gl/mapbox'
 import type { MapboxOverlayProps } from '@deck.gl/mapbox'
 import { createIntelMapLayers } from './layers/IntelLayers'
+import { createEffectsLayers, KILL_ANIM_MS } from './layers/EffectsLayers'
 import { useGameStore } from '@/store/game-store'
 import { useUIStore } from '@/store/ui-store'
 import { useMapIntelStore } from '@/store/map-intel-store'
@@ -14,16 +15,53 @@ export default function DeckOverlay(props: MapboxOverlayProps) {
   const tick = useGameStore((s) => s.viewState.time.tick)
   const playerNation = useGameStore((s) => s.viewState.playerNation)
   const intel = useGameStore((s) => s.viewState.intel)
+  const eventLog = useGameStore((s) => s.eventLog)
   const selectedUnitId = useUIStore((s) => s.selectedUnitId)
   const intelOverlays = useMapIntelStore((s) => s.intelOverlays)
   const adsbLive = useMapIntelStore((s) => s.adsbLive)
   const adsbAircraft = useMapIntelStore((s) => s.adsbAircraft)
   const staleSince = useMapIntelStore((s) => s.staleSince)
   const syncStaleContacts = useMapIntelStore((s) => s.syncStaleContacts)
+  const killMarkers = useMapIntelStore((s) => s.killMarkers)
+  const trackHistory = useMapIntelStore((s) => s.trackHistory)
+  const ingestKillEvents = useMapIntelStore((s) => s.ingestKillEvents)
+  const sampleTrackHistory = useMapIntelStore((s) => s.sampleTrackHistory)
 
   useEffect(() => {
     syncStaleContacts(units, tick, playerNation)
   }, [units, tick, playerNation, syncStaleContacts])
+
+  useEffect(() => {
+    ingestKillEvents(eventLog, units)
+  }, [eventLog, units, ingestKillEvents])
+
+  useEffect(() => {
+    sampleTrackHistory(units, tick, playerNation)
+  }, [units, tick, playerNation, sampleTrackHistory])
+
+  // Real-time clock for the kill animations — runs only while a marker is in its
+  // ~10 s window, so an idle map costs nothing
+  const [effectsNowMs, setEffectsNowMs] = useState(() => performance.now())
+  useEffect(() => {
+    if (killMarkers.length === 0) return
+    const newestMs = killMarkers[killMarkers.length - 1].addedAtMs
+    if (performance.now() - newestMs >= KILL_ANIM_MS) return
+    let raf = 0
+    let lastSet = 0
+    const loop = (t: number) => {
+      if (t - lastSet >= 33) {
+        lastSet = t
+        setEffectsNowMs(performance.now())
+      }
+      if (performance.now() - newestMs < KILL_ANIM_MS) {
+        raf = requestAnimationFrame(loop)
+      } else {
+        setEffectsNowMs(performance.now()) // settle on the fully-faded end state
+      }
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [killMarkers])
 
   // Quantized zoom read (boolean) so map panning doesn't churn re-renders
   const { current: mapRef } = useMap()
@@ -58,10 +96,16 @@ export default function DeckOverlay(props: MapboxOverlayProps) {
     [intelOverlays, adsbLive, units, playerNation, tick, staleSince, selectedUnit, intel, adsbAircraft, showCallsigns],
   )
 
-  // Intel layers prepend (draw beneath) the game layers passed by GameMap
+  const effectsLayers = useMemo(
+    () => createEffectsLayers({ killMarkers, trackHistory, units, playerNation, nowMs: effectsNowMs }),
+    [killMarkers, trackHistory, units, playerNation, effectsNowMs],
+  )
+
+  // Intel layers prepend (draw beneath) the game layers passed by GameMap;
+  // effects sit between — above rings/overlays, below unit icons
   const mergedProps = useMemo<MapboxOverlayProps>(
-    () => ({ ...props, layers: [...intelLayers, ...(props.layers ?? [])] }),
-    [props, intelLayers],
+    () => ({ ...props, layers: [...intelLayers, ...effectsLayers, ...(props.layers ?? [])] }),
+    [props, intelLayers, effectsLayers],
   )
 
   const overlay = useControl<MapboxOverlay>(

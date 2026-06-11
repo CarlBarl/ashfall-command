@@ -3,10 +3,13 @@ import type { Command } from '@/types/commands'
 import type { ElevationGrid } from './elevation'
 import type { SeededRNG } from '../utils/rng'
 import { weaponSpecs } from '@/data/weapons/missiles'
+import { adSystems } from '@/data/weapons/air-defense'
 import { haversine, bearing } from '../utils/geo'
 import { processDroneSwarm, getDroneAmmo } from './drone-ai'
 import { WAR_SUPPORT_CRITICAL_THRESHOLD } from './war-support'
 import { getFireControlQuality } from './visibility'
+import { scheduleSalvo } from './strike-scheduler'
+import { TOT_PAD_TICKS, TOT_RIPPLE_TICKS } from '../attack-planner'
 
 type AIPhase = 'PEACETIME' | 'ALERT' | 'DEFENSIVE' | 'OFFENSIVE' | 'ATTRITION'
 
@@ -213,8 +216,13 @@ export function processAI(state: GameState, rng: SeededRNG, grid?: ElevationGrid
       case 'ATTRITION':
         // Conserve ballistic ammo — launch only for saturation
         if (state.time.tick - ai.lastRetaliationTick > 3600) {
-          const salvoCommands = generateRetaliatorySalvo(state, nation.id, enemyNation, rng, 'saturation', grid)
-          commands.push(...salvoCommands)
+          // TOT-compress the package against the densest enemy AD: simultaneous
+          // arrival beats fire channels that would defeat the same rounds at T0
+          const scheduled = scheduleSaturationTot(state, nation.id, enemyNation, rng, grid ?? null)
+          if (!scheduled) {
+            const salvoCommands = generateRetaliatorySalvo(state, nation.id, enemyNation, rng, 'saturation', grid)
+            commands.push(...salvoCommands)
+          }
           ai.lastRetaliationTick = state.time.tick
         }
         // Rely heavily on drones in attrition phase — cheap and plentiful
@@ -348,6 +356,108 @@ function targetPriority(unit: { category: string }): number {
     case 'submarine': return 3
     default: return 1
   }
+}
+
+const SATURATION_MAX_LAUNCHES = 20
+
+/** Sum enemy SAM fire channels covering a unit (same 200 km scan the attack planner uses) */
+function coveringFireChannels(target: Unit, state: GameState, defenderNation: NationId): number {
+  let channels = 0
+  for (const sam of state.units.values()) {
+    if (sam.nation !== defenderNation || sam.category !== 'sam_site' || sam.status === 'destroyed') continue
+    if (haversine(sam.position, target.position) > 200) continue
+    for (const wl of sam.weapons) {
+      if (wl.count === 0) continue
+      const ad = Object.values(adSystems).find((s) => s.interceptorId === wl.weaponId)
+      if (ad) channels += ad.fire_channels
+    }
+  }
+  return channels
+}
+
+/**
+ * ATTRITION saturation: schedule a TOT-compressed ballistic package against the
+ * enemy unit under the densest AD umbrella, via the same scheduledLaunches queue
+ * player TOT strikes use. Returns false when no defended target or no usable
+ * ballistic launcher exists — caller falls back to the legacy spread salvo.
+ */
+function scheduleSaturationTot(
+  state: GameState,
+  nationId: NationId,
+  enemyNation: NationId,
+  rng: SeededRNG,
+  grid: ElevationGrid | null,
+): boolean {
+  let target: Unit | null = null
+  let targetChannels = 0
+  for (const candidate of state.units.values()) {
+    if (candidate.nation !== enemyNation || candidate.status === 'destroyed') continue
+    const channels = coveringFireChannels(candidate, state, enemyNation)
+    if (channels > targetChannels ||
+        (channels === targetChannels && channels > 0 && target !== null &&
+          targetPriority(candidate) > targetPriority(target))) {
+      target = candidate
+      targetChannels = channels
+    }
+  }
+  if (!target || targetChannels === 0) return false
+
+  interface PackageRow {
+    launcherId: string
+    weaponId: string
+    count: number
+    flightTimeSec: number
+    quality: TrackQuality
+  }
+  const rows: PackageRow[] = []
+  let total = 0
+  for (const launcher of state.units.values()) {
+    if (total >= SATURATION_MAX_LAUNCHES) break
+    if (launcher.nation !== nationId || launcher.status === 'destroyed') continue
+    if (launcher.readiness && launcher.readiness !== 'deployed') continue
+
+    for (const loadout of launcher.weapons) {
+      if (total >= SATURATION_MAX_LAUNCHES) break
+      const spec = weaponSpecs[loadout.weaponId]
+      if (!spec || spec.type !== 'ballistic_missile' || loadout.count <= 0) continue
+
+      const dist = haversine(launcher.position, target.position)
+      if (dist > spec.range_km) continue
+      const quality = getFireControlQuality(state, launcher, target, grid)
+      if (!quality) continue
+
+      const count = Math.min(loadout.count, rng.int(1, 3), SATURATION_MAX_LAUNCHES - total)
+      if (count <= 0) continue
+      rows.push({
+        launcherId: launcher.id,
+        weaponId: loadout.weaponId,
+        count,
+        flightTimeSec: dist / (spec.speed_mach * 1235 / 3600),
+        quality,
+      })
+      total += count
+    }
+  }
+  if (rows.length === 0) return false
+
+  const maxFlight = Math.max(...rows.map((r) => Math.ceil(r.flightTimeSec)))
+  const totTick = state.time.tick + maxFlight + TOT_PAD_TICKS
+  for (const r of rows) {
+    const dueTick = Math.max(
+      state.time.tick + 1,
+      totTick - Math.ceil(r.flightTimeSec) - (r.count - 1) * TOT_RIPPLE_TICKS,
+    )
+    scheduleSalvo(state, {
+      type: 'LAUNCH_SALVO',
+      launcherId: r.launcherId,
+      weaponId: r.weaponId,
+      targetId: target.id,
+      count: r.count,
+      spacingTicks: TOT_RIPPLE_TICKS,
+      delayTicks: dueTick - state.time.tick,
+    }, false, r.quality)
+  }
+  return true
 }
 
 function getTotalOffensiveAmmo(state: GameState, nationId: NationId): number {

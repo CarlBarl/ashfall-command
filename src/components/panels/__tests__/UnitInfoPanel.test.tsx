@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import UnitInfoPanel from '../UnitInfoPanel'
 import { useGameStore } from '@/store/game-store'
 import { useUIStore } from '@/store/ui-store'
+import { UNIT_IMAGES } from '@/data/unit-images'
 import type { GameViewState, ViewUnit } from '@/types/view'
 
 function makeUnit(overrides: Partial<ViewUnit> & Pick<ViewUnit, 'id'>): ViewUnit {
@@ -89,5 +90,29 @@ describe('UnitInfoPanel fog of war', () => {
     expect(screen.getByText('ROE')).toBeTruthy()
     expect(screen.getByText('Armament')).toBeTruthy()
     expect(screen.queryByText('NO LOADOUT DATA')).toBeNull()
+  })
+})
+
+describe('UnitInfoPanel recognition photo', () => {
+  it('shows photo with author · license credit for identified enemy units', () => {
+    setup(makeUnit({ id: 'c4', name: 'Ghadir-class Sub (Jask)', category: 'submarine' }))
+    const img = screen.getByAltText('Ghadir-class Sub (Jask)')
+    expect(img.getAttribute('src')).toBe('/unit-images/ghadir_sub.jpg')
+    const meta = UNIT_IMAGES.ghadir_sub
+    expect(screen.getByText(`${meta.author} · ${meta.license}`)).toBeTruthy()
+  })
+
+  it('hides photo and credit for tracked enemy units', () => {
+    setup(makeUnit({ id: 'c5', name: 'Ghadir-class Sub (Jask)', category: 'submarine', visibility: 'tracked' }))
+    expect(screen.queryByAltText('Ghadir-class Sub (Jask)')).toBeNull()
+    expect(screen.queryByText(/CC BY/)).toBeNull()
+  })
+
+  it('always shows photo for own units', () => {
+    setup(makeUnit({ id: 'c6', name: 'DDG-89 USS Mustin', nation: 'usa' }))
+    const img = screen.getByAltText('DDG-89 USS Mustin')
+    expect(img.getAttribute('src')).toBe('/unit-images/arleigh_burke.jpg')
+    const meta = UNIT_IMAGES.arleigh_burke
+    expect(screen.getByText(`${meta.author} · ${meta.license}`)).toBeTruthy()
   })
 })

@@ -18,6 +18,10 @@ const SENSOR_CYAN_DIM: [number, number, number, number] = [64, 224, 240, 90]
 const SWATH_WHITE: [number, number, number, number] = [235, 235, 235, 130]
 const ADSB_GRAY: [number, number, number, number] = [168, 174, 180, 153]
 
+const RING_FADE_MS = 250
+/** Entering ring vertices start fully transparent → 250 ms fade-in */
+const fadeInEnter = (to: number[]) => [to[0], to[1], to[2], 0]
+
 type LngLat = [number, number]
 
 const KM_PER_DEG_LAT = 110.574
@@ -87,7 +91,7 @@ export function createAouLayers(
       radiusM: aouRadiusKm(minutesStale) * 1000,
     })
   }
-  if (data.length === 0) return []
+  // Layer persists with empty data so new rings transition in instead of popping
   return [
     new ScatterplotLayer<AouDatum>({
       id: 'intel-aou-rings',
@@ -97,60 +101,62 @@ export function createAouLayers(
       radiusUnits: 'meters',
       filled: false,
       stroked: true,
-      getLineColor: AOU_AMBER,
+      // function accessor: constant-valued attributes don't repack on data change,
+      // which would skip the enter transition for new rings
+      getLineColor: () => AOU_AMBER,
       lineWidthUnits: 'pixels',
       getLineWidth: 1,
       lineWidthMinPixels: 1,
       pickable: false,
+      transitions: {
+        getLineColor: { duration: RING_FADE_MS, enter: fadeInEnter },
+        getRadius: RING_FADE_MS,
+      },
     }),
   ]
 }
 
-/** Radar rings for the selected own unit: solid at effective range, dashed at nominal when boosted */
+/** Radar rings for the selected own unit: solid at effective range, dashed at nominal when boosted.
+ *  Both layers persist with empty data so a new selection's rings fade in instead of popping. */
 export function createSensorRingLayers(selected: ViewUnit | undefined): Layer[] {
-  if (!selected || selected.emcon === true || selected.status === 'destroyed') return []
-  const radars = (selected.sensors ?? []).filter((s) => s.type === 'radar')
-  if (radars.length === 0) return []
-
-  const { lng, lat } = selected.position
   const solid: { path: LngLat[] }[] = []
   const dashed: { path: LngLat[] }[] = []
-  for (const radar of radars) {
-    const effective = effectiveRadarRangeKm(radar.range_km, radar.antenna_height_m ?? 15)
-    solid.push({ path: circlePath(lng, lat, effective) })
-    // High-sited radars overshoot their nominal radius — show the baseline dashed
-    if (effective > radar.range_km * 1.02) {
-      for (const path of dashedCirclePaths(lng, lat, radar.range_km, 48)) dashed.push({ path })
+  if (selected && selected.emcon !== true && selected.status !== 'destroyed') {
+    const { lng, lat } = selected.position
+    for (const radar of (selected.sensors ?? []).filter((s) => s.type === 'radar')) {
+      const effective = effectiveRadarRangeKm(radar.range_km, radar.antenna_height_m ?? 15)
+      solid.push({ path: circlePath(lng, lat, effective) })
+      // High-sited radars overshoot their nominal radius — show the baseline dashed
+      if (effective > radar.range_km * 1.02) {
+        for (const path of dashedCirclePaths(lng, lat, radar.range_km, 48)) dashed.push({ path })
+      }
     }
   }
 
-  const layers: Layer[] = [
+  return [
     new PathLayer<{ path: LngLat[] }>({
       id: 'intel-sensor-ring-horizon',
       data: solid,
       getPath: (d) => d.path,
-      getColor: SENSOR_CYAN,
+      getColor: () => SENSOR_CYAN,
       widthUnits: 'pixels',
       getWidth: 1,
       widthMinPixels: 1,
       pickable: false,
+      transitions: { getColor: { duration: RING_FADE_MS, enter: fadeInEnter } },
+    }),
+    new PathLayer<{ path: LngLat[] }>({
+      id: 'intel-sensor-ring-nominal',
+      data: dashed,
+      getPath: (d) => d.path,
+      getColor: () => SENSOR_CYAN_DIM,
+      widthUnits: 'pixels',
+      getWidth: 1,
+      widthMinPixels: 1,
+      pickable: false,
+      transitions: { getColor: { duration: RING_FADE_MS, enter: fadeInEnter } },
     }),
   ]
-  if (dashed.length > 0) {
-    layers.push(
-      new PathLayer<{ path: LngLat[] }>({
-        id: 'intel-sensor-ring-nominal',
-        data: dashed,
-        getPath: (d) => d.path,
-        getColor: SENSOR_CYAN_DIM,
-        widthUnits: 'pixels',
-        getWidth: 1,
-        widthMinPixels: 1,
-        pickable: false,
-      }),
-    )
-  }
-  return layers
 }
 
 /** Queued satellite taskings: 60 km dashed AOI ring + PASS QUEUED tag */

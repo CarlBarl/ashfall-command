@@ -3,7 +3,7 @@ import type { GameTime, IntelBudget, NationId, Position, ROE, TrackQuality, Unit
 export type Command =
   | { type: 'MOVE_UNIT'; unitId: UnitId; waypoints: Position[] }
   | { type: 'LAUNCH_MISSILE'; launcherId: UnitId; weaponId: WeaponId; targetId: UnitId; waypoints?: Position[]; trackQuality?: TrackQuality }
-  | { type: 'LAUNCH_SALVO'; launcherId: UnitId; weaponId: WeaponId; targetId: UnitId; count: number; waypoints?: Position[]; spacingTicks?: number }
+  | { type: 'LAUNCH_SALVO'; launcherId: UnitId; weaponId: WeaponId; targetId: UnitId; count: number; waypoints?: Position[]; spacingTicks?: number; delayTicks?: number }
   | { type: 'SET_ROE'; unitId: UnitId; roe: ROE }
   | { type: 'SET_SPEED'; speed: GameTime['speed'] }
   | { type: 'DECLARE_WAR'; target: NationId }

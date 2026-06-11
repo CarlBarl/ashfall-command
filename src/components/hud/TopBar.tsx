@@ -460,6 +460,9 @@ export default function TopBar() {
         {/* Live feeds window toggle */}
         <LiveBtn active={liveFeedsOpen} onClick={toggleLiveFeeds} />
 
+        {/* Sound mute toggle */}
+        <MuteBtn />
+
         <Sep />
 
         {/* Hormuz status badge */}
@@ -1201,6 +1204,39 @@ function LiveBtn({ active, onClick }: { active: boolean; onClick: () => void }) 
         </>
       )}
       LIVE
+    </button>
+  )
+}
+
+function MuteBtn() {
+  const muted = useUIStore((s) => s.audioMuted)
+  const toggleAudioMuted = useUIStore((s) => s.toggleAudioMuted)
+  return (
+    <button
+      onClick={toggleAudioMuted}
+      title="Sound on/off"
+      aria-label="Sound on/off"
+      style={{
+        background: 'none',
+        border: '1px solid transparent',
+        borderRadius: 3,
+        color: muted ? 'var(--status-engaged)' : 'var(--text-muted)',
+        cursor: 'pointer',
+        padding: '2px 4px',
+        opacity: muted ? 1 : 0.55,
+        display: 'inline-flex',
+        alignItems: 'center',
+        lineHeight: 1,
+      }}
+    >
+      <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M2 6h3l4-3.5v11L5 10H2z" fill="currentColor" />
+        {muted ? (
+          <path d="M11 6l4 4M15 6l-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none" />
+        ) : (
+          <path d="M11.5 5.5a3.4 3.4 0 0 1 0 5M13 4a5.6 5.6 0 0 1 0 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+        )}
+      </svg>
     </button>
   )
 }

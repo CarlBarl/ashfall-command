@@ -45,6 +45,14 @@ shipped in v3 (docs/plans/intel-suite-v3.md) — v3 deferrals listed below.
 - Package/IndexedDB internals still named realpolitik (package.json name, save-load DB_NAME,
   map style ids) — cosmetic, renaming the DB key breaks saves.
 
+## Engine scale (from the Wave A stress guard, 2026-06-11)
+
+- Measured: ~60-unit shipped scenarios are comfortably real-time; at 500 units the
+  interceptor-saturation phase (~2100 live missiles) runs 80-190 ms/tick — missile
+  count dominates, units are cheap, terrain/LOS adds only ~9%. If bigger scenarios
+  ever become a target: spatial index / per-missile detection culling in
+  detection/visibility loops. NOT WASM-for-LOS. Guard: src/engine/__tests__/scale-stress.test.ts.
+
 ## Smaller deferred fixes
 
 - DIRECT FIRE cluster popup z-order vs strike panel (replaces it on screen).
