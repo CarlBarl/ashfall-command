@@ -9,6 +9,9 @@ import EconomyPanel from '@/components/panels/EconomyPanel'
 import OrbatPanel from '@/components/panels/OrbatPanel'
 import StatsPanel from '@/components/panels/StatsPanel'
 import IntelPanel from '@/components/panels/IntelPanel'
+import ImintViewer from '@/components/intel/ImintViewer'
+import LiveFeeds from '@/components/intel/LiveFeeds'
+import OsintTicker from '@/components/intel/OsintTicker'
 import StartScreen from '@/components/menu/StartScreen'
 import ScenarioSelect from '@/components/menu/ScenarioSelect'
 import FreeModeLobby from '@/components/menu/FreeModeLobby'
@@ -19,6 +22,7 @@ import { useMenuStore } from '@/store/menu-store'
 import { useDeploymentStore } from '@/store/deployment-store'
 import { useStrikeStore } from '@/store/strike-store'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { useSoundEffects } from '@/audio/useSoundEffects'
 import { initBridge, initFromData, sendCommand } from '@/store/bridge'
 import { getScenario } from '@/data/scenarios/index'
 
@@ -28,6 +32,8 @@ export default function App() {
   const isMobile = useIsMobile()
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>(null)
   const screen = useMenuStore(s => s.screen)
+
+  useSoundEffects()
 
   useEffect(() => {
     initBridge()
@@ -133,6 +139,8 @@ export default function App() {
           break
         }
         const ui = useUIStore.getState()
+        // Close the topmost registered panel first (ImintViewer capture-stops its own Escape before this runs)
+        if (ui.closeTopPanel()) break
         if (ui.leftPanel !== null || ui.showIntel || strike.open) {
           ui.setLeftPanel(null)
           useUIStore.setState({ showIntel: false })
@@ -168,6 +176,7 @@ export default function App() {
         {mobilePanel === 'econ' && <EconomyPanel />}
         {mobilePanel === 'events' && <AlertFeed />}
         {mobilePanel === 'intel' && <IntelPanel onClose={() => setMobilePanel(null)} />}
+        <ImintViewer />
         <MobileNav active={mobilePanel} onSelect={setMobilePanel} hasSelection={!!selectedUnitId} />
         {showDebrief && <DebriefScreen onDismiss={dismissDebrief} />}
       </div>
@@ -179,12 +188,15 @@ export default function App() {
       <GameMap />
       <TopBar />
       <AlertFeed />
+      <OsintTicker />
       <UnitInfoPanel units={units} />
       <StrikePanel />
       {showOrbat && <OrbatPanel />}
       {showStats && <StatsPanel />}
       {showEconomy && <EconomyPanel />}
       {showIntel && <IntelPanel />}
+      <LiveFeeds />
+      <ImintViewer />
       {showDebrief && <DebriefScreen onDismiss={dismissDebrief} />}
     </div>
   )

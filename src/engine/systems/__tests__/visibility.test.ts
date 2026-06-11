@@ -31,8 +31,10 @@ function makeUnit(overrides: Partial<Unit> & { id: string; nation: NationId }): 
   } as Unit
 }
 
-function radar(range_km: number, antenna_height_m = 15): Sensor {
-  return { type: 'radar', range_km, detection_prob: 0.9, antenna_height_m }
+// Default test radar sits on a tall mast so the radar horizon never caps these
+// scenarios — acquisition/decay tests probe contact logic, not curvature physics.
+function radar(range_km: number, antenna_height_m = 2000, sector_deg?: number): Sensor {
+  return { type: 'radar', range_km, detection_prob: 0.9, antenna_height_m, sector_deg }
 }
 
 function makeState(units: Unit[], tick = 60): GameState {
@@ -148,6 +150,59 @@ describe('radar acquisition', () => {
     expect(contact(state, 'iran', 'us_ship')?.level).toBe('tracked')
     expect(contact(state, 'usa', 'us_ship')).toBeUndefined()
     expect(contact(state, 'iran', 'ir_ship')).toBeUndefined()
+  })
+
+  it('radar range is its nominal radius — no horizon cap on surface targets', () => {
+    const usShip = makeUnit({ id: 'us_ship', nation: 'usa', sensors: [radar(400, 25)] })
+    const irFar = makeUnit({ id: 'ir_far', nation: 'iran', position: { lat: 27, lng: 53 } })   // ~99 km
+    const irOut = makeUnit({ id: 'ir_out', nation: 'iran', position: { lat: 27, lng: 57.5 } }) // ~545 km
+    const state = makeState([usShip, irFar, irOut])
+
+    runEval(state, 60)
+
+    expect(contact(state, 'usa', 'ir_far')?.level).toBe('identified') // within 60% of 400 km
+    expect(contact(state, 'usa', 'ir_out')).toBeUndefined()
+  })
+
+  it('height pays: a high-mounted radar outranges its sea-level twin', () => {
+    // Same nominal range, target at ~107 km: 100 km radius alone misses it,
+    // a 4000 m antenna (+20%) reaches it
+    const lowRadar = makeUnit({ id: 'us_low', nation: 'usa', sensors: [radar(100, 15)] })
+    const target1 = makeUnit({ id: 'ir_t1', nation: 'iran', position: { lat: 27, lng: 53.08 } })
+    const s1 = makeState([lowRadar, target1])
+    runEval(s1, 60)
+    expect(contact(s1, 'usa', 'ir_t1')).toBeUndefined()
+
+    resetVisibilityState()
+    const highRadar = makeUnit({ id: 'us_high', nation: 'usa', sensors: [radar(100, 4000)] })
+    const target2 = makeUnit({ id: 'ir_t2', nation: 'iran', position: { lat: 27, lng: 53.08 } })
+    const s2 = makeState([highRadar, target2])
+    runEval(s2, 60)
+    expect(contact(s2, 'usa', 'ir_t2')?.level).toBe('tracked')
+  })
+
+  it('high targets stand out: aircraft are spotted beyond nominal range, ships are not', () => {
+    const usRadar = makeUnit({ id: 'us_radar', nation: 'usa', sensors: [radar(100, 15)] })
+    const irJet = makeUnit({ id: 'ir_jet', nation: 'iran', category: 'aircraft', position: { lat: 27, lng: 53.16 } })  // ~115 km
+    const irShip = makeUnit({ id: 'ir_ship', nation: 'iran', position: { lat: 27.2, lng: 53.16 } })                    // ~115 km
+    const state = makeState([usRadar, irJet, irShip])
+
+    runEval(state, 60)
+
+    expect(contact(state, 'usa', 'ir_jet')?.level).toBe('tracked') // prominence: +30% vs high targets
+    expect(contact(state, 'usa', 'ir_ship')).toBeUndefined()
+  })
+
+  it('sector-limited radar only acquires inside its arc', () => {
+    const usSam = makeUnit({ id: 'us_sam', nation: 'usa', heading: 90, sensors: [radar(100, 2000, 120)] })
+    const irEast = makeUnit({ id: 'ir_east', nation: 'iran', position: { lat: 27, lng: 52.5 } })  // bearing ~90°, ~50 km
+    const irWest = makeUnit({ id: 'ir_west', nation: 'iran', position: { lat: 27, lng: 51.3 } })  // bearing ~270°
+    const state = makeState([usSam, irEast, irWest])
+
+    runEval(state, 60)
+
+    expect(contact(state, 'usa', 'ir_east')?.level).toBe('identified')
+    expect(contact(state, 'usa', 'ir_west')).toBeUndefined()
   })
 
   it('terrain blocks line of sight', () => {

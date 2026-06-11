@@ -7,6 +7,7 @@ import { sendCommand } from '@/store/bridge'
 import type { ViewUnit } from '@/types/view'
 import type { ROE } from '@/types/game'
 import { weaponSpecs } from '@/data/weapons/missiles'
+import { UNIT_IMAGES, unitImageKey } from '@/data/unit-images'
 
 interface UnitInfoPanelProps {
   units: ViewUnit[]
@@ -46,9 +47,13 @@ export default function UnitInfoPanel({ units }: UnitInfoPanelProps) {
   const isFriendly = unit.nation === playerNation
   const detected = unit.visibility === 'detected'
   const identified = unit.visibility === 'identified'
+  const hasRadar = unit.sensors.some((s) => s.type === 'radar')
   // Same gate shipping.ts uses for drone interdiction
   const isDroneCapable = unit.weapons.some((w) => w.weaponId.includes('shahed'))
   const droneMission: DroneMission = unit.droneMission ?? 'military'
+  // Recognition photo: own units always, enemy contacts only once identified
+  const imageKey = isFriendly || identified ? unitImageKey(unit) : null
+  const image = imageKey ? UNIT_IMAGES[imageKey] : undefined
 
   return (
     <Panel
@@ -56,6 +61,31 @@ export default function UnitInfoPanel({ units }: UnitInfoPanelProps) {
       onClose={() => selectUnit(null)}
       style={{ position: 'absolute', top: 60, right: 12 }}
     >
+      {image && (
+        <div style={{ marginBottom: 8 }}>
+          <img
+            src={`/unit-images/${image.file}`}
+            alt={unit.name}
+            style={{
+              display: 'block',
+              width: '100%',
+              height: 120,
+              objectFit: 'cover',
+              borderRadius: 3,
+            }}
+          />
+          <div style={{
+            color: 'var(--text-muted)',
+            fontSize: 'var(--font-size-xs)',
+            marginTop: 3,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            {image.author} · {image.license}
+          </div>
+        </div>
+      )}
       {/* Status + Health — scrubbed to placeholders below 'tracked', so don't show them */}
       <div style={{ marginBottom: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -219,6 +249,64 @@ export default function UnitInfoPanel({ units }: UnitInfoPanelProps) {
                   </button>
                 ))}
               </div>
+
+              {hasRadar && (
+                <>
+                  <div style={{
+                    color: 'var(--text-muted)',
+                    fontSize: 'var(--font-size-xs)',
+                    margin: '8px 0 4px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                  }}>
+                    Emissions Control
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {([
+                      { emcon: false, label: 'EMCON OFF', color: 'var(--status-ready)' },
+                      { emcon: true, label: 'EMCON ON', color: 'var(--status-engaged)' },
+                    ] as const).map((opt) => {
+                      const active = (unit.emcon ?? false) === opt.emcon
+                      return (
+                        <button
+                          key={opt.label}
+                          onClick={() => sendCommand({
+                            type: 'SET_EMCON',
+                            unitId: unit.id,
+                            emcon: opt.emcon,
+                          })}
+                          style={{
+                            flex: 1,
+                            padding: '5px 4px',
+                            background: active ? opt.color : 'var(--bg-hover)',
+                            border: active
+                              ? `1px solid ${opt.color}`
+                              : '1px solid var(--border-default)',
+                            borderRadius: 4,
+                            color: active ? 'var(--bg-primary)' : 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 'var(--font-size-xs)',
+                            fontWeight: active ? 700 : 400,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div style={{
+                    color: 'var(--text-muted)',
+                    fontSize: '0.55rem',
+                    fontStyle: 'italic',
+                    marginTop: 3,
+                    lineHeight: 1.4,
+                  }}>
+                    Radar silent: invisible to ELINT, blind without datalink
+                  </div>
+                </>
+              )}
 
               {isDroneCapable && (
                 <>

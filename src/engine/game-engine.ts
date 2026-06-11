@@ -1,9 +1,11 @@
-import type { GameState, GameEvent, NationId, Unit, UnitId } from '@/types/game'
+import type { GameState, GameEvent, NationId, ScheduledLaunch, Unit, UnitId } from '@/types/game'
 import type { GameViewState, ViewUnit } from '@/types/view'
 import type { Command } from '@/types/commands'
 import { SeededRNG } from './utils/rng'
 import { processMovement } from './systems/movement'
+import { resetDetectionCache } from './systems/detection'
 import { processCombat, launchMissile, launchSAM, resetCombatState, setCombatCounters } from './systems/combat'
+import { processScheduledLaunches, scheduleSalvo } from './systems/strike-scheduler'
 import { processAI, resetAIState, orientSAMRadars } from './systems/ai'
 import { processEconomy } from './systems/economy'
 import { processOrders, resetOrdersState } from './systems/orders'
@@ -24,8 +26,11 @@ import { findNavalRoute } from './systems/route-planner'
 import type { SatellitePass } from '@/types/game'
 import { processShipping, resetShippingState } from './systems/shipping'
 import { shippingLanes as defaultShippingLanes } from '@/data/shipping/shipping-lanes'
-import { processVisibility, resetVisibilityState, getViewVisibility, contactDisplayName, type ViewVisibility } from './systems/visibility'
+import { processVisibility, resetVisibilityState, seedInitialVisibility, getViewVisibility, contactDisplayName, type ViewVisibility } from './systems/visibility'
 import { processWarSupport, resetWarSupportState, offerCeasefire, acceptCeasefire, resign, getWarSupport, getObjectives } from './systems/war-support'
+import { processIntel, initIntelState, resetIntelState, taskSatellitePass, taskAgent, restAgent, exfiltrateAgent, opsecSweep, maybeLeakStrike, paranoiaBand } from './systems/intel'
+import { processAirOps, initAirWings, resetAirOpsState, setAirMissionCounter, launchAirMission, cancelAirMission, setSurgeOps, surgeActive, getAirMissionsView } from './systems/air-ops'
+import type { IntelViewState } from '@/types/view'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
 const SCENARIO_START = new Date('2026-06-15T06:00:00Z').getTime()
@@ -129,6 +134,15 @@ export class GameEngine {
     // Orient sector-limited SAMs toward enemy before first tick
     orientSAMRadars(this.state)
 
+    // Fixed installations are public knowledge — both sides start with them on the map
+    seedInitialVisibility(this.state)
+
+    // Intel suite: ISR assets, HUMINT roster, counterintel meters
+    initIntelState(this.state)
+
+    // Air war: squadron pools on carriers/airbases
+    initAirWings(this.state)
+
     // Initialize satellite constellations (only for modern scenarios with USA/Iran)
     if (this.state.nations.usa && this.state.nations.iran) {
       this.initSatellites()
@@ -151,6 +165,9 @@ export class GameEngine {
     // ROE enforcement before combat
     processOrders(state, this.elevationGrid)
 
+    // Engine-side salvo spacing — runs before combat so due rounds join this tick's air picture
+    processScheduledLaunches(state, (entry) => this.fireScheduledLaunch(entry))
+
     processCombat(state, this.rng, this.elevationGrid, this.sensorNetwork)
     processPointDefense(state, this.rng)
     processShipping(state, this.rng)
@@ -158,10 +175,10 @@ export class GameEngine {
     processLogistics(state)
     processRepair(state)
 
-    // Autonomous offensive fire for weapons_free units (any nation)
-    const friendlyCmds = processFriendlyAI(state, this.rng)
+    // Autonomous engagement of tracked contacts (any nation, ROE-gated)
+    const friendlyCmds = processFriendlyAI(state, this.rng, this.elevationGrid)
     // Enemy AI generates commands
-    const aiCommands = processAI(state, this.rng)
+    const aiCommands = processAI(state, this.rng, this.elevationGrid)
     for (const cmd of [...friendlyCmds, ...aiCommands]) {
       this.executeCommand(cmd)
     }
@@ -174,6 +191,12 @@ export class GameEngine {
 
     // Fog of war: fold radar/satellite/HUMINT/ELINT pictures into per-nation contacts
     processVisibility(state, this.sensorNetwork, this.lastEspionageResult, this.elevationGrid)
+
+    // Intel suite: satellite taskings, SIGINT intercepts, HUMINT, counterintel
+    processIntel(state, this.rng, this.elevationGrid)
+
+    // Air operations: mission lifecycle, CAP intercepts, strikes, RTB
+    processAirOps(state, this.rng, this.elevationGrid)
 
     // Political will: war-support drains, ceasefire logic, capitulation, objectives
     processWarSupport(state)
@@ -203,6 +226,18 @@ export class GameEngine {
       case 'MOVE_UNIT': {
         const unit = state.units.get(cmd.unitId)
         if (unit) {
+          // Land units can't be ordered into the sea — reject up front with feedback
+          const isLandMover = unit.category === 'missile_battery' || unit.category === 'sam_site'
+          const dest = cmd.waypoints[cmd.waypoints.length - 1]
+          if (isLandMover && dest && this.elevationGrid?.isWater(dest.lat, dest.lng)) {
+            this.emitEvent({
+              type: 'ORDER_REJECTED',
+              unitId: unit.id,
+              reason: 'destination is open water',
+              tick: state.time.tick,
+            })
+            break
+          }
           if (unit.deploy_time_sec != null) {
             // Unit has readiness lifecycle (mobile SAMs, TELs)
             if (unit.readiness === 'deployed') {
@@ -220,14 +255,16 @@ export class GameEngine {
             // No readiness lifecycle (ships, aircraft, etc.) — move immediately
             const isNaval = unit.category === 'ship' || unit.category === 'submarine' || unit.category === 'carrier_group'
             if (isNaval && this.elevationGrid && cmd.waypoints.length > 0) {
-              // Auto-route naval units around land
-              const finalDest = cmd.waypoints[cmd.waypoints.length - 1]
-              const route = findNavalRoute(unit.position, finalDest, this.elevationGrid)
-              if (route) {
-                unit.waypoints = [...route, finalDest]
-              } else {
-                unit.waypoints = cmd.waypoints // fallback to direct if no route
+              // Auto-route naval units around land, honoring every player waypoint as a leg
+              const routed: typeof cmd.waypoints = []
+              let from = unit.position
+              for (const wp of cmd.waypoints) {
+                const leg = findNavalRoute(from, wp, this.elevationGrid)
+                if (leg) routed.push(...leg)
+                routed.push(wp)
+                from = wp
               }
+              unit.waypoints = routed
             } else {
               unit.waypoints = cmd.waypoints
             }
@@ -237,7 +274,8 @@ export class GameEngine {
         break
       }
       case 'LAUNCH_MISSILE': {
-        const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId, cmd.waypoints)
+        const compromised = this.applyStrikeLeak(cmd.launcherId, cmd.targetId, cmd.trackQuality)
+        const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId, cmd.waypoints, cmd.trackQuality, compromised)
         if (event) {
           const launcher = state.units.get(cmd.launcherId)
           const target = state.units.get(cmd.targetId)
@@ -252,9 +290,45 @@ export class GameEngine {
       case 'LAUNCH_SALVO': {
         if (cmd.count <= 0) break
 
+        const compromised = this.applyStrikeLeak(cmd.launcherId, cmd.targetId, undefined)
+
+        // TOT path: a delayed first round can't fire "now" — queue the whole salvo
+        if ((cmd.delayTicks ?? 0) > 0) {
+          scheduleSalvo(state, cmd, compromised)
+          break
+        }
+
+        const spacing = cmd.spacingTicks ?? 0
+        if (spacing > 0) {
+          // First round fires now (war declaration + the salvo's single leak roll just
+          // happened); the rest are scheduled on GameState and reuse the same roll.
+          const fired = this.fireScheduledLaunch({
+            dueTick: state.time.tick,
+            launcherId: cmd.launcherId,
+            weaponId: cmd.weaponId,
+            targetId: cmd.targetId,
+            waypoints: cmd.waypoints,
+            compromised,
+          })
+          if (!fired) break // whole salvo would have failed today — don't queue duds
+
+          state.scheduledLaunches ??= []
+          for (let i = 1; i < cmd.count; i++) {
+            state.scheduledLaunches.push({
+              dueTick: state.time.tick + i * spacing,
+              launcherId: cmd.launcherId,
+              weaponId: cmd.weaponId,
+              targetId: cmd.targetId,
+              waypoints: cmd.waypoints,
+              compromised,
+            })
+          }
+          break
+        }
+
         let declaredWar = false
         for (let i = 0; i < cmd.count; i++) {
-          const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId, cmd.waypoints)
+          const event = launchMissile(state, cmd.launcherId, cmd.weaponId, cmd.targetId, cmd.waypoints, undefined, compromised)
           if (!event) break
 
           if (!declaredWar) {
@@ -302,7 +376,82 @@ export class GameEngine {
         if (unit) unit.droneMission = cmd.mission
         break
       }
+      case 'TASK_SATELLITE_PASS': {
+        taskSatellitePass(state, cmd.assetId, cmd.target, cmd.cloudPct)
+        break
+      }
+      case 'TASK_AGENT': {
+        taskAgent(state, this.rng, cmd.agentId)
+        break
+      }
+      case 'REST_AGENT': {
+        restAgent(state, cmd.agentId)
+        break
+      }
+      case 'EXFILTRATE_AGENT': {
+        exfiltrateAgent(state, cmd.agentId)
+        break
+      }
+      case 'OPSEC_SWEEP': {
+        opsecSweep(state)
+        break
+      }
+      case 'SET_EMCON': {
+        const unit = state.units.get(cmd.unitId)
+        if (unit) unit.emcon = cmd.emcon
+        break
+      }
+      case 'LAUNCH_AIR_MISSION': {
+        launchAirMission(state, this.rng, cmd)
+        break
+      }
+      case 'CANCEL_AIR_MISSION': {
+        cancelAirMission(state, cmd.missionId)
+        break
+      }
+      case 'SET_SURGE_OPS': {
+        setSurgeOps(state, cmd.enabled)
+        break
+      }
     }
+  }
+
+  /**
+   * Deliberate player strikes (strike panel, no auto-fire trackQuality) feed Iranian
+   * pattern analysis: bump the leak level and possibly compromise this launch.
+   */
+  private applyStrikeLeak(launcherId: UnitId, targetId: UnitId, trackQuality?: import('@/types/game').TrackQuality): boolean {
+    const { state } = this
+    if (trackQuality) return false // reactive auto-engagement, not a planned strike
+    const intel = state.intel
+    const launcher = state.units.get(launcherId)
+    const target = state.units.get(targetId)
+    if (!intel || !launcher || !target) return false
+    if (launcher.nation !== state.playerNation || target.nation === state.playerNation) return false
+    intel.leakLevel = Math.min(100, intel.leakLevel + 5)
+    return maybeLeakStrike(state, this.rng, targetId)
+  }
+
+  /**
+   * Same side effects as the LAUNCH_MISSILE command minus the leak roll — that
+   * happened once when the salvo was commanded and the entry carries the result.
+   */
+  private fireScheduledLaunch(entry: ScheduledLaunch): boolean {
+    const { state } = this
+    // launchMissile doesn't check status — destroyed units keep their loadout
+    const launcher = state.units.get(entry.launcherId)
+    const target = state.units.get(entry.targetId)
+    if (!launcher || launcher.status === 'destroyed') return false
+    if (!target || target.status === 'destroyed') return false
+
+    const event = launchMissile(state, entry.launcherId, entry.weaponId, entry.targetId, entry.waypoints, entry.trackQuality, entry.compromised)
+    if (!event) return false
+
+    if (launcher.nation !== target.nation) {
+      this.declareWar(launcher.nation, target.nation)
+    }
+    this.emitEvent(event)
+    return true
   }
 
   /** Get serializable snapshot for the main thread */
@@ -314,7 +463,7 @@ export class GameEngine {
     const units: ViewUnit[] = []
     for (const u of state.units.values()) {
       const vis = getViewVisibility(state, state.playerNation, u)
-      if (vis) units.push(toViewUnit(u, vis))
+      if (vis) units.push(toViewUnit(u, vis, state.playerNation))
     }
 
     return {
@@ -332,6 +481,29 @@ export class GameEngine {
       warSupport: getWarSupport(state),
       gameOver: state.gameOver ?? null,
       objectives: getObjectives(state),
+      intel: this.getIntelViewState(),
+      airMissions: getAirMissionsView(state, state.playerNation),
+      surgeOps: surgeActive(state),
+    }
+  }
+
+  /** Player-nation slice of the intel suite — exact paranoia stays engine-side */
+  private getIntelViewState(): IntelViewState {
+    const intel = this.state.intel
+    if (!intel) {
+      return { assets: [], agents: [], products: [], taskings: [], leakLevel: 0, paranoiaBand: 'LOW', encryptionUpgradedUntilTick: null }
+    }
+    const player = this.state.playerNation
+    return {
+      assets: Object.values(intel.assets).filter(a => a.nation === player).map(a => ({ ...a })),
+      agents: player === 'usa' ? Object.values(intel.agents).map(a => ({ ...a })) : [],
+      products: player === 'usa' ? intel.products.map(p => ({ ...p })) : [],
+      taskings: intel.taskings
+        .filter(t => intel.assets[t.assetId]?.nation === player)
+        .map(t => ({ ...t, target: { ...t.target } })),
+      leakLevel: intel.leakLevel,
+      paranoiaBand: paranoiaBand(intel.paranoia),
+      encryptionUpgradedUntilTick: intel.encryptionUpgradedUntilTick ?? null,
     }
   }
 
@@ -347,6 +519,10 @@ export class GameEngine {
       visibility: s.visibility ?? {},
       warStatus: s.warStatus ?? {},
       gameOver: s.gameOver ?? null,
+      intel: s.intel ?? null,
+      scheduledLaunches: s.scheduledLaunches ?? [],
+      airMissions: s.airMissions ?? [],
+      surgeOps: s.surgeOps ?? null,
       units: Array.from(s.units.entries()),
       missiles: Array.from(s.missiles.entries()),
       supplyLines: Array.from(s.supplyLines.entries()),
@@ -389,7 +565,16 @@ export class GameEngine {
       visibility: raw.visibility ?? {},
       warStatus: raw.warStatus ?? {},
       gameOver: raw.gameOver ?? undefined,
+      intel: raw.intel ?? undefined,
+      scheduledLaunches: raw.scheduledLaunches ?? undefined,
+      airMissions: raw.airMissions ?? undefined,
+      surgeOps: raw.surgeOps ?? undefined,
     }
+    // Saves from before the intel suite get a fresh roster
+    if (!this.state.intel) initIntelState(this.state)
+    // Saves from before the air war get wings stood up fresh
+    if (!this.state.airMissions) initAirWings(this.state)
+    setAirMissionCounter(this.state)
     // Backfill shipping lanes for old saves that didn't have them
     if (!raw.shippingLanes || raw.shippingLanes.length === 0) {
       for (const lane of defaultShippingLanes) {
@@ -435,6 +620,9 @@ export class GameEngine {
     resetShippingState()
     resetVisibilityState()
     resetWarSupportState()
+    resetIntelState()
+    resetDetectionCache()
+    resetAirOpsState()
   }
 
   /** Set up satellite constellations for each nation */
@@ -531,11 +719,12 @@ export class GameEngine {
   }
 }
 
-function toViewUnit(u: Unit, vis: ViewVisibility): ViewUnit {
+function toViewUnit(u: Unit, vis: ViewVisibility, playerNation: NationId): ViewUnit {
   // Scrub by contact quality: 'detected' hides everything but the contact itself,
   // 'tracked' shows identity and condition but not loadout. Own units are 'identified'.
   const identified = vis.level === 'identified'
   const trackedPlus = identified || vis.level === 'tracked'
+  const isOwn = u.nation === playerNation
   return {
     id: u.id,
     name: trackedPlus ? u.name : contactDisplayName(u.category),
@@ -563,5 +752,10 @@ function toViewUnit(u: Unit, vis: ViewVisibility): ViewUnit {
     droneMission: identified ? u.droneMission : undefined,
     visibility: vis.level,
     stale: vis.stale,
+    emcon: isOwn ? u.emcon : undefined,
+    // isDecoy itself NEVER leaks — only the revealed verdict (own decoys are always known)
+    decoyRevealed: (isOwn ? u.isDecoy : u.decoyRevealed) || undefined,
+    // Squadron pools are own-side knowledge; enemy strength estimates come from BDA only
+    airWing: isOwn && u.airWing ? u.airWing.map(s => ({ ...s, readyAt: [...s.readyAt] })) : undefined,
   }
 }

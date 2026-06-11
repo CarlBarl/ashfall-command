@@ -6,7 +6,7 @@ import { useUIStore } from '@/store/ui-store'
 import { sendCommand } from '@/store/bridge'
 import { shippingLanes } from '@/data/shipping/shipping-lanes'
 import type { GameViewState, ViewUnit } from '@/types/view'
-import type { GameEvent } from '@/types/game'
+import type { GameEvent, ShippingLane } from '@/types/game'
 
 vi.mock('@/store/bridge', () => ({
   sendCommand: vi.fn(),
@@ -50,6 +50,7 @@ const jamaran: ViewUnit = {
 interface ViewOpts {
   speed?: number
   units?: ViewUnit[]
+  lanes?: ShippingLane[]
 }
 
 function makeViewState(events: GameEvent[], opts: ViewOpts = {}): GameViewState {
@@ -61,13 +62,14 @@ function makeViewState(events: GameEvent[], opts: ViewOpts = {}): GameViewState 
     units: opts.units ?? [lincoln, jamaran],
     missiles: [],
     supplyLines: [],
-    shippingLanes,
+    shippingLanes: opts.lanes ?? shippingLanes,
     events,
     pendingEventCount: 0,
     satelliteDetectedUnitIds: [],
     warSupport: {},
     gameOver: null,
     objectives: [],
+    intel: { assets: [], agents: [], products: [], taskings: [], leakLevel: 0, paranoiaBand: 'LOW' as const, encryptionUpgradedUntilTick: null },
   }
 }
 
@@ -150,7 +152,7 @@ describe('AlertFeed', () => {
     const cut: GameEvent = { type: 'SUPPLY_LINE_CUT', lineId: 'bandar_supply', tick: 7 }
     setStore([cut])
     render(<AlertFeed />)
-    expect(screen.getByText(/SUPPLY CUT: BANDAR SUPPLY/)).toBeTruthy()
+    expect(screen.getByText(/SUPPLY CUT: Bandar Supply/)).toBeTruthy()
   })
 
   it('renders lane events with the lane display name, not the underscored id', () => {
@@ -160,8 +162,18 @@ describe('AlertFeed', () => {
     }
     setStore([laneEvent])
     render(<AlertFeed />)
-    expect(screen.getByText(/BAB EL-MANDEB: REDUCED/)).toBeTruthy()
-    expect(screen.queryByText(/EL_MANDEB/)).toBeNull()
+    expect(screen.getByText(/Bab el-Mandeb: REDUCED/)).toBeTruthy()
+    expect(screen.queryByText(/EL_MANDEB/i)).toBeNull()
+  })
+
+  it('prettifies lane ids missing from view state instead of leaking the raw enum', () => {
+    const laneEvent: GameEvent = {
+      type: 'SHIPPING_LANE_STATUS_CHANGE', laneId: 'bab_el_mandeb',
+      newStatus: 'blocked', suppressionFactor: 1, tick: 9,
+    }
+    setStore([laneEvent], [], { lanes: [] })
+    render(<AlertFeed />)
+    expect(screen.getByText(/Bab el-Mandeb: BLOCKED/)).toBeTruthy()
   })
 })
 
@@ -193,7 +205,7 @@ describe('AlertFeed click-to-zoom', () => {
     render(<AlertFeed />)
     expandFeed()
 
-    fireEvent.click(screen.getByText(/STRAIT OF HORMUZ: BLOCKED/))
+    fireEvent.click(screen.getByText(/Strait of Hormuz: BLOCKED/))
     expect(useUIStore.getState().mapFocus).toMatchObject({ lng: 56.3, lat: 26.5 })
   })
 

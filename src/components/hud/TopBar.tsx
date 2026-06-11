@@ -1,8 +1,9 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
 import { useIntelStore } from '@/store/intel-store'
+import { useMenuStore } from '@/store/menu-store'
 import { sendCommand, getFullState, loadState } from '@/store/bridge'
 import { saveToSlot, loadFromSlot } from '@/store/save-load'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -32,15 +33,70 @@ const INLINE_LABELS: Record<number, string> = {
   360: '1h',
 }
 
-const ALL_SPEEDS = [0, 0.1, 1, 6, 60, 360, 3600] as const
-const ALL_SPEED_LABELS: Record<number, string> = {
-  0: '||',
-  0.1: '1s/s',
-  1: '10s/s',
-  6: '1m/s',
-  60: '10m/s',
-  360: '1h/s',
-  3600: '10h/s',
+// Time slider works in game-time multipliers (game-seconds per real second);
+// engine speed (ticks per 100ms) = multiplier / 10
+const SLIDER_MAX_MULT = 3600
+const SLIDER_STEPS = 1000
+const SNAP_PCT = 0.08
+const DETENTS: { mult: number; label: string }[] = [
+  { mult: 0, label: 'PAUSED' },
+  { mult: 1, label: '1×' },
+  { mult: 8, label: '8×' },
+  { mult: 60, label: '60×' },
+  { mult: 600, label: '10m/s' },
+  { mult: 3600, label: '1h/s' },
+]
+
+function multToPos(mult: number): number {
+  if (mult <= 0) return 0
+  return Math.max(1, Math.min(SLIDER_STEPS, Math.round(1 + ((SLIDER_STEPS - 1) * Math.log(mult)) / Math.log(SLIDER_MAX_MULT))))
+}
+
+function posToMult(pos: number): number {
+  if (pos <= 0) return 0
+  const raw = Math.pow(SLIDER_MAX_MULT, (pos - 1) / (SLIDER_STEPS - 1))
+  for (const d of DETENTS) {
+    if (d.mult > 0 && Math.abs(raw - d.mult) <= d.mult * SNAP_PCT) return d.mult
+  }
+  return Math.round(raw)
+}
+
+function multLabel(mult: number): string {
+  const detent = DETENTS.find((d) => Math.abs(d.mult - mult) < 0.001)
+  if (detent) return detent.label
+  return mult >= 1 ? `×${Math.round(mult)}` : `×${mult.toFixed(1)}`
+}
+
+const WAR_CONFIRM_MS = 5_000
+const EXIT_CONFIRM_MS = 4_000
+
+// Two-step confirm state with a wall-clock auto-disarm (UI-side only, never engine time)
+function useArmedCountdown(durationMs: number) {
+  const [remainingMs, setRemainingMs] = useState<number | null>(null)
+  const deadlineRef = useRef(0)
+  const armed = remainingMs !== null
+
+  useEffect(() => {
+    if (!armed) return
+    const id = setInterval(() => {
+      const left = deadlineRef.current - Date.now()
+      setRemainingMs(left > 0 ? left : null)
+    }, 100)
+    return () => clearInterval(id)
+  }, [armed])
+
+  const arm = useCallback(() => {
+    deadlineRef.current = Date.now() + durationMs
+    setRemainingMs(durationMs)
+  }, [durationMs])
+  const disarm = useCallback(() => setRemainingMs(null), [])
+
+  return {
+    armed,
+    secondsLeft: remainingMs === null ? 0 : Math.ceil(remainingMs / 1000),
+    arm,
+    disarm,
+  }
 }
 
 export default function TopBar() {
@@ -55,6 +111,8 @@ export default function TopBar() {
   const showEconomy = useUIStore((s) => s.showEconomy)
   const showIntel = useUIStore((s) => s.showIntel)
   const toggleIntel = useUIStore((s) => s.toggleIntel)
+  const liveFeedsOpen = useUIStore((s) => s.liveFeedsOpen)
+  const toggleLiveFeeds = useUIStore((s) => s.toggleLiveFeeds)
   const placingCatalogId = useIntelStore((s) => s.placingCatalogId)
 
   const units = useGameStore((s) => s.viewState.units)
@@ -76,10 +134,9 @@ export default function TopBar() {
   const hasUnits = units.length > 0
 
   const [showHelp, setShowHelp] = useState(false)
-  const [warClickPending, setWarClickPending] = useState(false)
+  const warConfirm = useArmedCountdown(WAR_CONFIRM_MS)
   const [offerClickPending, setOfferClickPending] = useState(false)
   const [roeOpen, setRoeOpen] = useState(false)
-  const [speedDropdownOpen, setSpeedDropdownOpen] = useState(false)
   const [overflowOpen, setOverflowOpen] = useState(false)
   const [objectivesOpen, setObjectivesOpen] = useState(false)
 
@@ -123,12 +180,12 @@ export default function TopBar() {
 
   const handleDeclareWar = () => {
     if (!primaryEnemyNation) return
-    if (!warClickPending) {
-      setWarClickPending(true)
+    if (!warConfirm.armed) {
+      warConfirm.arm()
       return
     }
+    warConfirm.disarm()
     sendCommand({ type: 'DECLARE_WAR', target: primaryEnemyNation.id })
-    setWarClickPending(false)
   }
 
   const handleOfferCeasefire = () => {
@@ -224,7 +281,7 @@ export default function TopBar() {
               }}>
                 WAR
               </span>
-            ) : !warClickPending ? (
+            ) : !warConfirm.armed ? (
               <button
                 onClick={handleDeclareWar}
                 style={{
@@ -245,7 +302,7 @@ export default function TopBar() {
             ) : (
               <button
                 onClick={handleDeclareWar}
-                onBlur={() => setWarClickPending(false)}
+                onBlur={warConfirm.disarm}
                 style={{
                   background: 'var(--status-damaged)',
                   border: '2px solid var(--status-damaged)',
@@ -259,7 +316,7 @@ export default function TopBar() {
                   whiteSpace: 'nowrap',
                 }}
               >
-                CONFIRM
+                {`CONFIRM ${warConfirm.secondsLeft}`}
               </button>
             )}
 
@@ -373,114 +430,7 @@ export default function TopBar() {
 
         <Sep />
 
-        {INLINE_SPEEDS.map((s) => (
-          <button
-            key={s}
-            onClick={() => sendCommand({ type: 'SET_SPEED', speed: s })}
-            style={{
-              background: time.speed === s ? 'var(--border-accent)' : 'none',
-              border: `1px solid ${time.speed === s ? 'var(--border-accent)' : 'transparent'}`,
-              borderRadius: 3,
-              color: time.speed === s ? 'var(--text-primary)' : 'var(--text-muted)',
-              cursor: 'pointer',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--font-size-xs)',
-              padding: '2px 4px',
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-              opacity: time.speed === s ? 1 : 0.55,
-            }}
-          >
-            {INLINE_LABELS[s]}
-          </button>
-        ))}
-
-        {/* Speed chevron dropdown */}
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={() => setSpeedDropdownOpen(!speedDropdownOpen)}
-            style={{
-              background: 'none',
-              border: '1px solid transparent',
-              borderRadius: 3,
-              color: 'var(--text-muted)',
-              cursor: 'pointer',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 'var(--font-size-xs)',
-              padding: '2px 3px',
-              fontWeight: 600,
-              opacity: 0.55,
-            }}
-          >
-            {'\u203A'}
-          </button>
-
-          {speedDropdownOpen && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              marginTop: 4,
-              background: 'var(--bg-panel)',
-              border: '1px solid var(--border-default)',
-              borderRadius: 'var(--panel-radius)',
-              padding: 4,
-              zIndex: 30,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 2,
-              minWidth: 80,
-            }}>
-
-              {/* Fine speed slider */}
-              <div style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={time.speed <= 0 ? 0 : Math.round(1 + 99 * Math.log(time.speed / 0.1) / Math.log(36000))}
-                  onChange={(e) => {
-                    const val = Number(e.target.value)
-                    const speed = val === 0 ? 0 : 0.1 * Math.pow(36000, (val - 1) / 99)
-                    sendCommand({ type: 'SET_SPEED', speed })
-                  }}
-                  style={{ flex: 1, height: 4, cursor: 'pointer', accentColor: 'var(--text-accent)' }}
-                />
-                <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', minWidth: 35, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                  {time.speed <= 0 ? '||' : time.speed < 6 ? `${Math.round(time.speed * 10)}s/s` : time.speed < 300 ? `${Math.round(time.speed / 6)}m/s` : `${(time.speed / 360).toFixed(1)}h/s`}
-                </span>
-              </div>
-              <div style={{ height: 1, background: 'var(--border-default)', margin: '2px 0' }} />
-
-              {ALL_SPEEDS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => {
-                    sendCommand({ type: 'SET_SPEED', speed: s })
-                    setSpeedDropdownOpen(false)
-                  }}
-                  style={{
-                    background: time.speed === s ? 'var(--border-accent)' : 'var(--bg-hover)',
-                    border: time.speed === s
-                      ? '1px solid var(--border-accent)'
-                      : '1px solid var(--border-default)',
-                    borderRadius: 3,
-                    color: time.speed === s ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 'var(--font-size-xs)',
-                    padding: '4px 8px',
-                    fontWeight: time.speed === s ? 700 : 400,
-                    textAlign: 'left',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {ALL_SPEED_LABELS[s]}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <TimeSlider speed={time.speed} />
 
         <Sep />
 
@@ -506,6 +456,12 @@ export default function TopBar() {
 
         {/* Intel panel toggle */}
         <IntelBtn active={showIntel || !!placingCatalogId} onClick={toggleIntel} compact={false} />
+
+        {/* Live feeds window toggle */}
+        <LiveBtn active={liveFeedsOpen} onClick={toggleLiveFeeds} />
+
+        {/* Sound mute toggle */}
+        <MuteBtn />
 
         <Sep />
 
@@ -715,10 +671,10 @@ export default function TopBar() {
           {!atWarWithPrimaryEnemy && primaryEnemyNation && (
             <button
               onClick={handleDeclareWar}
-              onBlur={() => setWarClickPending(false)}
+              onBlur={warConfirm.disarm}
               style={{
-                background: warClickPending ? 'var(--status-damaged)' : 'var(--iran-secondary)',
-                border: warClickPending
+                background: warConfirm.armed ? 'var(--status-damaged)' : 'var(--iran-secondary)',
+                border: warConfirm.armed
                   ? '2px solid var(--status-damaged)'
                   : '1px solid var(--iran-primary)',
                 borderRadius: 3,
@@ -731,7 +687,7 @@ export default function TopBar() {
                 whiteSpace: 'nowrap',
               }}
             >
-              {warClickPending ? 'CONFIRM WAR' : 'DECLARE WAR'}
+              {warConfirm.armed ? `CONFIRM WAR ${warConfirm.secondsLeft}` : 'DECLARE WAR'}
             </button>
           )}
         </div>
@@ -794,6 +750,7 @@ export default function TopBar() {
                   {atWarWithPrimaryEnemy && (
                     <OverflowResign onDone={() => setOverflowOpen(false)} />
                   )}
+                  <OverflowMainMenu onDone={() => setOverflowOpen(false)} />
                 </div>
               )}
             </div>
@@ -802,9 +759,9 @@ export default function TopBar() {
       </div>
 
       {/* Close dropdowns on outside click */}
-      {(roeOpen || speedDropdownOpen || overflowOpen || objectivesOpen) && (
+      {(roeOpen || overflowOpen || objectivesOpen) && (
         <div
-          onClick={() => { setRoeOpen(false); setSpeedDropdownOpen(false); setOverflowOpen(false); setObjectivesOpen(false) }}
+          onClick={() => { setRoeOpen(false); setOverflowOpen(false); setObjectivesOpen(false) }}
           style={{
             position: 'fixed',
             inset: 0,
@@ -860,6 +817,8 @@ export default function TopBar() {
           <div style={{ color: 'var(--text-accent)', fontWeight: 600, marginBottom: 4, marginTop: 4, textTransform: 'uppercase' }}>
             Top Bar
           </div>
+          <HelpRow keys="TIME SLIDER" desc="Any speed; snaps to 1×/8×/60×/10m/1h" />
+          <HelpRow keys="LIVE" desc="Real-data live feeds window" />
           <HelpRow keys="ROE dropdown" desc="Theater-wide ROE" />
           <HelpRow keys="DECLARE WAR" desc="Initiate hostilities (click twice)" />
           <HelpRow keys="OFFER CEASEFIRE" desc="Propose ending the war (click twice)" />
@@ -1004,6 +963,51 @@ function OverflowResign({ onDone }: { onDone: () => void }) {
   )
 }
 
+// Same return-to-menu flow as DebriefScreen's MAIN MENU button
+function exitToMainMenu() {
+  useStrikeStore.getState().reset()
+  useIntelStore.getState().reset()
+  const ui = useUIStore.getState()
+  ui.clearSelection()
+  ui.setLeftPanel(null)
+  useUIStore.setState({ showIntel: false })
+  useMenuStore.getState().setScreen('start')
+}
+
+function OverflowMainMenu({ onDone }: { onDone: () => void }) {
+  const confirm = useArmedCountdown(EXIT_CONFIRM_MS)
+  return (
+    <button
+      onClick={() => {
+        if (!confirm.armed) {
+          confirm.arm()
+          return
+        }
+        confirm.disarm()
+        onDone()
+        exitToMainMenu()
+      }}
+      style={{
+        background: confirm.armed ? 'var(--status-engaged)' : 'var(--bg-hover)',
+        border: confirm.armed
+          ? '1px solid var(--status-engaged)'
+          : '1px solid var(--border-default)',
+        borderRadius: 3,
+        color: confirm.armed ? 'var(--bg-primary)' : 'var(--text-secondary)',
+        cursor: 'pointer',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--font-size-xs)',
+        padding: '4px 8px',
+        fontWeight: confirm.armed ? 700 : 400,
+        textAlign: 'left',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {confirm.armed ? 'CONFIRM EXIT?' : 'MAIN MENU'}
+    </button>
+  )
+}
+
 function OverflowSaveLoad({ onDone }: { onDone: () => void }) {
   const [feedback, setFeedback] = useState<string | null>(null)
 
@@ -1075,6 +1079,164 @@ function IntelBtn({ active, onClick, compact }: { active: boolean; onClick: () =
       }}
     >
       {compact ? 'INT' : 'INTEL'}
+    </button>
+  )
+}
+
+function TimeSlider({ speed }: { speed: number }) {
+  const [dragMult, setDragMult] = useState<number | null>(null)
+  const lastSentRef = useRef(0)
+  const pendingRef = useRef<number | null>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastNonzeroRef = useRef(0.1)
+
+  useEffect(() => {
+    if (speed > 0) lastNonzeroRef.current = speed
+  }, [speed])
+
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+  }, [])
+
+  // ~10 sends/s max while dragging; trailing send keeps the final position
+  const sendSpeed = useCallback((s: number) => {
+    const since = performance.now() - lastSentRef.current
+    if (since >= 100) {
+      lastSentRef.current = performance.now()
+      sendCommand({ type: 'SET_SPEED', speed: s })
+    } else {
+      pendingRef.current = s
+      if (!timerRef.current) {
+        timerRef.current = setTimeout(() => {
+          timerRef.current = null
+          lastSentRef.current = performance.now()
+          if (pendingRef.current !== null) {
+            sendCommand({ type: 'SET_SPEED', speed: pendingRef.current })
+            pendingRef.current = null
+          }
+        }, 100 - since)
+      }
+    }
+  }, [])
+
+  const mult = dragMult ?? speed * 10
+  const paused = mult <= 0
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0 2px' }}>
+      <button
+        onClick={() => sendCommand({ type: 'SET_SPEED', speed: speed === 0 ? lastNonzeroRef.current : 0 })}
+        title={paused ? 'Resume' : 'Pause'}
+        aria-label={paused ? 'Resume' : 'Pause'}
+        style={{
+          background: paused ? 'var(--bg-hover)' : 'none',
+          border: `1px solid ${paused ? 'var(--status-engaged)' : 'transparent'}`,
+          borderRadius: 3,
+          color: paused ? 'var(--status-engaged)' : 'var(--text-secondary)',
+          cursor: 'pointer',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 'var(--font-size-xs)',
+          padding: '2px 5px',
+          fontWeight: 700,
+          lineHeight: 1.2,
+        }}
+      >
+        {paused ? '▶' : '||'}
+      </button>
+      <input
+        type="range"
+        min={0}
+        max={SLIDER_STEPS}
+        step={1}
+        value={multToPos(mult)}
+        aria-label="Game speed"
+        title="Game speed (snaps to 1× / 8× / 60× / 10m/s / 1h/s)"
+        onChange={(e) => {
+          const m = posToMult(Number(e.target.value))
+          setDragMult(m)
+          sendSpeed(m / 10)
+        }}
+        onPointerUp={() => setDragMult(null)}
+        onKeyUp={() => setDragMult(null)}
+        onBlur={() => setDragMult(null)}
+        style={{ width: 92, height: 4, cursor: 'pointer', accentColor: 'var(--text-accent)' }}
+      />
+      <span style={{
+        fontSize: 'var(--font-size-xs)',
+        color: paused ? 'var(--status-engaged)' : 'var(--text-secondary)',
+        minWidth: 46,
+        fontWeight: 600,
+        whiteSpace: 'nowrap',
+      }}>
+        {multLabel(mult)}
+      </span>
+    </div>
+  )
+}
+
+function LiveBtn({ active, onClick }: { active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: active ? 'var(--bg-hover)' : 'none',
+        border: `1px solid ${active ? 'var(--border-accent)' : 'transparent'}`,
+        borderRadius: 3,
+        color: active ? 'var(--text-accent)' : 'var(--text-muted)',
+        cursor: 'pointer',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--font-size-xs)',
+        padding: '2px 4px',
+        textTransform: 'uppercase',
+        fontWeight: 600,
+        letterSpacing: '0.03em',
+        whiteSpace: 'nowrap',
+        opacity: active ? 1 : 0.55,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+      }}
+    >
+      {active && (
+        <>
+          <style>{'@keyframes live-pulse{0%,100%{opacity:1}50%{opacity:0.25}}'}</style>
+          <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#e84545', animation: 'live-pulse 1.4s ease-in-out infinite', flexShrink: 0 }} />
+        </>
+      )}
+      LIVE
+    </button>
+  )
+}
+
+function MuteBtn() {
+  const muted = useUIStore((s) => s.audioMuted)
+  const toggleAudioMuted = useUIStore((s) => s.toggleAudioMuted)
+  return (
+    <button
+      onClick={toggleAudioMuted}
+      title="Sound on/off"
+      aria-label="Sound on/off"
+      style={{
+        background: 'none',
+        border: '1px solid transparent',
+        borderRadius: 3,
+        color: muted ? 'var(--status-engaged)' : 'var(--text-muted)',
+        cursor: 'pointer',
+        padding: '2px 4px',
+        opacity: muted ? 1 : 0.55,
+        display: 'inline-flex',
+        alignItems: 'center',
+        lineHeight: 1,
+      }}
+    >
+      <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M2 6h3l4-3.5v11L5 10H2z" fill="currentColor" />
+        {muted ? (
+          <path d="M11 6l4 4M15 6l-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none" />
+        ) : (
+          <path d="M11.5 5.5a3.4 3.4 0 0 1 0 5M13 4a5.6 5.6 0 0 1 0 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+        )}
+      </svg>
     </button>
   )
 }

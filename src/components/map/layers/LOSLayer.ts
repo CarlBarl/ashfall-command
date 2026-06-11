@@ -58,19 +58,42 @@ const NUM_RAYS = 360
 /** Step size along each ray in km */
 const STEP_KM = 2
 
+/** Coverage is shown against an air target this far above ground — high enough
+ *  that desert dunes and coastal berms don't shadow rays, only real mountains */
+const TARGET_AGL_M = 500
+
+/** Median window (± rays) — kills single-ray needles from elevation-grid aliasing */
+const SMOOTH_WINDOW = 2
+
+function medianOf(values: number[]): number {
+  const s = [...values].sort((a, b) => a - b)
+  return s[Math.floor(s.length / 2)]
+}
+
+/** Median-smooth ray distances; circular wrap for full rings, clamped for sectors */
+function smoothDistances(dists: number[], circular: boolean): number[] {
+  const n = dists.length
+  if (n < SMOOTH_WINDOW * 2 + 1) return dists
+  const out = new Array<number>(n)
+  for (let i = 0; i < n; i++) {
+    const window: number[] = []
+    for (let o = -SMOOTH_WINDOW; o <= SMOOTH_WINDOW; o++) {
+      const j = circular ? (i + o + n) % n : Math.min(n - 1, Math.max(0, i + o))
+      window.push(dists[j])
+    }
+    out[i] = medianOf(window)
+  }
+  return out
+}
+
 /**
- * Compute visible-area polygon by raycasting from a radar position.
+ * Compute the radar coverage polygon by raycasting from the radar position.
  *
- * Algorithm:
- * 1. Cast 360 rays (1 per degree) from the radar position
- * 2. March outward in ~2km steps up to radarRange_km
- * 3. At each step, compute LOS line height accounting for earth curvature
- *    and compare against terrain elevation
- * 4. If terrain > LOS height, the ray is blocked at this distance
- * 5. Build a polygon from the 360 endpoint coordinates
- *
- * Curvature drop at distance d: drop = d^2 / (2 * R * k)
- * where R = 6371km, k = 4/3 (atmospheric refraction)
+ * Matches the engine model (2026-06-11): coverage is the effective radius
+ * (nominal range × elevation bonus — height pays, no horizon cap), trimmed
+ * only where terrain physically shadows a low-flying air target (100 m AGL).
+ * Over open water this renders as a clean radius/sector arc; real mountain
+ * ranges still carve shadows.
  */
 export function computeLOSPolygon(input: LOSInput): Feature<Polygon> {
   const { position, radarRange_km, antennaHeight_m, elevationGrid, heading, sectorDeg } = input
@@ -79,7 +102,10 @@ export function computeLOSPolygon(input: LOSInput): Feature<Polygon> {
   const radarGroundElev = elevationGrid.getElevation(position.lat, position.lng)
   const radarAlt = radarGroundElev + antennaHeight_m
 
-  const numSteps = Math.max(1, Math.ceil(radarRange_km / STEP_KM))
+  // Mirrors detection.ts elevationRangeBonus: +50% range at 10 km of site+antenna height
+  const effectiveRange_km = radarRange_km * (1 + 0.5 * Math.min(1, Math.max(0, radarAlt) / 10000))
+
+  const numSteps = Math.max(1, Math.ceil(effectiveRange_km / STEP_KM))
 
   // Equirectangular stepping instead of turf destination() — this runs
   // ~rays x steps times per polygon and geodesic precision is irrelevant
@@ -87,12 +113,11 @@ export function computeLOSPolygon(input: LOSInput): Feature<Polygon> {
   const latPerKm = 1 / 110.574
   const lngPerKm = 1 / (111.32 * Math.cos((position.lat * Math.PI) / 180))
 
-  /** Raycast a single bearing and return the farthest visible point.
-   *  Shows terrain masking only — if a mountain peak between the radar
-   *  and a distant point is higher than the radar antenna, the ray is blocked.
-   *  Horizon/curvature is NOT applied here (it's target-altitude-dependent
-   *  and handled by the detection engine). */
-  const castRay = (bearing: number): [number, number] => {
+  /** Raycast a single bearing: farthest distance (km) where a TARGET_AGL_M
+   *  target is still visible over all terrain passed so far. Bare-ground
+   *  visibility was the old criterion — it let every 30 m coastal berm shadow
+   *  the whole ray and drew spiky fans instead of coverage arcs. */
+  const castRayDistance = (bearing: number): number => {
     const rad = (bearing * Math.PI) / 180
     const northPerKm = Math.cos(rad)
     const eastPerKm = Math.sin(rad)
@@ -101,47 +126,45 @@ export function computeLOSPolygon(input: LOSInput): Feature<Polygon> {
     let maxObstacleAngle = -Infinity // highest "look angle" to any terrain seen so far
 
     for (let step = 1; step <= numSteps; step++) {
-      const dist_km = (step / numSteps) * radarRange_km
+      const dist_km = (step / numSteps) * effectiveRange_km
 
       const lat = position.lat + dist_km * northPerKm * latPerKm
       const lng = position.lng + dist_km * eastPerKm * lngPerKm
       const terrainElev = elevationGrid.getElevation(lat, lng)
 
-      // Compute the angle from the radar to this terrain point
-      // angle = atan2(terrainElev - radarAlt, dist_km * 1000)
-      const elevDiff = terrainElev - radarAlt
-      const angle = Math.atan2(elevDiff, dist_km * 1000)
-
-      if (angle > maxObstacleAngle) {
-        // This point is visible (higher angle than any previous obstacle)
-        maxObstacleAngle = angle
+      // A target flying TARGET_AGL_M above this ground is visible if its look
+      // angle clears every terrain obstacle between it and the radar
+      const targetAngle = Math.atan2(terrainElev + TARGET_AGL_M - radarAlt, dist_km * 1000)
+      if (targetAngle >= maxObstacleAngle) {
         maxVisibleDist_km = dist_km
       }
-      // If angle <= maxObstacleAngle, a previous terrain peak blocks this point
-      // But we keep going — there might be higher terrain further out that IS visible
-      // For simplicity, break when blocked (conservative)
-      else if (elevDiff > 0 && angle <= maxObstacleAngle) {
-        break
+
+      // The bare terrain here shadows whatever sits behind it
+      const obstacleAngle = Math.atan2(terrainElev - radarAlt, dist_km * 1000)
+      if (obstacleAngle > maxObstacleAngle) {
+        maxObstacleAngle = obstacleAngle
       }
     }
 
-    if (maxVisibleDist_km <= 0) {
-      return origin
-    }
+    return maxVisibleDist_km
+  }
+
+  const pointAt = (bearing: number, dist_km: number): [number, number] => {
+    if (dist_km <= 0) return origin
+    const rad = (bearing * Math.PI) / 180
     return [
-      position.lng + maxVisibleDist_km * eastPerKm * lngPerKm,
-      position.lat + maxVisibleDist_km * northPerKm * latPerKm,
+      position.lng + dist_km * Math.sin(rad) * lngPerKm,
+      position.lat + dist_km * Math.cos(rad) * latPerKm,
     ]
   }
 
   const ring: [number, number][] = []
 
   if (sectorDeg >= 360) {
-    // Full circle — existing 360° behavior
-    for (let ray = 0; ray < NUM_RAYS; ray++) {
-      const bearing = (ray * 360) / NUM_RAYS
-      ring.push(castRay(bearing))
-    }
+    // Full circle
+    const bearings = Array.from({ length: NUM_RAYS }, (_, ray) => (ray * 360) / NUM_RAYS)
+    const dists = smoothDistances(bearings.map(castRayDistance), true)
+    for (let i = 0; i < bearings.length; i++) ring.push(pointAt(bearings[i], dists[i]))
     // Close the polygon ring
     ring.push(ring[0])
   } else {
@@ -150,14 +173,12 @@ export function computeLOSPolygon(input: LOSInput): Feature<Polygon> {
     const endAngle = heading + sectorDeg / 2
     const numRays = Math.max(3, Math.round(sectorDeg)) // ~1 ray per degree within sector
 
+    const bearings = Array.from({ length: numRays + 1 }, (_, i) => startAngle + (i / numRays) * (endAngle - startAngle))
+    const dists = smoothDistances(bearings.map(castRayDistance), false)
+
     // Start at radar position (center of wedge)
     ring.push(origin)
-
-    for (let i = 0; i <= numRays; i++) {
-      const azimuth = startAngle + (i / numRays) * (endAngle - startAngle)
-      ring.push(castRay(azimuth))
-    }
-
+    for (let i = 0; i < bearings.length; i++) ring.push(pointAt(bearings[i], dists[i]))
     // Close back to radar position
     ring.push(origin)
   }

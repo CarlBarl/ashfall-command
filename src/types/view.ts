@@ -1,15 +1,21 @@
 import type {
+  AgentSource,
+  AirMission,
   GameEvent,
   GameOverReport,
   GameTime,
+  IntelAsset,
+  IntelProduct,
   Missile,
   Nation,
   NationId,
   PointDefenseSystem,
   Position,
   ROE,
+  SatTasking,
   Sensor,
   ShippingLane,
+  SquadronState,
   SupplyLine,
   UnitCategory,
   UnitId,
@@ -18,6 +24,18 @@ import type {
   WeaponLoadout,
   WeaponStock,
 } from './game'
+
+/** Intel slice of the snapshot — player-nation data only */
+export interface IntelViewState {
+  assets: IntelAsset[]
+  agents: AgentSource[]
+  products: IntelProduct[]
+  taskings: SatTasking[]
+  leakLevel: number
+  /** Fuzzy read of Iranian counterintel posture — exact paranoia stays hidden */
+  paranoiaBand: 'LOW' | 'ELEVATED' | 'HIGH' | 'SEVERE'
+  encryptionUpgradedUntilTick: number | null
+}
 
 /** Live status of one scenario objective, computed engine-side for the player's nation */
 export interface ObjectiveStatus {
@@ -50,6 +68,12 @@ export interface GameViewState {
   gameOver: GameOverReport | null
   /** Scenario objectives for the player's side (empty at peace) */
   objectives: ObjectiveStatus[]
+  /** Intel suite: assets, sources, products, counterintel meters (player nation only) */
+  intel: IntelViewState
+  /** Air war: the player's missions (engine always supplies; optional to spare fixtures) */
+  airMissions?: AirMission[]
+  /** SURGE OPS lever state */
+  surgeOps?: boolean
 }
 
 export interface ViewUnit {
@@ -81,4 +105,10 @@ export interface ViewUnit {
   visibility: VisibilityLevel
   /** True when position is a last-known fix rather than a live track */
   stale: boolean
+  /** Own units: radar silent (EMCON) */
+  emcon?: boolean
+  /** Own carriers/airbases: squadron pools (never exposed for enemy units) */
+  airWing?: SquadronState[]
+  /** Enemy contacts: positively identified as a decoy */
+  decoyRevealed?: boolean
 }

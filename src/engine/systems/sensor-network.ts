@@ -1,6 +1,6 @@
 import type { GameState, Missile, NationId, UnitId, Unit } from '@/types/game'
 import type { ElevationGrid } from './elevation'
-import { detectThreats, type DetectedThreat } from './detection'
+import { detectThreats, elevationRangeBonus, type DetectedThreat } from './detection'
 import { haversine } from '../utils/geo'
 
 // ---------------------------------------------------------------------------
@@ -23,6 +23,8 @@ export interface SensorNetwork {
   sharedDetections: Map<NationId, Map<string, NetworkDetection>>
   /** nation → set of enemy unit IDs detected via ELINT (radar emission interception) */
   elintDetections: Map<NationId, Set<UnitId>>
+  /** unit → its own local detections from step 3 (only units that detected something) */
+  localDetections: Map<UnitId, DetectedThreat[]>
 }
 
 // ---------------------------------------------------------------------------
@@ -34,7 +36,8 @@ export interface SensorNetwork {
  *
  * 1. Find all hubs (units with datalink_range_km > 0, not destroyed)
  * 2. Connect each sensor-capable unit to hubs within datalink range (same nation)
- * 3. Run detectThreats() for each radar unit → local detections
+ * 3. Run detectThreats() for each radar unit → local detections, stashed on the
+ *    network so detectThreatsNetworked doesn't recompute them
  * 4. Propagate detections to the hubs each detector is connected to, then union
  *    every hub's picture into a per-nation common picture. Quality is resolved
  *    per receiving unit at query time (detectThreatsNetworked).
@@ -149,11 +152,15 @@ export function buildSensorNetwork(
     for (const enemy of state.units.values()) {
       if (enemy.status === 'destroyed') continue
       if (enemy.nation === unit.nation) continue // same nation — skip
+      if (enemy.emcon) continue // radar silent — no emissions to intercept
 
       // Check each enemy radar sensor
       for (const sensor of enemy.sensors) {
         if (sensor.type !== 'radar') continue
-        const elintRange = sensor.range_km * 1.5 // emissions detectable at 1.5x radar range
+        // Emissions detectable at 1.5x radar range; elevated emitters shine further
+        const emitterElev = grid?.getElevation(enemy.position.lat, enemy.position.lng) ?? 0
+        const elintRange = sensor.range_km * 1.5 *
+          elevationRangeBonus(emitterElev + (sensor.antenna_height_m ?? 15))
         const dist = haversine(unit.position, enemy.position)
         if (dist <= elintRange) {
           // Add enemy unit to ELINT detections for detecting unit's nation
@@ -169,7 +176,7 @@ export function buildSensorNetwork(
     }
   }
 
-  return { connections, hubDetections, sharedDetections, elintDetections }
+  return { connections, hubDetections, sharedDetections, elintDetections, localDetections }
 }
 
 // ---------------------------------------------------------------------------
@@ -197,8 +204,12 @@ export function detectThreatsNetworked(
   const resultMap = new Map<string, NetworkedThreat>()
 
   // --- Own local detections (highest priority) ---
-  const ownThreats = detectThreats(state, adUnit, grid)
+  // Reuse the picture computed in buildSensorNetwork; absent (nothing detected,
+  // or EMCON flipped mid-tick) → fresh call
+  const ownThreats = network.localDetections.get(adUnit.id) ?? detectThreats(state, adUnit, grid)
   for (const threat of ownThreats) {
+    // The stash is a tick-start snapshot — drop missiles resolved since (fuel expiry)
+    if (threat.missile.status !== 'inflight') continue
     resultMap.set(threat.missile.id, {
       ...threat,
       networkQuality: 'own',
@@ -254,4 +265,19 @@ export function isDetectedByELINT(
   unitId: UnitId,
 ): boolean {
   return network.elintDetections.get(nation)?.has(unitId) ?? false
+}
+
+// ---------------------------------------------------------------------------
+// Datalink connectivity — can this unit receive fire-quality tracks from the net?
+// ---------------------------------------------------------------------------
+
+/** A unit is on the datalink if it is a hub itself or within range of any friendly hub */
+export function isDatalinkConnected(state: GameState, unit: Unit): boolean {
+  if (unit.datalink_range_km && unit.datalink_range_km > 0) return true
+  for (const hub of state.units.values()) {
+    if (hub.nation !== unit.nation || hub.status === 'destroyed') continue
+    if (!hub.datalink_range_km || hub.datalink_range_km <= 0) continue
+    if (haversine(unit.position, hub.position) <= hub.datalink_range_km) return true
+  }
+  return false
 }

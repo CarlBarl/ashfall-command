@@ -36,6 +36,8 @@ const TRACKED_ALPHA_FACTOR = 0.8
 const DETECTED_ALPHA_FACTOR = 0.75
 const DETECTED_STALE_ALPHA_FACTOR = 0.55
 const DESATURATION = 0.65
+const DECOY_DESATURATION = 0.85
+const DECOY_TAG_COLOR: [number, number, number, number] = [201, 178, 88, 220]
 
 /** Flattened render item — either a solo unit or a cluster rendered as its primary */
 interface RenderUnit {
@@ -51,6 +53,7 @@ interface RenderUnit {
   heading: number
   visibility: string
   stale: boolean
+  decoyRevealed: boolean
 }
 
 function toRenderUnit(item: ViewUnit | UnitCluster): RenderUnit {
@@ -75,6 +78,8 @@ function toRenderUnit(item: ViewUnit | UnitCluster): RenderUnit {
       heading: item.primary.heading,
       visibility,
       stale,
+      // Only tag a cluster DECOY when every member is a confirmed decoy
+      decoyRevealed: item.units.every(u => u.decoyRevealed === true),
     }
   }
   return {
@@ -90,20 +95,22 @@ function toRenderUnit(item: ViewUnit | UnitCluster): RenderUnit {
     heading: item.heading,
     visibility: item.visibility,
     stale: item.stale,
+    decoyRevealed: item.decoyRevealed === true,
   }
 }
 
-function desaturate([r, g, b]: [number, number, number]): [number, number, number] {
+function desaturate([r, g, b]: [number, number, number], amount = DESATURATION): [number, number, number] {
   const gray = 0.3 * r + 0.59 * g + 0.11 * b
   return [
-    Math.round(r + (gray - r) * DESATURATION),
-    Math.round(g + (gray - g) * DESATURATION),
-    Math.round(b + (gray - b) * DESATURATION),
+    Math.round(r + (gray - r) * amount),
+    Math.round(g + (gray - g) * amount),
+    Math.round(b + (gray - b) * amount),
   ]
 }
 
 function fogColor(d: RenderUnit): [number, number, number, number] {
-  const base = NATION_COLORS[d.nation] ?? [200, 200, 200]
+  const nationBase = NATION_COLORS[d.nation] ?? [200, 200, 200]
+  const base = d.decoyRevealed ? desaturate(nationBase, DECOY_DESATURATION) : nationBase
   const alpha = STATUS_ALPHA[d.status] ?? 255
   if (d.visibility === 'tracked') {
     return [...base, Math.round(alpha * TRACKED_ALPHA_FACTOR)] as [number, number, number, number]
@@ -192,7 +199,7 @@ export function createUnitLayer(
     },
     updateTriggers: {
       getSize: [selectedId, hoveredId, targetId],
-      getColor: [targetingMode, targetId, units.map(u => `${u.id}:${u.status}:${u.visibility}:${u.stale}`).join(',')],
+      getColor: [targetingMode, targetId, units.map(u => `${u.id}:${u.status}:${u.visibility}:${u.stale}:${u.decoyRevealed ? 'D' : ''}`).join(',')],
       getAngle: [units.map(u => `${u.id}:${u.heading}`).join(',')],
     },
   })
@@ -287,6 +294,25 @@ export function createUnitLayer(
     backgroundPadding: [4, 1],
   })
 
+  // Confirmed decoys: tag above the (desaturated) icon
+  const decoyItems = renderItems.filter(d => d.decoyRevealed)
+  const decoyTagLayer = new TextLayer<RenderUnit>({
+    id: 'decoy-tags',
+    data: decoyItems,
+    getPosition: (d) => [d.position.lng, d.position.lat],
+    getText: () => 'DECOY',
+    getSize: 9,
+    getColor: DECOY_TAG_COLOR,
+    getPixelOffset: [0, -26],
+    fontFamily: 'JetBrains Mono, Fira Code, monospace',
+    fontWeight: 700,
+    outlineWidth: 2,
+    outlineColor: [13, 17, 23, 220],
+    sizeUnits: 'pixels',
+    billboard: true,
+    pickable: false,
+  })
+
   // Invisible pick layer — much larger hit area (24px radius) for easy clicking
   const pickLayer = new ScatterplotLayer<RenderUnit>({
     id: 'unit-pick-layer',
@@ -313,10 +339,10 @@ export function createUnitLayer(
   })
 
   if (typeof window !== 'undefined' && window.innerWidth < 768) {
-    return [pickLayer, contactRingLayer, iconLayer, badgeLayer, contactBadgeLayer]
+    return [pickLayer, contactRingLayer, iconLayer, badgeLayer, contactBadgeLayer, decoyTagLayer]
   }
 
-  return [pickLayer, contactRingLayer, iconLayer, labelLayer, badgeLayer, contactBadgeLayer]
+  return [pickLayer, contactRingLayer, iconLayer, labelLayer, badgeLayer, contactBadgeLayer, decoyTagLayer]
 }
 
 /** Highlight ring around units recently spotted by satellite passes */

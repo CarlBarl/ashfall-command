@@ -229,6 +229,71 @@ describe('detectThreatsNetworked', () => {
   })
 })
 
+describe('localDetections stash', () => {
+  function makeDetectorState() {
+    const detector = makeUnit({
+      id: 'detector',
+      nation: 'usa',
+      position: { lat: 25, lng: 51 },
+      sensors: [{ type: 'radar', range_km: 100, detection_prob: 0.95 }],
+    })
+    const hub = makeUnit({
+      id: 'hub',
+      nation: 'usa',
+      position: { lat: 25, lng: 51.2 },
+      sensors: [{ type: 'radar', range_km: 1, detection_prob: 0.95 }],
+      datalink_range_km: 100,
+    })
+    const missile = makeMissile({ id: 'inbound' })
+    const state = makeState([detector, hub], [missile])
+    state.time.timestamp = 30_000 // mid-flight on the missile's [0, 60000] timestamps
+    return { state, detector, missile }
+  }
+
+  it('buildSensorNetwork stashes per-unit local detections; non-detecting units absent', () => {
+    const { state } = makeDetectorState()
+    const blind = makeUnit({
+      id: 'blind',
+      nation: 'usa',
+      position: { lat: 25, lng: 52 },
+      sensors: [{ type: 'radar', range_km: 1, detection_prob: 0.95 }],
+    })
+    state.units.set('blind', blind)
+
+    const network = buildSensorNetwork(state)
+
+    expect(network.localDetections.get('detector')).toHaveLength(1)
+    expect(network.localDetections.get('detector')![0].missile.id).toBe('inbound')
+    expect(network.localDetections.has('blind')).toBe(false)
+  })
+
+  it('detectThreatsNetworked consumes the stash and falls back to a fresh call when absent', () => {
+    const { state, detector } = makeDetectorState()
+    const network = buildSensorNetwork(state)
+
+    // Stashed own detection wins
+    expect(detectThreatsNetworked(state, detector, network)[0].networkQuality).toBe('own')
+
+    // Present-but-empty stash entry is trusted → only the hub-relayed track remains
+    network.localDetections.set('detector', [])
+    expect(detectThreatsNetworked(state, detector, network)[0].networkQuality).toBe('tracked')
+
+    // Absent entry → fresh detectThreats call restores the own-quality track
+    network.localDetections.delete('detector')
+    expect(detectThreatsNetworked(state, detector, network)[0].networkQuality).toBe('own')
+  })
+
+  it('drops stashed own detections whose missile resolved mid-tick', () => {
+    const { state, detector, missile } = makeDetectorState()
+    state.units.delete('hub') // no network paths — own detections only
+    const network = buildSensorNetwork(state)
+    expect(network.localDetections.get('detector')).toHaveLength(1)
+
+    missile.status = 'intercepted'
+    expect(detectThreatsNetworked(state, detector, network)).toHaveLength(0)
+  })
+})
+
 describe('ELINT detection', () => {
   it('detects enemy radar within 1.5x range', () => {
     // USA unit at 25,51 — Iran radar at 25.5,51.5 with 300km range

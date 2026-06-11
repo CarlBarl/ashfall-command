@@ -150,6 +150,16 @@ export interface Unit {
   damage_per_contact?: number
   /** For drone launcher units — current tactical mission */
   droneMission?: 'military' | 'shipping_interdiction'
+  /** EMCON: radar silent — invisible to ELINT, blind on own radar (network picture still applies) */
+  emcon?: boolean
+  /** Decoy unit (Iranian dummy TELs) — engine truth, scrubbed from snapshots until revealed */
+  isDecoy?: boolean
+  /** Set once the enemy has positively identified this decoy (NIIRS 7+ pass, HUMINT, or BDA) */
+  decoyRevealed?: boolean
+  /** Carrier groups + airbases: squadron pools (air war v5) */
+  airWing?: SquadronState[]
+  /** Flight units only — mission bookkeeping */
+  flightMeta?: { missionId: string; bingoTick: number; rtbTo: UnitId; a2aShots: number }
 }
 
 export interface WeaponStock {
@@ -301,6 +311,8 @@ export interface Missile {
   interceptTargetMissileId?: string
   /** Detection quality that led to this intercept (for accuracy modifier) */
   networkQuality?: 'own' | 'tracked' | 'detected'
+  /** Strike was leaked to the enemy before launch — heavy miss chance at impact */
+  compromised?: boolean
 }
 
 export interface ShippingLane {
@@ -315,6 +327,18 @@ export interface ShippingLane {
   /** Combined suppression factor from all threats, 0 (clear) to 1 (blocked) */
   suppressionFactor: number
   status: 'open' | 'reduced' | 'blocked'
+}
+
+/** One salvo round queued for a future tick (LAUNCH_SALVO with spacingTicks) */
+export interface ScheduledLaunch {
+  dueTick: number
+  launcherId: UnitId
+  weaponId: WeaponId
+  targetId: UnitId
+  waypoints?: Position[]
+  trackQuality?: TrackQuality
+  /** Result of the salvo command's single leak roll — scheduled rounds never re-roll */
+  compromised?: boolean
 }
 
 export interface GameState {
@@ -339,6 +363,14 @@ export interface GameState {
   warStatus?: Record<string, WarStatus>
   /** Set once the war has been resolved — the world keeps ticking but the game is decided */
   gameOver?: GameOverReport
+  /** Intel suite v3: ISR assets, HUMINT sources, products, counterintel meters */
+  intel?: IntelState
+  /** Salvo rounds awaiting their dueTick — drained by processScheduledLaunches each tick */
+  scheduledLaunches?: ScheduledLaunch[]
+  /** Air war v5: live + planned air missions */
+  airMissions?: AirMission[]
+  /** Air war v5: SURGE OPS lever — 96 h halved ready times, then ×1.5 sustained */
+  surgeOps?: { enabled: boolean; activatedTick?: number }
 }
 
 export type GameEvent =
@@ -360,3 +392,154 @@ export type GameEvent =
   | { type: 'CEASEFIRE_OFFERED'; by: NationId; tick: number }
   | { type: 'CEASEFIRE_REJECTED'; by: NationId; tick: number }
   | { type: 'WAR_ENDED'; outcome: 'ceasefire' | 'capitulation'; loser?: NationId; tick: number }
+  | { type: 'AIR_MISSION_LAUNCHED'; missionId: string; kind: AirMissionKind; flightName: string; tick: number }
+  | { type: 'FLIGHT_ON_STATION'; missionId: string; flightName: string; tick: number }
+  | { type: 'FLIGHT_RTB'; missionId: string; flightName: string; reason: string; tick: number }
+  | { type: 'FLIGHT_LOST'; missionId?: string; flightName: string; airframesLost: number; pilotFate: PilotFate; tick: number }
+  | { type: 'AIR_INTERCEPT'; attackerName: string; defenderName: string; kills: number; tick: number }
+  | { type: 'AUTO_ENGAGEMENT'; unitId: UnitId; targetId: UnitId; weaponName: string; count: number; quality: TrackQuality; tick: number }
+  | { type: 'MISSILE_MISSED'; missileId: string; targetId: UnitId; tick: number }
+  | { type: 'MISSILE_CRASHED'; missileId: string; position?: Position; tick: number }
+  | { type: 'ORDER_REJECTED'; unitId: UnitId; reason: string; tick: number }
+  | { type: 'SATELLITE_PASS_COMPLETE'; assetId: string; target: Position; found: number; revealedDecoys: number; tick: number }
+  | { type: 'SATELLITE_PASS_FAILED'; assetId: string; target: Position; cloudPct: number; tick: number }
+  | { type: 'INTERCEPT_DECRYPTED'; precedence: InterceptPrecedence; text: string; aboutUnitId?: UnitId; tick: number }
+  | { type: 'AGENT_REPORT'; agentId: string; codename: string; text: string; tick: number }
+  | { type: 'AGENT_ARRESTED'; agentId: string; codename: string; tick: number }
+  | { type: 'AGENT_EXFILTRATED'; agentId: string; codename: string; tick: number }
+  | { type: 'SPY_SWEEP'; arrests: number; tick: number }
+  | { type: 'ENCRYPTION_UPGRADED'; untilTick: number; tick: number }
+  | { type: 'DECOY_REVEALED'; unitId: UnitId; tick: number }
+  | { type: 'STRIKE_LEAKED'; targetId: UnitId; tick: number }
+  | { type: 'OPSEC_SWEEP_COMPLETE'; newLeakLevel: number; tick: number }
+
+/** Fire-control source for a shot: the shooter's own sensors, or a track relayed over datalink */
+export type TrackQuality = 'own' | 'datalink'
+
+// ---------------------------------------------------------------------------
+// Intel suite (v3) — design: docs/plans/intel-suite-v3.md
+// ---------------------------------------------------------------------------
+
+export type IntelAssetKind =
+  | 'optical_sat'      // KH-11 / Noor — taskable imagery passes
+  | 'commercial_sat'   // commercial layer — frequent, lower quality
+  | 'sigint_air'       // RC-135 — drives intercept cadence
+  | 'maritime_patrol'  // MQ-4C Triton — coarse wide-area ship refresh
+  | 'launch_detection' // SBIRS — always-on launch plume FLASH cards
+  | 'recon_drone'      // Mohajer-10 — Iran's carrier watcher
+  | 'fast_boats'       // IRGC shadowing — Iran's coarse carrier track
+
+export interface IntelAsset {
+  id: string
+  nation: NationId
+  name: string
+  kind: IntelAssetKind
+  status: 'active' | 'lost'
+  /** Game-minutes between collections (0 = continuous) */
+  revisit_min: number
+  lastCollectionTick: number
+  /** Imagery quality for products (NIIRS 0-9); >= 7 reveals decoys */
+  niirs?: number
+}
+
+export interface SatTasking {
+  id: string
+  assetId: string
+  target: Position
+  queuedTick: number
+  /** Real-world cloud cover 0-100 captured at tasking time (UI-fetched); undefined = roll it */
+  cloudPct?: number
+}
+
+export type InterceptPrecedence = 'FLASH' | 'IMMEDIATE' | 'PRIORITY' | 'ROUTINE'
+
+export type IntelProductKind = 'imint' | 'sigint' | 'humint'
+
+/** Metadata only — the UI fetches real imagery at view time */
+export interface IntelProduct {
+  id: string
+  kind: IntelProductKind
+  tick: number
+  classification: string
+  caption: string
+  assetId?: string
+  target?: Position
+  niirs?: number
+  precedence?: InterceptPrecedence
+  agentId?: string
+}
+
+export type AgentStatus = 'active' | 'resting' | 'exfiltrating' | 'exfiltrated' | 'arrested'
+
+export interface AgentSource {
+  id: string
+  codename: string
+  placement: string
+  product: string
+  status: AgentStatus
+  /** 0-100 — arrest risk during Iranian spy sweeps */
+  exposure: number
+  lastTaskedTick: number
+  exfilCompleteTick?: number
+}
+
+// ---------------------------------------------------------------------------
+// Air war v5 — design: docs/plans/air-war-v5.md
+// ---------------------------------------------------------------------------
+
+export type AirframeId = 'fa18e' | 'f35c' | 'ea18g' | 'e2d' | 'f14' | 'mig29' | 'su24' | 'su35'
+
+export interface SquadronState {
+  id: string
+  name: string
+  airframe: AirframeId
+  /** Airframes on the books (parked ones are strikeable via airbase damage) */
+  total: number
+  /** Ready to launch right now */
+  available: number
+  /** Ticks when turning-around airframes rejoin `available` */
+  readyAt: number[]
+}
+
+export type AirMissionKind = 'cap' | 'strike' | 'aew'
+export type AirMissionStatus = 'planning' | 'active' | 'complete' | 'aborted'
+export type PilotFate = 'kia' | 'rescued' | 'pow'
+
+export interface AirMission {
+  id: string
+  kind: AirMissionKind
+  nation: NationId
+  squadronId: string
+  fromUnitId: UnitId
+  flightSize: number
+  station?: Position
+  targetId?: UnitId
+  /** EA-18G pair attached (USA): SAM detect/pk ×0.6 near the flight, emitting SAMs become contacts */
+  escortSead?: boolean
+  /** Buddy tanking: +35% radius, costs 2 extra fa18e sorties */
+  extendedRange?: boolean
+  status: AirMissionStatus
+  createdTick: number
+  /** Strike missions only — launch window opens here (2-6 h planning) */
+  planningCompleteTick?: number
+  flightUnitId?: UnitId
+}
+
+export interface IntelState {
+  assets: Record<string, IntelAsset>
+  agents: Record<string, AgentSource>
+  /** Newest first, capped at 30 */
+  products: IntelProduct[]
+  taskings: SatTasking[]
+  /** 0-100 Iranian counterintel alert — drives sweeps, encryption upgrades */
+  paranoia: number
+  /** 0-100 how compromised the player's operations are */
+  leakLevel: number
+  encryptionUpgradedUntilTick?: number
+  lastSweepTick?: number
+  lastOpsecSweepTick?: number
+  lastIntInterceptTick?: number
+  lastCarrierOsintTick?: number
+  decoysSpawned?: boolean
+  productCounter?: number
+}

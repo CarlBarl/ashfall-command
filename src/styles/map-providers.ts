@@ -1,10 +1,50 @@
-import type { StyleSpecification } from 'maplibre-gl'
+import type { LayerSpecification, RasterDEMSourceSpecification, StyleSpecification } from 'maplibre-gl'
 
 export type MapMode = 'dark' | 'satellite'
 
 // ESRI World Imagery (free for development)
 const ESRI_SAT =
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+
+export const TERRAIN_DEM_SOURCE_ID = 'terrain-dem'
+export const HILLSHADE_LAYER_ID = 'terrain-hillshade'
+
+// ── Terrain relief (roadmap A.1) ────────────────────────────────────
+// Mapterhorn DEM — terrarium-encoded webp, template verified against
+// https://tiles.mapterhorn.com/tilejson.json 2026-06-11.
+// Fallback if Mapterhorn dies: AWS Terrain Tiles
+// https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png
+// (encoding 'terrarium', tileSize 256).
+
+function buildTerrainDemSource(): RasterDEMSourceSpecification {
+  return {
+    type: 'raster-dem',
+    tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'],
+    encoding: 'terrarium',
+    tileSize: 512,
+    maxzoom: 12, // native SRTM detail ceiling
+    attribution: 'Terrain: Mapzen/Tilezen, NASA SRTM',
+  }
+}
+
+// Low-contrast ops-room tuning: near-black shadows, faint blue-gray highlights —
+// relief depth without fighting unit icons. Default visible; the ELV toggle
+// flips visibility at runtime (GameMap).
+function buildHillshadeLayer(): LayerSpecification {
+  return {
+    id: HILLSHADE_LAYER_ID,
+    type: 'hillshade',
+    source: TERRAIN_DEM_SOURCE_ID,
+    paint: {
+      'hillshade-exaggeration': 0.4,
+      'hillshade-shadow-color': '#04060a',
+      'hillshade-highlight-color': '#3d4c61',
+      'hillshade-accent-color': '#0a0e14',
+      // 'map' keeps shading fixed to the NW sun regardless of bearing
+      'hillshade-illumination-anchor': 'map',
+    },
+  }
+}
 
 export function getMapStyle(mode: MapMode): StyleSpecification {
   return mode === 'dark' ? buildDarkStyle() : buildSatelliteStyle()
@@ -24,6 +64,7 @@ function buildDarkStyle(): StyleSpecification {
         type: 'vector',
         url: 'https://tiles.openfreemap.org/planet',
       },
+      [TERRAIN_DEM_SOURCE_ID]: buildTerrainDemSource(),
     },
     layers: [
       // Background — very dark, CIC operations room
@@ -112,6 +153,10 @@ function buildDarkStyle(): StyleSpecification {
           'circle-opacity': 0.5,
         },
       },
+
+      // Hillshade relief — last in-style layer; GameMap anchors the country
+      // fills below it (beforeId) so shading reads over the political tint
+      buildHillshadeLayer(),
     ],
   }
 }
@@ -128,8 +173,9 @@ function buildSatelliteStyle(): StyleSpecification {
         type: 'raster',
         tiles: [ESRI_SAT],
         tileSize: 256,
-        attribution: '&copy; Esri',
+        attribution: '&copy; Esri · Terrain: Mapzen/Tilezen, NASA SRTM',
       },
+      [TERRAIN_DEM_SOURCE_ID]: buildTerrainDemSource(),
     },
     layers: [
       {
@@ -141,6 +187,7 @@ function buildSatelliteStyle(): StyleSpecification {
           'raster-brightness-max': 0.8,
         },
       },
+      buildHillshadeLayer(),
     ],
   }
 }

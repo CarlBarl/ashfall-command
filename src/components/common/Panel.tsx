@@ -1,5 +1,10 @@
-import { useRef, useState, useCallback, type CSSProperties, type ReactNode, type PointerEvent } from 'react'
+import { useRef, useState, useEffect, useCallback, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { useUIStore } from '@/store/ui-store'
+
+const Z_BASE = 20
+/** Min px of the title bar that must remain inside the viewport after a drag */
+const EDGE_MARGIN = 40
 
 interface PanelProps {
   title: string
@@ -19,42 +24,81 @@ function stripPosition(s: CSSProperties | undefined): CSSProperties {
 export default function Panel({ title, children, style, onClose, defaultMinimized = false }: PanelProps) {
   const isMobile = useIsMobile()
   const panelRef = useRef<HTMLDivElement>(null)
-  const [offset, setOffset] = useState<{ x: number; y: number } | null>(null)
   const [minimized, setMinimized] = useState(defaultMinimized)
-  const dragState = useRef<{ startX: number; startY: number; origLeft: number; origTop: number } | null>(null)
+  const [dragging, setDragging] = useState(false)
 
-  const onPointerDown = useCallback((e: PointerEvent<HTMLDivElement>) => {
-    if (isMobile) return // no drag on mobile
+  const offset = useUIStore((s) => s.panelOffsets[title])
+  const focusPanel = useUIStore((s) => s.focusPanel)
+  const zIndex = useUIStore((s) => {
+    const reg = s.panelRegistry[title]
+    if (!reg) return Z_BASE
+    let below = 0
+    for (const other of Object.values(s.panelRegistry)) {
+      if (other.lastFocus < reg.lastFocus) below++
+    }
+    return Z_BASE + below
+  })
+
+  // Live ref so consumer re-renders can swap onClose without re-registering (which would reset focus order)
+  const onCloseRef = useRef(onClose)
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
+  useEffect(() => {
+    useUIStore.getState().registerPanel(title, onCloseRef)
+    return () => useUIStore.getState().unregisterPanel(title)
+  }, [title])
+
+  // Detach window drag listeners if unmounted mid-drag
+  const dragCleanupRef = useRef<(() => void) | null>(null)
+  useEffect(() => () => dragCleanupRef.current?.(), [])
+
+  const onTitlePointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (isMobile || e.button !== 0) return
+    if ((e.target as HTMLElement).closest('button, a')) return
     const panel = panelRef.current
     if (!panel) return
     e.preventDefault()
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
 
-    const rect = panel.getBoundingClientRect()
-    dragState.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      origLeft: rect.left,
-      origTop: rect.top,
+    const start = useUIStore.getState().panelOffsets[title] ?? { dx: 0, dy: 0 }
+    const startX = e.clientX
+    const startY = e.clientY
+    setDragging(true)
+
+    const onMove = (ev: PointerEvent) => {
+      useUIStore.getState().setPanelOffset(title, {
+        dx: start.dx + ev.clientX - startX,
+        dy: start.dy + ev.clientY - startY,
+      })
     }
-  }, [isMobile])
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      dragCleanupRef.current = null
+      setDragging(false)
+    }
+    const onUp = () => {
+      cleanup()
+      const rect = panel.getBoundingClientRect()
+      const cur = useUIStore.getState().panelOffsets[title] ?? { dx: 0, dy: 0 }
+      let { dx, dy } = cur
+      if (rect.left > window.innerWidth - EDGE_MARGIN) dx -= rect.left - (window.innerWidth - EDGE_MARGIN)
+      if (rect.right < EDGE_MARGIN) dx += EDGE_MARGIN - rect.right
+      if (rect.top < 0) dy -= rect.top
+      if (rect.top > window.innerHeight - EDGE_MARGIN) dy -= rect.top - (window.innerHeight - EDGE_MARGIN)
+      if (dx !== cur.dx || dy !== cur.dy) useUIStore.getState().setPanelOffset(title, { dx, dy })
+    }
+    dragCleanupRef.current = cleanup
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }, [isMobile, title])
 
-  const onPointerMove = useCallback((e: PointerEvent<HTMLDivElement>) => {
-    if (!dragState.current) return
-    const dx = e.clientX - dragState.current.startX
-    const dy = e.clientY - dragState.current.startY
-    setOffset({
-      x: dragState.current.origLeft + dx,
-      y: dragState.current.origTop + dy,
-    })
-  }, [])
-
-  const onPointerUp = useCallback(() => {
-    dragState.current = null
-  }, [])
-
-  const positionStyle: CSSProperties = (!isMobile && offset)
-    ? { position: 'fixed', left: offset.x, top: offset.y, right: 'auto', bottom: 'auto' }
+  const dx = offset?.dx ?? 0
+  const dy = offset?.dy ?? 0
+  // Drag offset rides on top of the consumer's own transform (e.g. translateX(-50%) centering)
+  const dragStyle: CSSProperties = (!isMobile && (dx !== 0 || dy !== 0))
+    ? { transform: `${typeof style?.transform === 'string' ? `${style.transform} ` : ''}translate(${dx}px, ${dy}px)` }
     : {}
 
   const mobileStyle: CSSProperties = isMobile ? {
@@ -75,6 +119,7 @@ export default function Panel({ title, children, style, onClose, defaultMinimize
   return (
     <div
       ref={panelRef}
+      onPointerDownCapture={() => focusPanel(title)}
       style={{
         background: 'var(--bg-panel)',
         border: '1px solid var(--border-default)',
@@ -86,15 +131,13 @@ export default function Panel({ title, children, style, onClose, defaultMinimize
         minWidth: minimized ? 120 : 260,
         maxHeight: minimized ? 'auto' : '80vh',
         overflowY: minimized ? 'hidden' : 'auto',
-        zIndex: 10,
+        zIndex,
         ...(isMobile ? stripPosition(style) : style),
-        ...(isMobile ? mobileStyle : positionStyle),
+        ...(isMobile ? mobileStyle : dragStyle),
       }}
     >
       <div
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
+        onPointerDown={onTitlePointerDown}
         style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -102,7 +145,7 @@ export default function Panel({ title, children, style, onClose, defaultMinimize
           marginBottom: minimized ? 0 : 8,
           paddingBottom: minimized ? 0 : 6,
           borderBottom: minimized ? 'none' : '1px solid var(--border-default)',
-          cursor: isMobile ? 'default' : 'grab',
+          cursor: isMobile ? 'default' : dragging ? 'grabbing' : 'grab',
           userSelect: 'none',
           gap: 8,
         }}

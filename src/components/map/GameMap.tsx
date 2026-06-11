@@ -19,7 +19,6 @@ import { createSupplyLineGeoJSON } from './layers/SupplyLineLayer'
 import { createShippingLaneGeoJSON } from './layers/ShippingLaneLayer'
 import { createMinefieldGeoJSON } from './layers/MinefieldLayer'
 import { ensureMainThreadGrid, getMainThreadGrid, getLOSPolygon } from './layers/LOSLayer'
-import { generateElevationOverlay } from './layers/ElevationOverlay'
 import InfoTooltip from './InfoTooltip'
 import MissileTracker from './MissileTracker'
 import { useUIStore } from '@/store/ui-store'
@@ -27,7 +26,9 @@ import { useGameStore } from '@/store/game-store'
 import { useStrikeStore } from '@/store/strike-store'
 import { useIntelStore } from '@/store/intel-store'
 import { useMenuStore } from '@/store/menu-store'
-import { getMapStyle } from '@/styles/map-providers'
+import { useMapIntelStore } from '@/store/map-intel-store'
+import { getMapStyle, HILLSHADE_LAYER_ID } from '@/styles/map-providers'
+import { gibsDailyTrueColorTiles, safeGibsDate } from '@/data/feeds'
 import { weaponSpecs } from '@/data/weapons/missiles'
 import { iranCatalog } from '@/data/catalog/iran-catalog'
 import { usaCatalog } from '@/data/catalog/usa-catalog'
@@ -39,6 +40,9 @@ const DEFAULT_VIEW = {
   pitch: 0,
   bearing: 0,
 }
+
+const GIBS_SOURCE_ID = 'gibs-recon-mosaic'
+const GIBS_LAYER_ID = 'gibs-recon-mosaic-layer'
 
 interface CtxMenu {
   x: number
@@ -124,13 +128,11 @@ export default function GameMap() {
     ensureMainThreadGrid().then(() => setGridReady(true)).catch(() => {})
   }, [])
 
-  // Generate elevation overlay image (static, computed once when grid is ready)
-  const elevationOverlay = useMemo(() => {
-    if (!gridReady || !showElevation) return null
-    const grid = getMainThreadGrid()
-    if (!grid) return null
-    return generateElevationOverlay(grid)
-  }, [gridReady, showElevation])
+  // Hillshade relief is on by default ("always on", roadmap A.1) — the map owns
+  // that default, not the store; ELV stays the off switch
+  useEffect(() => {
+    useUIStore.setState({ showElevation: true })
+  }, [])
 
   const showIntelCoverage = useUIStore((s) => s.showIntelCoverage)
 
@@ -208,10 +210,99 @@ export default function GameMap() {
       .filter(Boolean) as { poly: NonNullable<ReturnType<typeof getLOSPolygon>>; isEnemy: boolean }[]
   }, [losFilter, gridReady, units])
 
+  const [mapReady, setMapReady] = useState(false)
   const onLoad = useCallback(() => {
     const map = mapRef.current?.getMap()
     map?.resize()
+    setMapReady(true)
   }, [])
+
+  // DAILY RECON MOSAIC — GIBS VIIRS raster, toggled via map-intel-store.
+  // Imperative add/remove: style switches (SAT/MAP) wipe custom sources, so the
+  // styledata handler re-adds and re-anchors it below overlay-anchor.
+  const reconMosaic = useMapIntelStore((s) => s.reconMosaic)
+  useEffect(() => {
+    if (!reconMosaic || !mapReady) return
+    const map = mapRef.current?.getMap()
+    if (!map) return
+
+    const ensureMosaic = () => {
+      try {
+        if (!map.getSource(GIBS_SOURCE_ID)) {
+          const cfg = gibsDailyTrueColorTiles(safeGibsDate())
+          map.addSource(GIBS_SOURCE_ID, {
+            type: 'raster',
+            tiles: cfg.tiles,
+            tileSize: 256,
+            maxzoom: cfg.maxzoom,
+            attribution: cfg.attribution,
+          })
+        }
+        const anchor = map.getLayer('overlay-anchor') ? 'overlay-anchor' : undefined
+        if (!map.getLayer(GIBS_LAYER_ID)) {
+          map.addLayer({
+            id: GIBS_LAYER_ID,
+            type: 'raster',
+            source: GIBS_SOURCE_ID,
+            paint: {
+              'raster-opacity': 0.9,
+              'raster-fade-duration': 0,
+              'raster-saturation': -0.2,
+              'raster-brightness-max': 0.85,
+            },
+          }, anchor)
+        } else if (anchor) {
+          // Layers added later with beforeId=overlay-anchor (country fills) can land
+          // above the mosaic; re-anchor — the position check prevents styledata loops
+          const order = map.getStyle().layers?.map((l) => l.id) ?? []
+          const gibsIdx = order.indexOf(GIBS_LAYER_ID)
+          const anchorIdx = order.indexOf('overlay-anchor')
+          if (gibsIdx !== -1 && anchorIdx !== -1 && gibsIdx !== anchorIdx - 1) {
+            map.moveLayer(GIBS_LAYER_ID, 'overlay-anchor')
+          }
+        }
+      } catch {
+        // style mid-swap — the next styledata event retries
+      }
+    }
+
+    ensureMosaic()
+    map.on('styledata', ensureMosaic)
+    return () => {
+      map.off('styledata', ensureMosaic)
+      try {
+        if (map.getLayer(GIBS_LAYER_ID)) map.removeLayer(GIBS_LAYER_ID)
+        if (map.getSource(GIBS_SOURCE_ID)) map.removeSource(GIBS_SOURCE_ID)
+      } catch {
+        // map already torn down
+      }
+    }
+  }, [reconMosaic, mapReady])
+
+  // HILLSHADE RELIEF — the layer lives in both styles (default visible); the ELV
+  // toggle drives visibility. Style switches (SAT/MAP) reset layout props to the
+  // style default, so the styledata handler re-applies the user's choice.
+  useEffect(() => {
+    if (!mapReady) return
+    const map = mapRef.current?.getMap()
+    if (!map) return
+
+    const applyHillshade = () => {
+      try {
+        if (map.getLayer(HILLSHADE_LAYER_ID)) {
+          map.setLayoutProperty(HILLSHADE_LAYER_ID, 'visibility', showElevation ? 'visible' : 'none')
+        }
+      } catch {
+        // style mid-swap — the next styledata event retries
+      }
+    }
+
+    applyHillshade()
+    map.on('styledata', applyHillshade)
+    return () => {
+      map.off('styledata', applyHillshade)
+    }
+  }, [showElevation, mapReady])
 
   const onContextMenu = useCallback((e: MapLayerMouseEvent) => {
     e.preventDefault()
@@ -449,7 +540,7 @@ export default function GameMap() {
         mapStyle={mapStyle}
         onLoad={onLoad}
         onMove={onMove}
-        onMouseMove={onMouseMove}
+        onMouseMove={showElevation ? onMouseMove : undefined}
         onContextMenu={onContextMenu}
         onClick={onMapClick}
         attributionControl={false}
@@ -467,29 +558,6 @@ export default function GameMap() {
           type="background"
           paint={{ 'background-color': 'rgba(0, 0, 0, 0)' }}
         />
-
-        {elevationOverlay && (
-          <Source
-            id="elevation-overlay"
-            type="image"
-            url={elevationOverlay.dataUrl}
-            coordinates={[
-              [elevationOverlay.bounds[0], elevationOverlay.bounds[3]], // top-left [west, north]
-              [elevationOverlay.bounds[2], elevationOverlay.bounds[3]], // top-right [east, north]
-              [elevationOverlay.bounds[2], elevationOverlay.bounds[1]], // bottom-right [east, south]
-              [elevationOverlay.bounds[0], elevationOverlay.bounds[1]], // bottom-left [west, south]
-            ]}
-          >
-            <Layer
-              id="elevation-raster"
-              type="raster"
-              paint={{
-                'raster-opacity': 0.6,
-                'raster-fade-duration': 0,
-              }}
-            />
-          </Source>
-        )}
 
         {supplyLines.length > 0 && (
           <Source id="supply-lines" type="geojson" data={supplyLineData}>
@@ -660,10 +728,12 @@ export default function GameMap() {
 
         {geoData && (
           <Source id="countries" type="geojson" data={geoData}>
+            {/* Fills anchor below the hillshade (opaque tint would bury the relief);
+                border/glow lines stay above it via overlay-anchor */}
             <Layer
               id="country-fill"
               type="fill"
-              beforeId="overlay-anchor"
+              beforeId={HILLSHADE_LAYER_ID}
               paint={{
                 'fill-color': ['match', ['get', 'iso_a3'],
                   'IRN', '#1a1520',

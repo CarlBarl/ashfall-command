@@ -1,9 +1,9 @@
-import type { GameTime, IntelBudget, NationId, Position, ROE, UnitId, WeaponId } from './game'
+import type { AirMissionKind, GameTime, IntelBudget, NationId, Position, ROE, TrackQuality, UnitId, WeaponId } from './game'
 
 export type Command =
   | { type: 'MOVE_UNIT'; unitId: UnitId; waypoints: Position[] }
-  | { type: 'LAUNCH_MISSILE'; launcherId: UnitId; weaponId: WeaponId; targetId: UnitId; waypoints?: Position[] }
-  | { type: 'LAUNCH_SALVO'; launcherId: UnitId; weaponId: WeaponId; targetId: UnitId; count: number; waypoints?: Position[] }
+  | { type: 'LAUNCH_MISSILE'; launcherId: UnitId; weaponId: WeaponId; targetId: UnitId; waypoints?: Position[]; trackQuality?: TrackQuality }
+  | { type: 'LAUNCH_SALVO'; launcherId: UnitId; weaponId: WeaponId; targetId: UnitId; count: number; waypoints?: Position[]; spacingTicks?: number; delayTicks?: number }
   | { type: 'SET_ROE'; unitId: UnitId; roe: ROE }
   | { type: 'SET_SPEED'; speed: GameTime['speed'] }
   | { type: 'DECLARE_WAR'; target: NationId }
@@ -14,3 +14,12 @@ export type Command =
   | { type: 'SET_DRONE_MISSION'; unitId: UnitId; mission: 'military' | 'shipping_interdiction' }
   | { type: 'OFFER_CEASEFIRE'; target: NationId }
   | { type: 'RESIGN' }
+  | { type: 'TASK_SATELLITE_PASS'; assetId: string; target: Position; cloudPct?: number }
+  | { type: 'TASK_AGENT'; agentId: string }
+  | { type: 'REST_AGENT'; agentId: string }
+  | { type: 'EXFILTRATE_AGENT'; agentId: string }
+  | { type: 'OPSEC_SWEEP' }
+  | { type: 'SET_EMCON'; unitId: UnitId; emcon: boolean }
+  | { type: 'LAUNCH_AIR_MISSION'; kind: AirMissionKind; squadronId: string; fromUnitId: UnitId; flightSize: number; station?: Position; targetId?: UnitId; escortSead?: boolean; extendedRange?: boolean }
+  | { type: 'CANCEL_AIR_MISSION'; missionId: string }
+  | { type: 'SET_SURGE_OPS'; enabled: boolean }

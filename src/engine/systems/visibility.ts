@@ -3,6 +3,7 @@ import type {
   Nation,
   NationId,
   Position,
+  TrackQuality,
   Unit,
   UnitCategory,
   UnitId,
@@ -12,9 +13,10 @@ import type {
 import type { ElevationGrid } from './elevation'
 import type { SensorNetwork } from './sensor-network'
 import type { EspionageResult } from './espionage'
-import { hasLineOfSight } from './detection'
+import { hasLineOfSight, elevationRangeBonus, targetProminenceBonus } from './detection'
+import { isDatalinkConnected } from './sensor-network'
 import { getSatelliteDetections, pointToLineDistKm, DETECTION_FADE_TICKS } from './satellites'
-import { haversine } from '../utils/geo'
+import { haversine, bearing } from '../utils/geo'
 
 /**
  * Fog of war. Maintains state.visibility — per observing nation, a contact map over
@@ -33,6 +35,22 @@ const RADAR_IDENTIFY_FRACTION = 0.6
 const DEFAULT_SIGINT_MULTIPLIER = 1.5
 const DEFAULT_ANTENNA_HEIGHT_M = 15
 const TARGET_HEIGHT_M = 10
+
+/** Effective radar target height per category — drives the radar-horizon cap */
+const TARGET_HEIGHT_BY_CATEGORY: Partial<Record<UnitCategory, number>> = {
+  aircraft: 8000,
+  carrier_group: 40,
+  ship: 20,
+  naval_base: 30,
+  airbase: 25,
+  submarine: 2,
+  missile_battery: 5,
+  sam_site: 8,
+}
+
+function targetHeightM(category: UnitCategory): number {
+  return TARGET_HEIGHT_BY_CATEGORY[category] ?? TARGET_HEIGHT_M
+}
 
 const LEVEL_RANK: Record<VisibilityLevel, number> = { unseen: 0, detected: 1, tracked: 2, identified: 3 }
 
@@ -70,6 +88,24 @@ export function resetVisibilityState(): void {
   metaByObserver.clear()
 }
 
+/**
+ * Seed scenario-start contacts: fixed military installations (airbases, naval bases)
+ * are public knowledge — both sides start with them identified and pinned.
+ */
+export function seedInitialVisibility(state: GameState): void {
+  state.visibility ??= {}
+  for (const nation of Object.values(state.nations)) {
+    const contacts = (state.visibility[nation.id as string] ??= {})
+    const meta = metaFor(nation.id as string)
+    for (const unit of state.units.values()) {
+      if (unit.nation === nation.id || unit.status === 'destroyed') continue
+      if (unit.category !== 'airbase' && unit.category !== 'naval_base') continue
+      if (contacts[unit.id]) continue
+      contacts[unit.id] = newContact(meta, unit, 'identified', state.time.tick)
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Per-minute source evaluation
 // ---------------------------------------------------------------------------
@@ -87,7 +123,8 @@ function evaluateSources(state: GameState, espionage: EspionageResult | null, gr
     for (const u of state.units.values()) {
       if (u.nation !== nation.id || u.status === 'destroyed' || u.sensors.length === 0) continue
       ownSensorUnits.push(u)
-      if (u.sensors.some(s => s.type === 'radar' && s.range_km > 0)) ownRadars.push(u)
+      // EMCON units don't radiate — passive ELINT antennas still listen
+      if (!u.emcon && u.sensors.some(s => s.type === 'radar' && s.range_km > 0)) ownRadars.push(u)
     }
 
     const humint = espionage?.humintRevealed.get(nation.id)
@@ -113,7 +150,7 @@ function evaluateSources(state: GameState, espionage: EspionageResult | null, gr
         if ((meta.get(unit.id)?.humintUntil ?? 0) > tick) {
           best = 'identified'
         }
-        if (best === 'unseen' && isElintDetected(ownSensorUnits, unit, sigintMultiplier)) {
+        if (best === 'unseen' && isElintDetected(ownSensorUnits, unit, sigintMultiplier, grid)) {
           best = 'detected'
         }
       }
@@ -145,24 +182,54 @@ function evaluateSources(state: GameState, espionage: EspionageResult | null, gr
 function radarContactLevel(ownRadars: Unit[], target: Unit, grid: ElevationGrid | null): VisibilityLevel {
   let best: VisibilityLevel = 'unseen'
   for (const radar of ownRadars) {
-    let range = 0
-    let antennaHeight = DEFAULT_ANTENNA_HEIGHT_M
-    for (const s of radar.sensors) {
-      if (s.type === 'radar' && s.range_km > range) {
-        range = s.range_km
-        antennaHeight = s.antenna_height_m ?? DEFAULT_ANTENNA_HEIGHT_M
-      }
+    const level = radarSeesUnit(radar, target, grid)
+    if (level === 'identified') return 'identified'
+    if (level === 'tracked') best = 'tracked'
+  }
+  return best
+}
+
+/**
+ * Can a single unit's radar see a target unit right now?
+ * Radar coverage is its nominal radius, stretched by height: a high-sited
+ * radar reaches further (elevation bonus) and a high-sitting target stands
+ * out and is spotted further away (prominence). Sector arcs and terrain
+ * line-of-sight still apply.
+ */
+export function radarSeesUnit(radar: Unit, target: Unit, grid: ElevationGrid | null): VisibilityLevel {
+  if (radar.status === 'destroyed' || radar.emcon) return 'unseen'
+  const dist = haversine(radar.position, target.position)
+  const targetAltAglM = targetHeightM(target.category)
+
+  const radarSiteElev = grid?.getElevation(radar.position.lat, radar.position.lng) ?? 0
+  const targetSiteElev = grid?.getElevation(target.position.lat, target.position.lng) ?? 0
+  const prominence = targetProminenceBonus(targetSiteElev + targetAltAglM)
+
+  let best: VisibilityLevel = 'unseen'
+  for (const s of radar.sensors) {
+    if (s.type !== 'radar' || s.range_km <= 0) continue
+
+    const antennaHeight = s.antenna_height_m ?? DEFAULT_ANTENNA_HEIGHT_M
+    const effRange = s.range_km * elevationRangeBonus(radarSiteElev + antennaHeight) * prominence
+    if (dist > effRange) continue
+
+    // Sector arc relative to the unit's heading
+    const sectorDeg = s.sector_deg ?? 360
+    if (sectorDeg < 360) {
+      const brg = bearing(radar.position, target.position)
+      const diff = ((brg - radar.heading) % 360 + 540) % 360 - 180
+      if (Math.abs(diff) > sectorDeg / 2) continue
     }
-    const dist = haversine(radar.position, target.position)
-    if (dist > range) continue
+
     if (grid) {
-      const radarAltM = grid.getElevation(radar.position.lat, radar.position.lng) + antennaHeight
-      const targetAltM = grid.getElevation(target.position.lat, target.position.lng) + TARGET_HEIGHT_M
+      const radarAltM = radarSiteElev + antennaHeight
+      const targetAltM = targetSiteElev + targetAltAglM
       if (!hasLineOfSight(radar.position, radarAltM, target.position.lat, target.position.lng, targetAltM, grid)) {
         continue
       }
     }
-    if (dist <= range * RADAR_IDENTIFY_FRACTION) return 'identified'
+
+    if (dist <= effRange * RADAR_IDENTIFY_FRACTION) return 'identified'
     best = 'tracked'
   }
   return best
@@ -179,13 +246,20 @@ function satelliteContactLevel(nation: Nation, unit: Unit, tick: number): Visibi
   return 'detected'
 }
 
-function isElintDetected(ownSensorUnits: Unit[], emitter: Unit, sigintMultiplier: number): boolean {
+function isElintDetected(ownSensorUnits: Unit[], emitter: Unit, sigintMultiplier: number, grid: ElevationGrid | null): boolean {
+  if (emitter.emcon) return false // radar silent — nothing to intercept
   let radarRange = 0
+  let antennaHeight = DEFAULT_ANTENNA_HEIGHT_M
   for (const s of emitter.sensors) {
-    if (s.type === 'radar' && s.range_km > radarRange) radarRange = s.range_km
+    if (s.type === 'radar' && s.range_km > radarRange) {
+      radarRange = s.range_km
+      antennaHeight = s.antenna_height_m ?? DEFAULT_ANTENNA_HEIGHT_M
+    }
   }
   if (radarRange <= 0) return false
-  const elintRange = radarRange * sigintMultiplier
+  // The flip side of height: an elevated emitter shines further — easier to intercept
+  const emitterElev = grid?.getElevation(emitter.position.lat, emitter.position.lng) ?? 0
+  const elintRange = radarRange * sigintMultiplier * elevationRangeBonus(emitterElev + antennaHeight)
   for (const own of ownSensorUnits) {
     if (haversine(own.position, emitter.position) <= elintRange) return true
   }
@@ -220,7 +294,8 @@ function applyEventReveals(state: GameState): void {
   }
 }
 
-function revealContact(state: GameState, observer: string, unit: Unit, level: VisibilityLevel): void {
+/** External reveal entry point — used by event reveals and the intel suite (satellites, HUMINT, SIGINT) */
+export function revealContact(state: GameState, observer: string, unit: Unit, level: VisibilityLevel): void {
   const tick = state.time.tick
   state.visibility ??= {}
   const contacts = (state.visibility[observer] ??= {})
@@ -369,4 +444,46 @@ const CONTACT_NAMES: Record<UnitCategory, string> = {
 /** Generic display name for a low-confidence contact */
 export function contactDisplayName(category: UnitCategory): string {
   return CONTACT_NAMES[category] ?? 'Unknown contact'
+}
+
+// ---------------------------------------------------------------------------
+// Fire control — what may a unit shoot at, and on whose data?
+// ---------------------------------------------------------------------------
+
+const FIXED_SITE_CATEGORIES = new Set<UnitCategory>(['airbase', 'naval_base'])
+
+/**
+ * Fire-control quality for shooter → target:
+ *   'own'      — the shooter's own radar holds the target right now
+ *   'datalink' — a live nation-level track exists and the shooter is on the network,
+ *                or the target is a fixed site with known coordinates
+ *   null       — no engageable track; the shooter may not fire at this target
+ */
+export function getFireControlQuality(
+  state: GameState,
+  shooter: Unit,
+  target: Unit,
+  grid: ElevationGrid | null,
+): TrackQuality | null {
+  if (target.nation === shooter.nation || target.status === 'destroyed') return null
+
+  // Fixed installations are public knowledge — surveyed coordinates, no track needed
+  if (FIXED_SITE_CATEGORIES.has(target.category)) return 'datalink'
+
+  if (radarSeesUnit(shooter, target, grid) !== 'unseen') return 'own'
+
+  const contact = state.visibility?.[shooter.nation as string]?.[target.id]
+  if (!contact || contact.level === 'unseen') return null
+
+  // Unmoved SAM sites pin at their last fix — strikable on coordinates
+  if (target.category === 'sam_site' && contact.pinned &&
+      target.position.lat === contact.lastKnownPosition.lat &&
+      target.position.lng === contact.lastKnownPosition.lng) {
+    return 'datalink'
+  }
+
+  const live = contact.level === 'tracked' || contact.level === 'identified'
+  if (live && isDatalinkConnected(state, shooter)) return 'datalink'
+
+  return null
 }

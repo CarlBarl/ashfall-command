@@ -6,12 +6,20 @@ import { useGameStore } from '@/store/game-store'
 import { useIntelStore } from '@/store/intel-store'
 import { sendCommand } from '@/store/bridge'
 import { weaponSpecs } from '@/data/weapons/missiles'
-import { computeAttackPlan } from '@/engine/attack-planner'
+import {
+  computeAttackPlan,
+  computeTotSchedule,
+  estimateLeakers,
+  TOT_RIPPLE_TICKS,
+  TOT_DETECTION_WARNING_TICKS,
+  type TotSchedule,
+} from '@/engine/attack-planner'
 import { computeRouteDistance } from '@/components/map/layers/RouteLayer'
 import { getMainThreadGrid } from '@/components/map/layers/LOSLayer'
 import { findAutoRoute } from '@/engine/systems/route-planner'
 import { haversine } from '@/engine/utils/geo'
 import type { UnitCategory } from '@/types/game'
+import type { ViewUnit } from '@/types/view'
 import type { AttackPriority, Severity, TimingMode, PlannedStrike, AttackPlan } from '@/types/attack-plan'
 
 // ════════════════════════════════════════════════════════════════
@@ -26,9 +34,26 @@ const SEVERITY_OPTIONS: { value: Severity; label: string; desc: string }[] = [
 
 const TIMING_OPTIONS: { value: TimingMode; label: string; desc: string }[] = [
   { value: 'simultaneous', label: 'SIMULTANEOUS', desc: 'All at T+0' },
-  { value: 'staggered', label: 'STAGGERED', desc: '30s between tiers' },
-  { value: 'sequential', label: 'SEQUENTIAL', desc: '10min between tiers' },
+  { value: 'staggered', label: 'STAGGERED', desc: '2s between launches' },
+  { value: 'sequential', label: 'SEQUENTIAL', desc: '8s between launches' },
 ]
+
+/** Format game-ticks (1 tick = 1 game-sec) as m:ss or h:mm:ss */
+function fmtTicks(ticks: number): string {
+  const s = Math.max(0, Math.round(ticks))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  const pad = (v: number) => String(v).padStart(2, '0')
+  return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`
+}
+
+// Game-seconds between rounds of each salvo — scheduled engine-side, so it respects pause
+const TIMING_SPACING_TICKS: Record<TimingMode, number> = {
+  simultaneous: 0,
+  staggered: 2,
+  sequential: 8,
+}
 
 const TARGET_CATEGORIES: { value: UnitCategory; label: string }[] = [
   { value: 'sam_site', label: 'SAM Sites' },
@@ -790,6 +815,11 @@ function PlanAttackTab() {
   const closeStrike = useStrikeStore((s) => s.closeStrike)
   const units = useGameStore((s) => s.viewState.units)
   const playerNation = useGameStore((s) => s.viewState.playerNation)
+  const nowTick = useGameStore((s) => s.viewState.time.tick)
+
+  // TOT lives UI-side on top of the store's TimingMode — one master control,
+  // the launch schedule below is derived and read-only
+  const [totMode, setTotMode] = useState(false)
 
   const friendlyUnits = useMemo(
     () => units.filter((u) => u.nation === playerNation && u.status !== 'destroyed'),
@@ -798,6 +828,11 @@ function PlanAttackTab() {
   const enemyUnits = useMemo(
     () => units.filter((u) => u.nation !== playerNation && u.status !== 'destroyed'),
     [units, playerNation],
+  )
+
+  const totSchedule = useMemo(
+    () => (totMode && computedPlan ? computeTotSchedule(computedPlan, nowTick) : null),
+    [totMode, computedPlan, nowTick],
   )
 
   // Recompute plan whenever draft changes
@@ -825,42 +860,56 @@ function PlanAttackTab() {
     if (!computedPlan || executing) return
     startExecution()
 
-    const strikes = computedPlan.strikes.filter((s) => s.inRange)
-    const tierGroups = new Map<number, PlannedStrike[]>()
-    for (const s of strikes) {
-      const group = tierGroups.get(s.priorityTier) ?? []
-      group.push(s)
-      tierGroups.set(s.priorityTier, group)
+    if (totMode) {
+      // Recompute against the tick at authorization so delays are exact
+      const execTick = useGameStore.getState().viewState.time.tick
+      const schedule = computeTotSchedule(computedPlan, execTick)
+
+      let fired = 0
+      const total = schedule.entries.reduce((s, e) => s + e.count, 0)
+
+      for (const e of schedule.entries) {
+        await sendCommand({
+          type: 'LAUNCH_SALVO',
+          launcherId: e.launcherId,
+          weaponId: e.weaponId,
+          targetId: e.targetId,
+          count: e.count,
+          spacingTicks: TOT_RIPPLE_TICKS,
+          delayTicks: e.dueTick - execTick,
+        })
+        fired += e.count
+        updateProgress(total > 0 ? fired / total : 1)
+      }
+
+      finishExecution()
+      return
     }
 
-    const tiers = Array.from(tierGroups.entries()).sort(([a], [b]) => a - b)
+    // One burst of commands in tier order — spacing happens engine-side in game time
+    const strikes = computedPlan.strikes
+      .filter((s) => s.inRange)
+      .sort((a, b) => a.priorityTier - b.priorityTier)
+    const spacingTicks = TIMING_SPACING_TICKS[planTiming]
+
     let fired = 0
     const total = strikes.reduce((s, st) => s + st.count, 0)
 
-    for (let ti = 0; ti < tiers.length; ti++) {
-      const [, tierStrikes] = tiers[ti]
-      if (ti > 0) {
-        const delayMs = planTiming === 'staggered' ? 30_000 :
-                        planTiming === 'sequential' ? 600_000 : 0
-        if (delayMs > 0) {
-          await new Promise((r) => setTimeout(r, Math.min(delayMs / 100, 3000)))
-        }
-      }
-      for (const stk of tierStrikes) {
-        await sendCommand({
-          type: 'LAUNCH_SALVO',
-          launcherId: stk.launcherId,
-          weaponId: stk.weaponId,
-          targetId: stk.targetId,
-          count: stk.count,
-        })
-        fired += stk.count
-        updateProgress(fired / total)
-      }
+    for (const stk of strikes) {
+      await sendCommand({
+        type: 'LAUNCH_SALVO',
+        launcherId: stk.launcherId,
+        weaponId: stk.weaponId,
+        targetId: stk.targetId,
+        count: stk.count,
+        spacingTicks,
+      })
+      fired += stk.count
+      updateProgress(fired / total)
     }
 
     finishExecution()
-  }, [computedPlan, executing, planTiming, startExecution, updateProgress, finishExecution])
+  }, [computedPlan, executing, totMode, planTiming, startExecution, updateProgress, finishExecution])
 
   const availableCategories = TARGET_CATEGORIES.filter(
     (tc) => !planPriorities.some((p) => p.targetCategory === tc.value),
@@ -914,24 +963,42 @@ function PlanAttackTab() {
       {/* Timing */}
       <Section title="TIMING">
         <div style={{ display: 'flex', gap: 4 }}>
-          {TIMING_OPTIONS.map((t) => (
-            <button
-              key={t.value}
-              onClick={() => setPlanTiming(t.value)}
-              style={{
-                flex: 1, padding: '4px 6px',
-                background: planTiming === t.value ? 'var(--bg-hover)' : 'transparent',
-                border: `1px solid ${planTiming === t.value ? 'var(--border-accent)' : 'var(--border-default)'}`,
-                borderRadius: 4,
-                color: planTiming === t.value ? 'var(--text-accent)' : 'var(--text-muted)',
-                cursor: 'pointer', fontFamily: 'var(--font-mono)',
-                fontSize: '0.6rem', fontWeight: 600, textAlign: 'center',
-              }}
-            >
-              <div>{t.label}</div>
-              <div style={{ fontSize: '0.5rem', fontWeight: 400 }}>{t.desc}</div>
-            </button>
-          ))}
+          {TIMING_OPTIONS.map((t) => {
+            const selected = !totMode && planTiming === t.value
+            return (
+              <button
+                key={t.value}
+                onClick={() => { setTotMode(false); setPlanTiming(t.value) }}
+                style={{
+                  flex: 1, padding: '4px 6px',
+                  background: selected ? 'var(--bg-hover)' : 'transparent',
+                  border: `1px solid ${selected ? 'var(--border-accent)' : 'var(--border-default)'}`,
+                  borderRadius: 4,
+                  color: selected ? 'var(--text-accent)' : 'var(--text-muted)',
+                  cursor: 'pointer', fontFamily: 'var(--font-mono)',
+                  fontSize: '0.6rem', fontWeight: 600, textAlign: 'center',
+                }}
+              >
+                <div>{t.label}</div>
+                <div style={{ fontSize: '0.5rem', fontWeight: 400 }}>{t.desc}</div>
+              </button>
+            )
+          })}
+          <button
+            onClick={() => setTotMode(true)}
+            style={{
+              flex: 1, padding: '4px 6px',
+              background: totMode ? 'var(--bg-hover)' : 'transparent',
+              border: `1px solid ${totMode ? 'var(--border-accent)' : 'var(--border-default)'}`,
+              borderRadius: 4,
+              color: totMode ? 'var(--text-accent)' : 'var(--text-muted)',
+              cursor: 'pointer', fontFamily: 'var(--font-mono)',
+              fontSize: '0.6rem', fontWeight: 600, textAlign: 'center',
+            }}
+          >
+            <div>TOT</div>
+            <div style={{ fontSize: '0.5rem', fontWeight: 400 }}>Simultaneous impact</div>
+          </button>
         </div>
       </Section>
 
@@ -941,6 +1008,11 @@ function PlanAttackTab() {
           <Section title="STRIKE PLAN PREVIEW">
             <PlanPreview plan={computedPlan} />
           </Section>
+          {totMode && totSchedule && (
+            <Section title="TOT LAUNCH SCHEDULE">
+              <TotScheduleView plan={computedPlan} schedule={totSchedule} enemyUnits={enemyUnits} nowTick={nowTick} />
+            </Section>
+          )}
           <Section title="SUMMARY">
             <PlanSummary plan={computedPlan} />
           </Section>
@@ -1216,6 +1288,89 @@ function PlanSummary({ plan }: { plan: AttackPlan }) {
               ! {w}
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TotScheduleView({ plan, schedule, enemyUnits, nowTick }: {
+  plan: AttackPlan
+  schedule: TotSchedule
+  enemyUnits: ViewUnit[]
+  nowTick: number
+}) {
+  const rows = plan.strikes.filter((s) => s.inRange)
+  const totalMissiles = rows.reduce((sum, s) => sum + s.count, 0)
+
+  if (schedule.entries.length === 0 || totalMissiles === 0) {
+    return (
+      <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 'var(--font-size-xs)' }}>
+        No in-range strikes to schedule.
+      </div>
+    )
+  }
+
+  // Impact-window comparison: TOT compresses arrivals into the launch ripple;
+  // launching everything at T+0 spreads them across the flight-time delta
+  const flightTimes = rows.map((s) => s.flightTimeSec)
+  const spreadSec = Math.max(...flightTimes) - Math.min(...flightTimes)
+  const totWindowSec = (Math.max(...rows.map((s) => s.count)) - 1) * TOT_RIPPLE_TICKS
+  const totLeakers = estimateLeakers(rows, enemyUnits, totWindowSec)
+  const spreadLeakers = estimateLeakers(rows, enemyUnits, spreadSec)
+  const spreadMin = Math.max(1, Math.round(spreadSec / 60))
+
+  const leadTicks = schedule.totTick - schedule.earliestLaunchTick
+  const showDetectionWarning = leadTicks > TOT_DETECTION_WARNING_TICKS
+
+  return (
+    <div style={{ fontSize: '0.6rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+        <span style={{ color: 'var(--text-muted)' }}>ALL IMPACTS AT</span>
+        <span style={{ color: 'var(--text-accent)', fontWeight: 700 }}>
+          TOT — T+{fmtTicks(schedule.totTick - nowTick)}
+        </span>
+      </div>
+
+      {/* Derived launch schedule — read-only, one master TOT, no per-launcher inputs */}
+      <div style={{ maxHeight: 120, overflowY: 'auto', marginBottom: 6 }}>
+        {schedule.entries.map((e, i) => (
+          <div key={i} style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+            padding: '1px 4px', borderBottom: '1px solid var(--border-default)',
+          }}>
+            <span style={{
+              color: 'var(--text-accent)', fontFamily: 'var(--font-mono)',
+              fontWeight: 600, flexShrink: 0, minWidth: 64,
+            }}>
+              T−{fmtTicks(schedule.totTick - e.dueTick)}
+            </span>
+            <span style={{
+              color: 'var(--text-primary)', flex: 1, marginLeft: 6,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {e.launcherName.split(' ').slice(0, 3).join(' ')}
+            </span>
+            <span style={{ color: 'var(--text-muted)', flexShrink: 0, marginLeft: 6 }}>
+              {e.count}x {e.weaponName.split(' ')[0]} → {e.targetName.split(' ').slice(0, 2).join(' ')}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Saturation comparison — closed-form capacity estimate, hence EST */}
+      <div style={{ color: 'var(--text-muted)' }}>
+        EST leakers through AD — all-at-TOT:{' '}
+        <b style={{ color: 'var(--status-ready)' }}>{totLeakers}/{totalMissiles}</b>
+        {' '}vs spread over {spreadMin} min:{' '}
+        <b style={{ color: spreadLeakers < totLeakers ? 'var(--status-damaged)' : 'var(--text-accent)' }}>
+          {spreadLeakers}/{totalMissiles}
+        </b>
+      </div>
+
+      {showDetectionWarning && (
+        <div style={{ color: 'var(--status-engaged)', fontSize: '0.55rem', marginTop: 4 }}>
+          ! FIRST LAUNCH AT T−{fmtTicks(leadTicks)} — may be detected before impact
         </div>
       )}
     </div>

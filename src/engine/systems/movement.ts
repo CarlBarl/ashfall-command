@@ -67,9 +67,18 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
           continue
         }
         if (!isNaval && nextIsWater) {
-          // Land unit hitting water — skip this waypoint
-          unit.waypoints.shift()
-          if (unit.waypoints.length === 0) finishMovement(unit)
+          // Land unit hitting water — halt and tell the player instead of silently
+          // skipping waypoints (which read as "my order vanished")
+          unit.waypoints = []
+          finishMovement(unit)
+          const event = {
+            type: 'ORDER_REJECTED' as const,
+            unitId: unit.id,
+            reason: 'route blocked by water',
+            tick: state.time.tick,
+          }
+          state.events.push(event)
+          state.pendingEvents.push(event)
           continue
         }
       }
@@ -113,7 +122,21 @@ export function processMovement(state: GameState, elevationGrid?: ElevationGrid 
       const clearance = 50 // meters above terrain
       const cruiseAltM = (spec?.flight_altitude_ft ?? 200) * 0.3048 // ft to meters
 
-      const requiredAlt = Math.max(cruiseAltM, terrainElev + clearance)
+      // Look ahead along the heading so climbs start BEFORE a ridge face — sampling
+      // only the current cell made missiles fly into steep walls and teleport up
+      let maxTerrainAhead = terrainElev
+      if (missile.path.length >= 2) {
+        const prev = missile.path[missile.path.length - 2]
+        const last = missile.path[missile.path.length - 1]
+        const hdg = bearing({ lat: prev[1], lng: prev[0] }, { lat: last[1], lng: last[0] })
+        for (const aheadKm of [2, 5, 8]) {
+          const p = destination({ lat: curPos[1], lng: curPos[0] }, hdg, aheadKm)
+          const t = elevationGrid.getElevation(p.lat, p.lng)
+          if (t > maxTerrainAhead) maxTerrainAhead = t
+        }
+      }
+
+      const requiredAlt = Math.max(cruiseAltM, maxTerrainAhead + clearance)
 
       if (missile.altitude_m < requiredAlt) {
         // Terrain-following climb — cruise missiles can climb rapidly (up to 150m/s)

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useUIStore } from '@/store/ui-store'
+import { useMapIntelStore } from '@/store/map-intel-store'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import type { CSSProperties } from 'react'
 
@@ -74,6 +75,12 @@ export default function MapToggle() {
   const cycleMapMode = useUIStore(s => s.cycleMapMode)
   const toggleElevation = useUIStore(s => s.toggleElevation)
   const toggleIntelCoverage = useUIStore(s => s.toggleIntelCoverage)
+  const reconMosaic = useMapIntelStore(s => s.reconMosaic)
+  const adsbLive = useMapIntelStore(s => s.adsbLive)
+  const intelOverlays = useMapIntelStore(s => s.intelOverlays)
+  const toggleReconMosaic = useMapIntelStore(s => s.toggleReconMosaic)
+  const toggleAdsbLive = useMapIntelStore(s => s.toggleAdsbLive)
+  const toggleIntelOverlays = useMapIntelStore(s => s.toggleIntelOverlays)
 
   const [openSub, setOpenSub] = useState<OpenSub>(null)
 
@@ -98,7 +105,7 @@ export default function MapToggle() {
         <button onClick={cycleMapMode} style={{ ...btnFirst, ...(isSat ? active : {}) }} title="Toggle map style">
           {isSat ? 'SAT' : 'MAP'}
         </button>
-        <button onClick={toggleElevation} style={{ ...btn, ...(showElevation ? active : {}) }} title="Elevation overlay">
+        <button onClick={toggleElevation} style={{ ...btn, ...(showElevation ? active : {}) }} title="Terrain relief — hillshade + cursor elevation (on by default)">
           ELV
         </button>
         <button onClick={() => toggleSub('rng')} style={{ ...btn, ...(rngOn ? active : {}), ...(openSub === 'rng' ? { background: 'var(--bg-hover)' } : {}) }} title="Range circles">
@@ -109,6 +116,15 @@ export default function MapToggle() {
         </button>
         <button onClick={() => toggleSub('int')} style={{ ...btn, ...(showIntelCoverage ? { ...active, color: '#ffaa33' } : {}), ...(openSub === 'int' ? { background: 'var(--bg-hover)' } : {}) }} title="Intel coverage">
           INT
+        </button>
+        <button onClick={toggleReconMosaic} style={{ ...btn, ...(reconMosaic ? active : {}) }} title="Recon mosaic — yesterday's VIIRS satellite pass (NASA GIBS)">
+          RCN
+        </button>
+        <button onClick={toggleAdsbLive} style={{ ...btn, ...(adsbLive ? active : {}) }} title="ADS-B live — real air traffic (airplanes.live)">
+          ADS-B
+        </button>
+        <button onClick={toggleIntelOverlays} style={{ ...btn, ...(intelOverlays ? active : {}) }} title="Intel overlays — AOU rings, sensor rings, tasking swaths">
+          OVL
         </button>
       </div>
 

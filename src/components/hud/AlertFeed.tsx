@@ -436,6 +436,29 @@ function eventColor(e: GameEvent): string {
     case 'CEASEFIRE_OFFERED': return 'var(--status-ready)'
     case 'CEASEFIRE_REJECTED': return 'var(--text-muted)'
     case 'WAR_ENDED': return 'var(--status-ready)'
+    case 'AIR_MISSION_LAUNCHED': return 'var(--status-moving)'
+    case 'FLIGHT_ON_STATION': return 'var(--status-ready)'
+    case 'FLIGHT_RTB': return 'var(--text-secondary)'
+    case 'FLIGHT_LOST': return 'var(--status-damaged)'
+    case 'AIR_INTERCEPT': return 'var(--status-engaged)'
+    case 'AUTO_ENGAGEMENT': return 'var(--status-engaged)'
+    case 'MISSILE_MISSED': return 'var(--text-muted)'
+    case 'MISSILE_CRASHED': return 'var(--text-muted)'
+    case 'ORDER_REJECTED': return 'var(--text-muted)'
+    case 'SATELLITE_PASS_COMPLETE': return 'var(--status-ready)'
+    case 'SATELLITE_PASS_FAILED': return 'var(--text-muted)'
+    case 'INTERCEPT_DECRYPTED':
+      return e.precedence === 'FLASH' ? '#ff4444'
+        : e.precedence === 'IMMEDIATE' ? 'var(--status-engaged)'
+          : 'var(--text-secondary)'
+    case 'AGENT_REPORT': return 'var(--status-ready)'
+    case 'AGENT_ARRESTED': return 'var(--status-damaged)'
+    case 'AGENT_EXFILTRATED': return 'var(--status-moving)'
+    case 'SPY_SWEEP': return 'var(--status-engaged)'
+    case 'ENCRYPTION_UPGRADED': return 'var(--status-engaged)'
+    case 'DECOY_REVEALED': return 'var(--status-moving)'
+    case 'STRIKE_LEAKED': return 'var(--status-damaged)'
+    case 'OPSEC_SWEEP_COMPLETE': return 'var(--status-ready)'
     default: return 'var(--text-secondary)'
   }
 }
@@ -448,12 +471,24 @@ function weaponName(id: string): string {
   return weaponSpecs[id]?.name ?? id
 }
 
+const NAME_PARTICLES = new Set(['of', 'the', 'el', 'al'])
+
+// 'bab_el_mandeb' → 'Bab el-Mandeb', 'strait_of_hormuz' → 'Strait of Hormuz'
 function lineName(id: string): string {
-  return id.toUpperCase().replace(/_/g, ' ')
+  return id
+    .split('_')
+    .filter(Boolean)
+    .map((word, i) => {
+      const lower = word.toLowerCase()
+      if (i > 0 && NAME_PARTICLES.has(lower)) return lower
+      return lower.charAt(0).toUpperCase() + lower.slice(1)
+    })
+    .join(' ')
+    .replace(/ (el|al) /g, ' $1-')
 }
 
 function laneName(id: string, lanes: Map<string, string>): string {
-  return (lanes.get(id) ?? lineName(id)).toUpperCase()
+  return lanes.get(id) ?? lineName(id)
 }
 
 function eventPosition(
@@ -475,6 +510,21 @@ function eventPosition(
     case 'UNIT_REPAIRED':
     case 'POINT_DEFENSE_KILL':
     case 'RESUPPLIED':
+    case 'ORDER_REJECTED':
+      return unitPositions.get(e.unitId) ?? null
+    case 'AUTO_ENGAGEMENT':
+      return unitPositions.get(e.targetId) ?? unitPositions.get(e.unitId) ?? null
+    case 'MISSILE_MISSED':
+    case 'STRIKE_LEAKED':
+      return unitPositions.get(e.targetId) ?? null
+    case 'SATELLITE_PASS_COMPLETE':
+    case 'SATELLITE_PASS_FAILED':
+      return e.target
+    case 'MISSILE_CRASHED':
+      return e.position ?? null
+    case 'INTERCEPT_DECRYPTED':
+      return e.aboutUnitId ? (unitPositions.get(e.aboutUnitId) ?? null) : null
+    case 'DECOY_REVEALED':
       return unitPositions.get(e.unitId) ?? null
     case 'SUPPLY_LINE_INTERDICTED':
       return unitPositions.get(e.threatUnitId) ?? null
@@ -525,6 +575,46 @@ function formatEvent(e: GameEvent, names: Map<string, string>, lanes: Map<string
       return e.outcome === 'capitulation'
         ? `T+${e.tick} WAR ENDED: ${(e.loser ?? '').toUpperCase()} CAPITULATED`
         : `T+${e.tick} WAR ENDED: CEASEFIRE`
+    case 'AIR_MISSION_LAUNCHED':
+      return `T+${e.tick} ${e.kind.toUpperCase()} AIRBORNE: ${e.flightName}`
+    case 'FLIGHT_ON_STATION':
+      return `T+${e.tick} ON STATION: ${e.flightName}`
+    case 'FLIGHT_RTB':
+      return `T+${e.tick} RTB: ${e.flightName} (${e.reason})`
+    case 'FLIGHT_LOST':
+      return `T+${e.tick} FLIGHT LOST: ${e.flightName} — ${e.airframesLost} airframe(s), pilot ${e.pilotFate.toUpperCase()}`
+    case 'AIR_INTERCEPT':
+      return `T+${e.tick} AIR ENGAGEMENT: ${e.attackerName} vs ${e.defenderName}${e.kills > 0 ? ` — ${e.kills} kill(s)` : ' — no kill'}`
+    case 'AUTO_ENGAGEMENT':
+      return `T+${e.tick} ENGAGING ${unitName(e.targetId, names)}: ${e.weaponName} x${e.count}${e.quality === 'datalink' ? ' [LINK]' : ''}`
+    case 'MISSILE_MISSED':
+      return `T+${e.tick} MISS: ${unitName(e.targetId, names)} evaded (stale track)`
+    case 'MISSILE_CRASHED':
+      return `T+${e.tick} MISSILE DOWN: fuel exhausted en route`
+    case 'ORDER_REJECTED':
+      return `T+${e.tick} ORDER REJECTED: ${unitName(e.unitId, names)} — ${e.reason}`
+    case 'SATELLITE_PASS_COMPLETE':
+      return `T+${e.tick} IMINT: pass complete — ${e.found} object(s) imaged${e.revealedDecoys > 0 ? `, ${e.revealedDecoys} DECOY` : ''}`
+    case 'SATELLITE_PASS_FAILED':
+      return `T+${e.tick} IMINT: pass failed — cloud cover ${e.cloudPct}%`
+    case 'INTERCEPT_DECRYPTED':
+      return `T+${e.tick} ${e.precedence} SIGINT: ${e.text}`
+    case 'AGENT_REPORT':
+      return `T+${e.tick} HUMINT ${e.codename}: ${e.text}`
+    case 'AGENT_ARRESTED':
+      return `T+${e.tick} SOURCE LOST: ${e.codename} arrested by counterintelligence`
+    case 'AGENT_EXFILTRATED':
+      return `T+${e.tick} ${e.codename} exfiltrated safely`
+    case 'SPY_SWEEP':
+      return `T+${e.tick} IRANIAN SPY SWEEP${e.arrests > 0 ? ` — ${e.arrests} source(s) lost` : ' — network intact'}`
+    case 'ENCRYPTION_UPGRADED':
+      return `T+${e.tick} SIGINT BLACKOUT: enemy upgraded encryption`
+    case 'DECOY_REVEALED':
+      return `T+${e.tick} DECOY IDENTIFIED: ${unitName(e.unitId, names)} is a dummy`
+    case 'STRIKE_LEAKED':
+      return `T+${e.tick} STRIKE COMPROMISED: enemy had foreknowledge`
+    case 'OPSEC_SWEEP_COMPLETE':
+      return `T+${e.tick} OPSEC SWEEP COMPLETE: leak level ${e.newLeakLevel}%`
     default:
       return `T+${(e as GameEvent & { tick: number }).tick} ${(e as GameEvent & { type: string }).type}`
   }

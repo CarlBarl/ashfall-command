@@ -1,8 +1,12 @@
+import { useEffect, useState } from 'react'
 import { useUIStore } from '@/store/ui-store'
 import { useGameStore } from '@/store/game-store'
 import { weaponSpecs } from '@/data/weapons/missiles'
+import { UNIT_IMAGES, unitImageKey } from '@/data/unit-images'
 import type { ViewUnit } from '@/types/view'
 import type { Missile } from '@/types/game'
+
+const HOVER_DELAY_MS = 300
 
 interface InfoTooltipProps {
   x: number
@@ -11,16 +15,28 @@ interface InfoTooltipProps {
 
 export default function InfoTooltip({ x, y }: InfoTooltipProps) {
   const hoveredId = useUIStore((s) => s.hoveredUnitId)
+  if (!hoveredId) return null
+  // key remounts on target change so the hover delay restarts per target
+  return <DelayedTooltip key={hoveredId} hoveredId={hoveredId} x={x} y={y} />
+}
+
+function DelayedTooltip({ hoveredId, x, y }: { hoveredId: string; x: number; y: number }) {
   const units = useGameStore((s) => s.viewState.units)
   const missiles = useGameStore((s) => s.viewState.missiles)
+  const [visible, setVisible] = useState(false)
 
-  if (hoveredId) {
-    const unit = units.find(u => u.id === hoveredId)
-    if (unit) return <UnitTooltip unit={unit} x={x} y={y} />
+  useEffect(() => {
+    const t = window.setTimeout(() => setVisible(true), HOVER_DELAY_MS)
+    return () => window.clearTimeout(t)
+  }, [])
 
-    const missile = missiles.find(m => m.id === hoveredId)
-    if (missile) return <MissileTooltipView missile={missile} x={x} y={y} />
-  }
+  if (!visible) return null
+
+  const unit = units.find(u => u.id === hoveredId)
+  if (unit) return <UnitTooltip unit={unit} x={x} y={y} />
+
+  const missile = missiles.find(m => m.id === hoveredId)
+  if (missile) return <MissileTooltipView missile={missile} x={x} y={y} />
 
   return null
 }
@@ -56,8 +72,24 @@ function MissileTooltipView({ missile, x, y }: { missile: Missile; x: number; y:
 function UnitTooltip({ unit, x, y }: { unit: ViewUnit; x: number; y: number }) {
   const detected = unit.visibility === 'detected'
   const identified = unit.visibility === 'identified'
+  const imageKey = identified ? unitImageKey(unit) : null
+  const image = imageKey ? UNIT_IMAGES[imageKey] : undefined
   return (
     <div style={tooltipStyle(x, y)}>
+      {image && (
+        <img
+          src={`/unit-images/${image.file}`}
+          alt={unit.name}
+          style={{
+            display: 'block',
+            width: '100%',
+            height: 80,
+            objectFit: 'cover',
+            borderRadius: 2,
+            marginBottom: 5,
+          }}
+        />
+      )}
       <div style={headerStyle}>{unit.name}</div>
       {unit.stale && <div style={staleBannerStyle}>TRACK LOST — LAST KNOWN POSITION</div>}
       <Row label="Nation" value={unit.nation.toUpperCase()} />
