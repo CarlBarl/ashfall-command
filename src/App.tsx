@@ -9,6 +9,7 @@ import EconomyPanel from '@/components/panels/EconomyPanel'
 import OrbatPanel from '@/components/panels/OrbatPanel'
 import StatsPanel from '@/components/panels/StatsPanel'
 import IntelPanel from '@/components/panels/IntelPanel'
+import AirOpsPanel from '@/components/panels/AirOpsPanel'
 import ImintViewer from '@/components/intel/ImintViewer'
 import LiveFeeds from '@/components/intel/LiveFeeds'
 import OsintTicker from '@/components/intel/OsintTicker'
@@ -72,6 +73,7 @@ export default function App() {
   const showStats = useUIStore((s) => s.showStats)
   const showEconomy = useUIStore((s) => s.showEconomy)
   const showIntel = useUIStore((s) => s.showIntel)
+  const showAirOps = useUIStore((s) => s.showAirOps)
   // StrikePanel manages its own visibility via useStrikeStore
 
   // Debrief overlay: shown when the war is decided, until dismissed (keyed by
@@ -141,9 +143,9 @@ export default function App() {
         const ui = useUIStore.getState()
         // Close the topmost registered panel first (ImintViewer capture-stops its own Escape before this runs)
         if (ui.closeTopPanel()) break
-        if (ui.leftPanel !== null || ui.showIntel || strike.open) {
+        if (ui.leftPanel !== null || ui.showIntel || ui.showAirOps || strike.open) {
           ui.setLeftPanel(null)
-          useUIStore.setState({ showIntel: false })
+          useUIStore.setState({ showIntel: false, showAirOps: false })
           strike.closeStrike()
           break
         }
@@ -195,6 +197,7 @@ export default function App() {
       {showStats && <StatsPanel />}
       {showEconomy && <EconomyPanel />}
       {showIntel && <IntelPanel />}
+      {showAirOps && <AirOpsPanel />}
       <LiveFeeds />
       <ImintViewer />
       {showDebrief && <DebriefScreen onDismiss={dismissDebrief} />}

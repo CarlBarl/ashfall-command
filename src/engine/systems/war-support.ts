@@ -1,4 +1,4 @@
-import type { GameEvent, GameState, NationId, UnitCategory, WarStats } from '@/types/game'
+import type { GameEvent, GameState, NationId, PilotFate, UnitCategory, WarStats } from '@/types/game'
 import type { ObjectiveStatus } from '@/types/view'
 import { weaponSpecs } from '@/data/weapons/missiles'
 
@@ -26,6 +26,7 @@ const UNIT_LOSS_DRAIN: Record<UnitCategory, number> = {
   aircraft: 1,
   minefield: 0.5,
 }
+const PILOT_FATE_DRAIN: Record<PilotFate, number> = { kia: 2, pow: 4, rescued: 1 }
 const WAR_DURATION_DRAIN_PER_HOUR = 0.15
 const LOW_RESERVES_FRACTION = 0.25
 const LOW_RESERVES_DRAIN_PER_HOUR = 0.3
@@ -231,6 +232,16 @@ function evaluate(state: GameState): void {
           const enemyStatus = (ws[enemyId] ??= { warSupport: 100 })
           enemyStatus.warSupport = clampSupport(enemyStatus.warSupport + gain)
         }
+        break
+      }
+      case 'FLIGHT_LOST': {
+        // Event carries no nation — the owning side comes from the mission record
+        const mission = e.missionId ? state.airMissions?.find(m => m.id === e.missionId) : undefined
+        if (!mission) break
+        const owner = state.nations[mission.nation]
+        if (!owner || owner.atWar.length === 0) break
+        const status = (ws[mission.nation] ??= { warSupport: 100 })
+        status.warSupport = clampSupport(status.warSupport - PILOT_FATE_DRAIN[e.pilotFate])
         break
       }
     }

@@ -56,6 +56,7 @@ interface UIState {
 
   // Right-side panels (independent toggles)
   showIntel: boolean
+  showAirOps: boolean
 
   // Intel suite v3
   liveFeedsOpen: boolean
@@ -100,6 +101,7 @@ interface UIState {
 
   // Right-side panels
   toggleIntel: () => void
+  toggleAirOps: () => void
 
   // Intel suite v3
   toggleLiveFeeds: () => void
@@ -140,6 +142,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   showStats: false,
   showEconomy: false,
   showIntel: false,
+  showAirOps: false,
   liveFeedsOpen: false,
   viewedProductId: null,
   fmvTargetId: null,
@@ -183,6 +186,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   toggleIntelCoverage: () => set((s) => ({ showIntelCoverage: !s.showIntelCoverage })),
 
   toggleIntel: () => set((s) => ({ showIntel: !s.showIntel })),
+
+  toggleAirOps: () => set((s) => ({ showAirOps: !s.showAirOps })),
 
   toggleLiveFeeds: () => set((s) => ({ liveFeedsOpen: !s.liveFeedsOpen })),
   setViewedProduct: (id) => set({ viewedProductId: id }),

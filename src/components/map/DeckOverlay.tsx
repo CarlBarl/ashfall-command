@@ -4,6 +4,7 @@ import { MapboxOverlay } from '@deck.gl/mapbox'
 import type { MapboxOverlayProps } from '@deck.gl/mapbox'
 import { createIntelMapLayers } from './layers/IntelLayers'
 import { createEffectsLayers, KILL_ANIM_MS } from './layers/EffectsLayers'
+import { createAirMapLayers } from './layers/AirLayers'
 import { useGameStore } from '@/store/game-store'
 import { useUIStore } from '@/store/ui-store'
 import { useMapIntelStore } from '@/store/map-intel-store'
@@ -15,6 +16,7 @@ export default function DeckOverlay(props: MapboxOverlayProps) {
   const tick = useGameStore((s) => s.viewState.time.tick)
   const playerNation = useGameStore((s) => s.viewState.playerNation)
   const intel = useGameStore((s) => s.viewState.intel)
+  const airMissions = useGameStore((s) => s.viewState.airMissions)
   const eventLog = useGameStore((s) => s.eventLog)
   const selectedUnitId = useUIStore((s) => s.selectedUnitId)
   const intelOverlays = useMapIntelStore((s) => s.intelOverlays)
@@ -101,11 +103,16 @@ export default function DeckOverlay(props: MapboxOverlayProps) {
     [killMarkers, trackHistory, units, playerNation, effectsNowMs],
   )
 
+  const airLayers = useMemo(
+    () => createAirMapLayers({ missions: airMissions ?? [], units, selectedUnitId }),
+    [airMissions, units, selectedUnitId],
+  )
+
   // Intel layers prepend (draw beneath) the game layers passed by GameMap;
-  // effects sit between — above rings/overlays, below unit icons
+  // effects and air-war glyphs sit between — above rings/overlays, below unit icons
   const mergedProps = useMemo<MapboxOverlayProps>(
-    () => ({ ...props, layers: [...intelLayers, ...effectsLayers, ...(props.layers ?? [])] }),
-    [props, intelLayers, effectsLayers],
+    () => ({ ...props, layers: [...intelLayers, ...effectsLayers, ...airLayers, ...(props.layers ?? [])] }),
+    [props, intelLayers, effectsLayers, airLayers],
   )
 
   const overlay = useControl<MapboxOverlay>(

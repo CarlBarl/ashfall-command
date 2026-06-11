@@ -113,6 +113,8 @@ export default function TopBar() {
   const toggleIntel = useUIStore((s) => s.toggleIntel)
   const liveFeedsOpen = useUIStore((s) => s.liveFeedsOpen)
   const toggleLiveFeeds = useUIStore((s) => s.toggleLiveFeeds)
+  const showAirOps = useUIStore((s) => s.showAirOps)
+  const toggleAirOps = useUIStore((s) => s.toggleAirOps)
   const placingCatalogId = useIntelStore((s) => s.placingCatalogId)
 
   const units = useGameStore((s) => s.viewState.units)
@@ -122,6 +124,7 @@ export default function TopBar() {
   const shippingLanes = useGameStore((s) => s.viewState.shippingLanes)
   const warSupport = useGameStore((s) => s.viewState.warSupport)
   const objectives = useGameStore((s) => s.viewState.objectives)
+  const surgeOps = useGameStore((s) => s.viewState.surgeOps)
   const eventLog = useGameStore((s) => s.eventLog)
   const hormuzLane = shippingLanes.find((l) => l.id === 'hormuz')
 
@@ -453,6 +456,10 @@ export default function TopBar() {
         )}
 
         <Sep />
+
+        {/* Air ops panel toggle + surge indicator */}
+        <ToggleBtn active={showAirOps} onClick={toggleAirOps} label="AIR" />
+        {surgeOps && <SurgeChip />}
 
         {/* Intel panel toggle */}
         <IntelBtn active={showIntel || !!placingCatalogId} onClick={toggleIntel} compact={false} />
@@ -970,7 +977,7 @@ function exitToMainMenu() {
   const ui = useUIStore.getState()
   ui.clearSelection()
   ui.setLeftPanel(null)
-  useUIStore.setState({ showIntel: false })
+  useUIStore.setState({ showIntel: false, showAirOps: false })
   useMenuStore.getState().setScreen('start')
 }
 
@@ -1205,6 +1212,27 @@ function LiveBtn({ active, onClick }: { active: boolean; onClick: () => void }) 
       )}
       LIVE
     </button>
+  )
+}
+
+function SurgeChip() {
+  return (
+    <>
+      <style>{'@keyframes surge-pulse{0%,100%{opacity:1}50%{opacity:0.35}}'}</style>
+      <span style={{
+        color: 'var(--status-engaged)',
+        border: '1px solid var(--status-engaged)',
+        borderRadius: 3,
+        padding: '2px 4px',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 'var(--font-size-xs)',
+        fontWeight: 700,
+        whiteSpace: 'nowrap',
+        animation: 'surge-pulse 1.4s ease-in-out infinite',
+      }}>
+        SURGE
+      </span>
+    </>
   )
 }
 
