@@ -89,8 +89,9 @@ aircraft units; air-ops only sets waypoints/decisions):
   the existing visibility + fire-control network does the rest.
 - **RTB**: at bingo or out of weapons → waypoints home, on arrival the Flight
   unit is removed, squadron readyAt += turnaround, `available` restored minus
-  losses. Flight destroyed → airframes lost, pilot roll per airframe:
-  KIA (−2 war support) / rescued (+1) / POW (−4, OSINT event).
+  losses. Flight destroyed → airframes lost, one pilot-fate roll per flight:
+  KIA (−2 war support) / rescued (−1, a rescue softens the loss) / POW (−4,
+  OSINT event).
 - **Iran AI**: scramble-only — when a detected USA package/flight approaches a
   defended box, spawn an interceptor CAP from the nearest airbase with
   available fighters (ai.ts hook, max 2 concurrent). Su-35 squadron only

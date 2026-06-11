@@ -30,6 +30,7 @@ import { processVisibility, resetVisibilityState, seedInitialVisibility, getView
 import { processWarSupport, resetWarSupportState, offerCeasefire, acceptCeasefire, resign, getWarSupport, getObjectives } from './systems/war-support'
 import { processIntel, initIntelState, resetIntelState, taskSatellitePass, taskAgent, restAgent, exfiltrateAgent, opsecSweep, maybeLeakStrike, paranoiaBand } from './systems/intel'
 import { processAirOps, initAirWings, resetAirOpsState, setAirMissionCounter, launchAirMission, cancelAirMission, setSurgeOps, surgeActive, getAirMissionsView } from './systems/air-ops'
+import { processAirBda } from './systems/air-bda'
 import type { IntelViewState } from '@/types/view'
 
 const TICK_MS = 1_000 // 1 tick = 1 game second (real-time at 1x)
@@ -171,6 +172,9 @@ export class GameEngine {
     processCombat(state, this.rng, this.elevationGrid, this.sensorNetwork)
     processPointDefense(state, this.rng)
     processShipping(state, this.rng)
+    // After shipping, not just combat — mine hits on a carrier must wipe its deck too.
+    // Exactly once per tick: it rescans this tick's events and would double-apply.
+    processAirBda(state)
     processEconomy(state)
     processLogistics(state)
     processRepair(state)

@@ -321,3 +321,25 @@ describe('TopBar time controls', () => {
     expect(useUIStore.getState().liveFeedsOpen).toBe(true)
   })
 })
+
+describe('TopBar air ops', () => {
+  it('toggles the air ops panel with the AIR button', () => {
+    useUIStore.setState({ showAirOps: false })
+    render(<TopBar />)
+    fireEvent.click(screen.getByText('AIR'))
+    expect(useUIStore.getState().showAirOps).toBe(true)
+    fireEvent.click(screen.getByText('AIR'))
+    expect(useUIStore.getState().showAirOps).toBe(false)
+  })
+
+  it('shows the SURGE chip only while surge ops is active', () => {
+    setStore(makeViewState({ surgeOps: true }))
+    const { unmount } = render(<TopBar />)
+    expect(screen.getByText('SURGE')).toBeTruthy()
+    unmount()
+
+    setStore(makeViewState({}))
+    render(<TopBar />)
+    expect(screen.queryByText('SURGE')).toBeNull()
+  })
+})

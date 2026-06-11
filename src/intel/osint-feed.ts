@@ -49,6 +49,7 @@ function pick<T>(rng: () => number, arr: T[]): T {
 // ── Nation heuristics (events carry no nation field; the feed is flavor) ────
 
 const IRAN_WEAPON_RE = /shahab|sejjil|fateh|zolfaghar|khalij|noor|soumar|hoveyzeh|shahed|sayyad|bavar|khordad|48n6|9m331/i
+const USA_FLIGHT_RE = /f\/a-18|f-35|ea-18|e-2|hornet|lightning|growler|hawkeye|vfa|vaq|vaw|efs/i
 const IRAN_UNIT_RE = /irgc|irin|bandar|bushehr|qeshm|jask|chabahar|khordad|bavar|s-300|tor-m1|shahab|sejjil|fateh|zolfaghar|shahed|soumar|ghadir|mehrabad|nebo|isfahan|tabriz|dezful|semnan|natanz|kermanshah|khorramabad|shiraz|tehran|\btel\b/i
 
 const WRONG_NAMES = [
@@ -88,6 +89,22 @@ function buildText(
           `that sound is live ${event.weaponName} fire. engagement underway`,
         ])
       }
+      if (event.type === 'AIR_MISSION_LAUNCHED' && USA_FLIGHT_RE.test(event.flightName)) {
+        return pick(rng, [
+          `${event.flightName} just launched — climbing out fast and heading seaward`,
+          'flight ops surging right now. multiple fast movers up in the last few minutes',
+          `caught it on the long lens: ${event.flightName}. that loadout is not a training fit`,
+        ])
+      }
+      if (event.type === 'AIR_INTERCEPT') {
+        if (event.kills > 0) {
+          return pick(rng, [
+            'contrails merging high over the water, then a fireball. aircraft down — air-to-air, has to be',
+            'just watched something fall burning out of the sky offshore. multiple watchers confirm',
+          ])
+        }
+        return 'fast jets merging high over the gulf, missile trails visible. everyone still flying as far as I can tell'
+      }
       return null
     }
 
@@ -113,6 +130,18 @@ function buildText(
         return pick(rng, [
           `BREAKING: ${a} DECLARES WAR ON ${d}`,
           `it's happening — state of war: ${a} vs ${d}. live coverage thread below`,
+        ])
+      }
+      if (event.type === 'FLIGHT_LOST') {
+        if (event.pilotFate === 'pow') {
+          return pick(rng, [
+            'reports of an aircraft down over the Gulf — state TV claims aircrew in custody. developing',
+            `BREAKING: ${event.flightName} reported lost. unverified footage shows a parachute and a capture crowd`,
+          ])
+        }
+        return pick(rng, [
+          'reports of an aircraft down over the Gulf — SAR traffic spiking on open frequencies. developing',
+          `multiple sources: ${event.flightName} failed to return. no official confirmation yet`,
         ])
       }
       return null

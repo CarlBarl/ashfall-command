@@ -27,6 +27,18 @@ const flashIntercept: GameEvent = {
 }
 const routineIntercept: GameEvent = { type: 'INTERCEPT_DECRYPTED', precedence: 'ROUTINE', text: 'logistics chatter', tick: 61 }
 const supportCritical: GameEvent = { type: 'WAR_SUPPORT_CRITICAL', nation: 'usa', support: 28, tick: 5000 }
+const usaMission: GameEvent = {
+  type: 'AIR_MISSION_LAUNCHED', missionId: 'am_1_1500', kind: 'strike', flightName: '2× F/A-18E (VFA-14)', tick: 1500,
+}
+const iranMission: GameEvent = {
+  type: 'AIR_MISSION_LAUNCHED', missionId: 'am_2_1600', kind: 'cap', flightName: '2× MiG-29A (11th TFS Fulcrums)', tick: 1600,
+}
+const flightLost: GameEvent = {
+  type: 'FLIGHT_LOST', missionId: 'am_1_1500', flightName: '2× F/A-18E (VFA-14)', airframesLost: 2, pilotFate: 'pow', tick: 2000,
+}
+const airIntercept: GameEvent = {
+  type: 'AIR_INTERCEPT', attackerName: '2× Su-35SE (Su-35SE Group)', defenderName: '2× F/A-18E (VFA-14)', kills: 1, tick: 2100,
+}
 
 function account(handle: string) {
   return OSINT_ACCOUNTS.find((a) => a.handle === handle)!
@@ -98,6 +110,25 @@ describe('generatePostsForEvent — archetype coverage', () => {
     expect(postsBy(generatePostsForEvent(supportCritical, names, 5000), '@PizzaIndexGulf')).toHaveLength(1)
   })
 
+  it('plane spotter covers USA air-mission launches but not Iranian ones', () => {
+    expect(postsBy(generatePostsForEvent(usaMission, names, 1500), '@GulfPlaneWatch')).toHaveLength(1)
+    expect(postsBy(generatePostsForEvent(iranMission, names, 1600), '@GulfPlaneWatch')).toHaveLength(0)
+  })
+
+  it('plane spotter covers air-to-air intercepts', () => {
+    expect(postsBy(generatePostsForEvent(airIntercept, names, 2100), '@GulfPlaneWatch')).toHaveLength(1)
+    const noKill: GameEvent = { ...airIntercept, kills: 0, tick: 2101 }
+    expect(postsBy(generatePostsForEvent(noKill, names, 2101), '@GulfPlaneWatch')).toHaveLength(1)
+  })
+
+  it('aggregator covers downed flights', () => {
+    const posts = postsBy(generatePostsForEvent(flightLost, names, 2000), '@CENTCOM_Watch')
+    expect(posts).toHaveLength(1)
+    expect(posts[0].text).toMatch(/down over the Gulf|reported lost|failed to return/)
+    const kia: GameEvent = { type: 'FLIGHT_LOST', flightName: '2× F-14AM (81st TFS Tomcats)', airframesLost: 1, pilotFate: 'kia', tick: 2200 }
+    expect(postsBy(generatePostsForEvent(kia, names, 2200), '@CENTCOM_Watch')).toHaveLength(1)
+  })
+
   it('uncovered events generate nothing', () => {
     const repair: GameEvent = { type: 'UNIT_REPAIRED', unitId: 'al_udeid', healthRestored: 10, tick: 42 }
     expect(generatePostsForEvent(repair, names, 42)).toHaveLength(0)
@@ -106,7 +137,7 @@ describe('generatePostsForEvent — archetype coverage', () => {
 
 describe('generatePostsForEvent — delay semantics', () => {
   it('every post surfaces no earlier than event tick + the account min delay', () => {
-    const allEvents = [launched, impact, destroyedIranian, mineHit, laneChange, oilSpike, flashIntercept, supportCritical]
+    const allEvents = [launched, impact, destroyedIranian, mineHit, laneChange, oilSpike, flashIntercept, supportCritical, usaMission, flightLost, airIntercept]
     for (const e of allEvents) {
       for (const post of generatePostsForEvent(e, names, e.tick)) {
         const [min, max] = account(post.handle).delayRangeSec

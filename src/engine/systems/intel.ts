@@ -134,6 +134,7 @@ function resolveSatelliteTaskings(state: GameState, intel: IntelState, rng: Seed
     // Sweep the footprint
     let found = 0
     let revealedDecoys = 0
+    let rampAirframes = 0
     const byCategory = new Map<string, number>()
     for (const unit of state.units.values()) {
       if (unit.nation === asset.nation || unit.status === 'destroyed') continue
@@ -149,6 +150,11 @@ function resolveSatelliteTaskings(state: GameState, intel: IntelState, rng: Seed
       found++
       byCategory.set(unit.category, (byCategory.get(unit.category) ?? 0) + 1)
 
+      // BDA reward: ramp counts are the only legal channel for enemy squadron pools
+      if (unit.airWing) {
+        rampAirframes += unit.airWing.reduce((n, s) => n + s.available + s.readyAt.length, 0)
+      }
+
       if (unit.isDecoy && !unit.decoyRevealed && (asset.niirs ?? 0) >= 7) {
         unit.decoyRevealed = true
         revealedDecoys++
@@ -163,7 +169,7 @@ function resolveSatelliteTaskings(state: GameState, intel: IntelState, rng: Seed
       target: tasking.target,
       niirs: asset.niirs,
       classification: asset.kind === 'commercial_sat' ? 'UNCLASSIFIED//COMMERCIAL' : 'TOP SECRET//TK//NOFORN',
-      caption: imintCaption(byCategory, revealedDecoys),
+      caption: imintCaption(byCategory, revealedDecoys, rampAirframes),
     })
 
     emit(state, {
@@ -185,7 +191,7 @@ function resolveSatelliteTaskings(state: GameState, intel: IntelState, rng: Seed
   }
 }
 
-function imintCaption(byCategory: Map<string, number>, revealedDecoys: number): string {
+function imintCaption(byCategory: Map<string, number>, revealedDecoys: number, rampAirframes: number): string {
   if (byCategory.size === 0) return 'No significant activity observed in AOI.'
   const labels: Record<string, string> = {
     missile_battery: 'probable TEL group',
@@ -199,8 +205,9 @@ function imintCaption(byCategory: Map<string, number>, revealedDecoys: number): 
     minefield: 'suspected mine line',
   }
   const parts = Array.from(byCategory.entries()).map(([cat, n]) => `${n}× ${labels[cat] ?? cat}`)
+  const rampNote = rampAirframes > 0 ? `; ~${rampAirframes} airframes on ramp` : ''
   const decoyNote = revealedDecoys > 0 ? `; ${revealedDecoys}× assessed DECOY (no thermal signature)` : ''
-  return parts.join(', ') + decoyNote + '.'
+  return parts.join(', ') + rampNote + decoyNote + '.'
 }
 
 // ---------------------------------------------------------------------------

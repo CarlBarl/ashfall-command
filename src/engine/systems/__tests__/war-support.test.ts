@@ -8,7 +8,7 @@ import {
   getWarSupport,
   getObjectives,
 } from '../war-support'
-import type { GameEvent, GameState, NationId, ShippingLane, Unit, UnitCategory } from '@/types/game'
+import type { AirMission, GameEvent, GameState, NationId, PilotFate, ShippingLane, Unit, UnitCategory } from '@/types/game'
 
 function makeUnit(overrides: Partial<Unit> & { id: string; nation: NationId }): Unit {
   return {
@@ -230,6 +230,69 @@ describe('ceasefire', () => {
     const state = makeState([lossUnit('ship', 'us1', 'usa')], { atWar: false })
     acceptCeasefire(state, 'usa', 'iran')
     expect(state.gameOver).toBeUndefined()
+  })
+})
+
+describe('pilot-fate war-support drains', () => {
+  function mission(nation: NationId, id = 'am_1_0'): AirMission {
+    return {
+      id, kind: 'cap', nation, squadronId: 'vfa14', fromUnitId: 'cvn',
+      flightSize: 2, status: 'complete', createdTick: 0,
+    }
+  }
+
+  function flightLost(state: GameState, missionId: string | undefined, pilotFate: PilotFate): void {
+    const event: GameEvent = {
+      type: 'FLIGHT_LOST', missionId, flightName: '2× F/A-18E (VFA-14)',
+      airframesLost: 2, pilotFate, tick: state.time.tick,
+    }
+    state.events.push(event)
+    state.pendingEvents.push(event)
+  }
+
+  it.each([
+    ['kia', 2],
+    ['pow', 4],
+    ['rescued', 1],
+  ] as [PilotFate, number][])('%s drains %d from the owning nation', (fate, drain) => {
+    const state = makeState([lossUnit('carrier_group', 'cvn', 'usa')])
+    state.airMissions = [mission('usa')]
+    evalAt(state, 0)
+    flightLost(state, 'am_1_0', fate)
+    evalAt(state, 60)
+    const support = getWarSupport(state)
+    // Both sides take the same duration drain — the gap is the pilot-fate drain
+    expect(support.iran - support.usa).toBeCloseTo(drain, 5)
+  })
+
+  it('attributes the drain via the mission record, including Iranian losses', () => {
+    const state = makeState([lossUnit('airbase', 'mehrabad', 'iran')])
+    state.airMissions = [mission('iran', 'am_2_0')]
+    evalAt(state, 0)
+    flightLost(state, 'am_2_0', 'pow')
+    evalAt(state, 60)
+    const support = getWarSupport(state)
+    expect(support.usa - support.iran).toBeCloseTo(4, 5)
+  })
+
+  it('ignores FLIGHT_LOST without a resolvable mission', () => {
+    const state = makeState([lossUnit('carrier_group', 'cvn', 'usa')])
+    state.airMissions = [mission('usa')]
+    evalAt(state, 0)
+    flightLost(state, undefined, 'kia')
+    flightLost(state, 'am_unknown_99', 'kia')
+    evalAt(state, 60)
+    const support = getWarSupport(state)
+    expect(support.iran - support.usa).toBeCloseTo(0, 5)
+  })
+
+  it('does not drain at peace', () => {
+    const state = makeState([lossUnit('carrier_group', 'cvn', 'usa')], { atWar: false })
+    state.airMissions = [mission('usa')]
+    evalAt(state, 0)
+    flightLost(state, 'am_1_0', 'kia')
+    evalAt(state, 60)
+    expect(getWarSupport(state).usa).toBe(100)
   })
 })
 
